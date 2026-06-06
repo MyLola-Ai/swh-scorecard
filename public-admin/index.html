@@ -1,0 +1,1776 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SWH Admin</title>
+<meta name="robots" content="noindex,nofollow">
+<link rel="icon" type="image/png" href="https://firebasestorage.googleapis.com/v0/b/swh-scoreboard.firebasestorage.app/o/Bold%20Corporate%20Logo%20Design%20featuring%20'SWH'.png?alt=media&token=8cfd051a-70e9-439c-ae3c-f7950dcec438">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=DM+Sans:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<style>
+  *,*::before,*::after{box-sizing:border-box;}
+  :root{
+    --navy:#0f0f0f;--navy-2:#1a1a1a;
+    --gold:#E63946;
+    --bg:#F4F4F5;--card:#FFFFFF;
+    --muted:#6B7280;--border:#E4E4E7;
+    --green:#5A8A6A;--red:#E63946;
+  }
+  html,body{margin:0;padding:0;font-family:'DM Sans',sans-serif;color:var(--navy);background:var(--bg);min-height:100vh;-webkit-font-smoothing:antialiased;}
+  button{font-family:inherit;}
+
+  /* ── LOGIN / DENIED SCREEN ── */
+  .gate{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:32px 20px;background:linear-gradient(160deg,#0f0f0f 0%,#1f1f1f 100%);color:#fff;text-align:center;}
+  .gate-mark{width:64px;height:64px;border-radius:14px;margin-bottom:20px;background:#1a1a1a;display:flex;align-items:center;justify-content:center;color:#fff;font-family:'Playfair Display',serif;font-size:22px;font-weight:900;letter-spacing:0.04em;}
+  .gate-title{font-family:'Playfair Display',serif;font-size:34px;font-weight:900;line-height:1.1;letter-spacing:-0.015em;}
+  .gate-sub{color:rgba(255,255,255,0.55);font-size:15px;margin-top:10px;max-width:420px;line-height:1.55;}
+  .gate-btn{margin-top:28px;display:inline-flex;align-items:center;gap:10px;padding:14px 22px;background:#fff;color:var(--navy);border:none;border-radius:12px;font-size:15px;font-weight:800;cursor:pointer;}
+  .gate-btn:hover{background:#fafafa;}
+  .gate-btn svg{width:18px;height:18px;}
+  .gate-link{margin-top:18px;background:transparent;border:none;font-size:13px;font-weight:600;color:rgba(255,255,255,0.55);cursor:pointer;}
+
+  /* ── APP ── */
+  .topbar{display:flex;align-items:center;justify-content:space-between;padding:16px 24px;background:#0f0f0f;color:#fff;border-bottom:1px solid #1a1a1a;}
+  .brand{display:flex;align-items:center;gap:12px;}
+  .brand-mark{width:34px;height:34px;border-radius:8px;background:#1a1a1a;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:900;font-family:'Playfair Display',serif;font-size:13px;}
+  .brand-title{font-weight:800;font-size:15px;}
+  .brand-sub{font-size:11px;color:rgba(255,255,255,0.45);margin-top:1px;letter-spacing:0.04em;text-transform:uppercase;}
+  .top-right{display:flex;align-items:center;gap:14px;}
+  .top-user{font-size:13px;color:rgba(255,255,255,0.7);}
+  .top-link{font-size:12px;font-weight:700;color:rgba(255,255,255,0.55);background:transparent;border:1px solid rgba(255,255,255,0.15);padding:7px 11px;border-radius:8px;cursor:pointer;}
+  .top-link:hover{color:#fff;border-color:rgba(255,255,255,0.35);}
+
+  /* ── TABS ── */
+  .tabs{display:flex;gap:0;background:#0f0f0f;border-bottom:1px solid #1f1f1f;padding:0 24px;overflow-x:auto;}
+  .tab{padding:14px 20px;background:transparent;border:none;color:rgba(255,255,255,0.55);font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;border-bottom:2px solid transparent;letter-spacing:0.02em;white-space:nowrap;}
+  .tab:hover{color:#fff;}
+  .tab.active{color:#fff;border-bottom-color:var(--gold);}
+
+  .wrap{max-width:1100px;margin:0 auto;padding:28px 24px 60px;}
+  .pane{display:none;}
+  .pane.active{display:block;}
+  .page-head{display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:12px;margin-bottom:18px;}
+  .page-title{font-family:'Playfair Display',serif;font-size:30px;font-weight:900;letter-spacing:-0.015em;line-height:1.1;}
+  .page-sub{font-size:13px;color:var(--muted);margin-top:4px;}
+  .btn-ghost{padding:10px 14px;border:1.5px solid var(--border);border-radius:10px;background:#fff;font-size:13px;font-weight:700;color:var(--navy);cursor:pointer;}
+  .btn-ghost:hover{border-color:var(--navy);}
+
+  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:22px;}
+  @media (max-width:680px){.stats{grid-template-columns:repeat(2,1fr);}}
+  .stat{background:#fff;border:1.5px solid var(--border);border-radius:12px;padding:16px;}
+  .stat-val{font-family:'Playfair Display',serif;font-size:30px;font-weight:900;line-height:1;letter-spacing:-0.015em;}
+  .stat-lbl{font-size:10px;color:var(--muted);margin-top:6px;text-transform:uppercase;letter-spacing:0.08em;font-weight:700;}
+
+  .controls{display:flex;align-items:center;gap:8px;margin-bottom:16px;flex-wrap:wrap;}
+  .search{flex:1;min-width:220px;position:relative;}
+  .search input{width:100%;padding:11px 12px 11px 36px;border:1.5px solid var(--border);border-radius:10px;background:#fff;font-family:inherit;font-size:14px;color:var(--navy);outline:none;}
+  .search input:focus{border-color:var(--navy);}
+  .search-icon{position:absolute;left:11px;top:50%;transform:translateY(-50%);font-size:14px;color:var(--muted);pointer-events:none;}
+  .chip{padding:9px 13px;border:1.5px solid var(--border);border-radius:9px;background:#fff;font-size:12px;font-weight:700;color:var(--muted);cursor:pointer;}
+  .chip.active{background:var(--navy);color:#fff;border-color:var(--navy);}
+
+  .user-row{background:#fff;border:1.5px solid var(--border);border-radius:14px;padding:14px 16px;margin-bottom:10px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;}
+  .avatar{width:42px;height:42px;border-radius:50%;background:var(--navy);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;flex-shrink:0;}
+  .user-meta{flex:1;min-width:200px;}
+  .user-name{font-size:14px;font-weight:700;}
+  .user-name .me-tag{font-size:10px;color:var(--muted);font-weight:600;margin-left:6px;}
+  .user-email{font-size:12px;color:var(--muted);}
+  .user-joined{font-size:11px;color:var(--muted);margin-top:2px;}
+  .badge{display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:999px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;}
+  .badge-pro{background:#fef3cd;color:#c0392b;}
+  .badge-scorecard{background:#e8f5ec;color:var(--green);}
+  .badge-free{background:#f4f4f5;color:var(--muted);}
+  .plan-select{padding:8px 11px;border:1.5px solid var(--border);border-radius:9px;font-family:inherit;font-size:13px;background:#fff;cursor:pointer;color:var(--navy);}
+  .plan-select:disabled{cursor:not-allowed;opacity:0.5;}
+
+  .empty{text-align:center;padding:40px 20px;color:var(--muted);background:#fff;border-radius:14px;border:1.5px solid var(--border);font-size:13px;}
+  .err{text-align:center;padding:36px 20px;color:var(--red);background:#fff;border-radius:14px;border:1.5px solid #fecaca;font-size:13px;line-height:1.55;}
+  .err small{display:block;color:var(--muted);font-size:12px;margin-top:8px;}
+
+  .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(110%);background:#0f0f0f;color:#fff;padding:12px 20px;border-radius:12px;font-size:13px;font-weight:600;box-shadow:0 8px 24px rgba(0,0,0,0.3);transition:transform 0.3s;z-index:9999;max-width:420px;text-align:center;}
+  .toast.show{transform:translateX(-50%) translateY(0);}
+
+  .loader{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:60vh;color:var(--muted);}
+  .spinner{width:30px;height:30px;border:3px solid var(--border);border-top-color:var(--navy);border-radius:50%;animation:spin 0.8s linear infinite;margin-bottom:12px;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+
+  /* ── FORMS ── */
+  .form-card{background:#fff;border:1.5px solid var(--border);border-radius:14px;padding:20px;margin-bottom:18px;}
+  .form-row{display:grid;gap:12px;margin-bottom:12px;}
+  .form-row.cols-2{grid-template-columns:1fr 1fr;}
+  .form-row.cols-3{grid-template-columns:1fr 1fr 1fr;}
+  @media (max-width:560px){.form-row.cols-2,.form-row.cols-3{grid-template-columns:1fr;}}
+  .field{display:flex;flex-direction:column;gap:5px;}
+  .label{font-size:11px;font-weight:700;color:var(--muted);letter-spacing:0.04em;text-transform:uppercase;}
+  .input,.textarea,.select{width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:9px;background:#fff;font-family:inherit;font-size:14px;color:var(--navy);outline:none;}
+  .input:focus,.textarea:focus,.select:focus{border-color:var(--navy);}
+  .textarea{resize:vertical;min-height:80px;font-family:inherit;line-height:1.5;}
+  .btn-primary{padding:11px 18px;background:var(--navy);color:#fff;border:none;border-radius:10px;font-size:13px;font-weight:800;cursor:pointer;font-family:inherit;}
+  .btn-primary:hover{background:var(--gold);}
+  .btn-danger{padding:8px 12px;background:#fff4f4;color:var(--red);border:1.5px solid #fecaca;border-radius:9px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;}
+  .btn-danger:hover{background:var(--red);color:#fff;border-color:var(--red);}
+
+  /* ── ANNOUNCEMENTS ── */
+  .ann-item{background:#fff;border:1.5px solid var(--border);border-radius:14px;padding:16px;margin-bottom:10px;display:flex;align-items:flex-start;gap:14px;}
+  .ann-item.inactive{opacity:0.55;background:#fafafa;}
+  .ann-icon{width:42px;height:42px;border-radius:10px;background:var(--bg);display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0;}
+  .ann-meta{flex:1;min-width:0;}
+  .ann-title{font-size:14px;font-weight:700;color:var(--navy);}
+  .ann-body{font-size:13px;color:var(--muted);margin-top:4px;line-height:1.55;white-space:pre-wrap;}
+  .ann-foot{display:flex;gap:10px;align-items:center;margin-top:8px;flex-wrap:wrap;font-size:11px;color:var(--muted);}
+  .ann-actions{display:flex;gap:6px;flex-shrink:0;}
+  .small-btn{padding:6px 10px;background:#fff;color:var(--navy);border:1.5px solid var(--border);border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;}
+  .small-btn:hover{border-color:var(--navy);}
+  .pill{display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:999px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;}
+  .pill-all{background:#e8f5ec;color:var(--green);}
+  .pill-pro{background:#fef3cd;color:#c0392b;}
+  .pill-scorecard{background:#dbeafe;color:#1e40af;}
+  .pill-urgent{background:#fdecea;color:var(--red);}
+  .pill-active{background:#e8f5ec;color:var(--green);}
+  .pill-inactive{background:#f4f4f5;color:var(--muted);}
+
+  /* ── ACTIVITIES ── */
+  .act-row{background:#fff;border:1.5px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:8px;display:grid;grid-template-columns:48px 2.4fr 1.2fr 90px 110px auto;gap:10px;align-items:center;}
+  @media (max-width:760px){.act-row{grid-template-columns:48px 1fr;gap:6px;}.act-row > *:not(:nth-child(-n+2)){grid-column:1/-1;}}
+  .act-icon-input{width:42px;height:42px;text-align:center;border:1.5px solid var(--border);border-radius:9px;font-size:20px;background:#fafafa;font-family:inherit;}
+  .lead-toggle{display:inline-flex;align-items:center;gap:5px;padding:7px 11px;border:1.5px solid var(--border);border-radius:8px;background:#fff;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;color:var(--muted);}
+  .lead-toggle.lead{background:#e8f5ec;color:var(--green);border-color:#b6e0c4;}
+  .lead-toggle.lag{background:#dbeafe;color:#1e40af;border-color:#bbd4f7;}
+  /* ===== Powered by Lola — per official Brand Package v1.0 ===== */
+  .lola-badge{display:inline-flex;align-items:center;gap:9px;padding:6px 0;
+    font-family:'Space Grotesk','Inter',system-ui,-apple-system,sans-serif;
+    font-size:11px;font-weight:600;letter-spacing:0.18em;text-transform:uppercase;user-select:none;}
+  .lola-badge .lola-text{color:rgba(91,91,214,0.85);}
+  .lola-badge.on-dark .lola-text{color:rgba(255,255,255,0.55);}
+  .lola-badge .lola-name{color:#5B5BD6;font-weight:700;letter-spacing:0.20em;}
+  .lola-badge.on-dark .lola-name{color:#A78BFA;}
+  .lola-orb{display:inline-block;width:14px;height:14px;border-radius:50%;
+    background:radial-gradient(circle at 32% 30%, #A78BFA 0%, #5B5BD6 55%, #1E3A8A 100%);
+    box-shadow:inset -1.5px -2px 4px rgba(30,58,138,0.55), 0 0 8px rgba(167,139,250,0.35);
+    position:relative;
+    animation:lola-breathe 3.4s ease-in-out infinite;}
+  .lola-orb::after{content:"";position:absolute;top:24%;left:26%;width:30%;height:30%;border-radius:50%;
+    background:radial-gradient(circle, rgba(255,255,255,0.55), transparent 70%);}
+  @keyframes lola-breathe {
+    0%,100%{transform:scale(1);box-shadow:inset -1.5px -2px 4px rgba(30,58,138,0.55), 0 0 6px rgba(167,139,250,0.30);}
+    50%{transform:scale(1.06);box-shadow:inset -1.5px -2px 4px rgba(30,58,138,0.55), 0 0 14px rgba(167,139,250,0.55);}
+  }
+  /* ===== Teams tab ===== */
+  .filter-btn{padding:8px 14px;border:1.5px solid var(--border);background:#fff;border-radius:8px;font-family:inherit;font-size:12px;font-weight:700;color:var(--muted);cursor:pointer;letter-spacing:0.04em;}
+  .filter-btn.active{background:var(--navy);border-color:var(--navy);color:#fff;}
+  .team-card{background:#fff;border:1.5px solid var(--border);border-radius:12px;padding:14px 16px;display:grid;grid-template-columns:1fr auto auto auto;gap:14px;align-items:center;margin-bottom:8px;}
+  .team-card:hover{border-color:var(--navy);}
+  .team-card .name{font-family:'Playfair Display',Georgia,serif;font-size:16px;font-weight:800;color:var(--navy);}
+  .team-card .owner{font-size:12px;color:var(--muted);margin-top:2px;}
+  .team-badge{display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:6px;font-size:10px;font-weight:800;letter-spacing:0.06em;text-transform:uppercase;}
+  .team-badge.scorecard{background:#eef2f7;color:#1F4F87;border:1px solid #c9d8ee;}
+  .team-badge.crm{background:#fdecea;color:var(--red);border:1px solid #f5c6c2;}
+  .team-badge.active{background:#e8f5ec;color:var(--green);border:1px solid #b6e0c4;}
+  .team-badge.trialing{background:#fff7e6;color:#a05a00;border:1px solid #fbd38d;}
+  .team-badge.canceled{background:#f4f4f5;color:#71717a;border:1px solid #e4e4e7;}
+  .team-badge.comp{background:#ede9fe;color:#5b21b6;border:1px solid #d6cffd;}
+  .team-badge.incomplete{background:#fef2f2;color:#991b1b;border:1px solid #fecaca;}
+  .team-card .seats{font-family:'Playfair Display',Georgia,serif;font-size:24px;font-weight:900;color:var(--navy);text-align:right;line-height:1;}
+  .team-card .seats-label{font-size:9px;color:var(--muted);letter-spacing:0.06em;text-align:right;margin-top:2px;}
+  .team-card .actions{display:flex;gap:6px;}
+  .team-card .actions button{padding:6px 10px;border-radius:7px;border:1.5px solid var(--border);background:#fff;font-family:inherit;font-size:11px;font-weight:700;cursor:pointer;color:var(--navy);}
+  .team-card .actions button:hover{background:#fafafa;}
+  .team-card .actions button.danger{color:var(--red);border-color:#f5c6c2;}
+  .team-card .actions button.danger:hover{background:#fdecea;}
+  /* Stats tiles */
+  .ts-tile{background:#fff;border:1.5px solid var(--border);border-radius:10px;padding:12px 14px;}
+  .ts-tile .ts-val{font-family:'Playfair Display',Georgia,serif;font-size:24px;font-weight:900;color:var(--navy);line-height:1;}
+  .ts-tile .ts-lbl{font-size:10px;color:var(--muted);letter-spacing:0.08em;text-transform:uppercase;margin-top:4px;}
+  /* Overlay */
+  .overlay{position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:300;display:flex;align-items:center;justify-content:center;padding:20px;}
+  .overlay-card{background:#fff;border-radius:16px;padding:24px;width:100%;max-width:480px;max-height:90vh;overflow-y:auto;box-shadow:0 24px 72px rgba(0,0,0,0.3);}
+  .overlay-title{font-family:'Playfair Display',Georgia,serif;font-size:22px;font-weight:900;color:var(--navy);margin-bottom:12px;}
+  /* Team detail member row */
+  .td-member{display:grid;grid-template-columns:36px 1fr auto auto;gap:10px;align-items:center;padding:10px 12px;background:#fafafa;border:1px solid var(--border);border-radius:8px;margin-bottom:6px;}
+  .td-avatar{width:32px;height:32px;border-radius:50%;background:var(--navy);color:#fff;display:flex;align-items:center;justify-content:center;font-family:'Playfair Display',Georgia,serif;font-size:12px;font-weight:900;}
+  .td-add-form{display:flex;gap:8px;margin-bottom:14px;}
+  .td-add-form input{flex:1;padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font-family:inherit;font-size:13px;}
+</style>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+  import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged }
+    from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+  import { getFirestore, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, addDoc, collection, query, where, writeBatch, serverTimestamp }
+    from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+  import { getFunctions, httpsCallable }
+    from "https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyBnENHc4CqQSqparmGvGdvqUlzNV0mlhyk",
+    authDomain: "swh-scoreboard.firebaseapp.com",
+    projectId: "swh-scoreboard",
+    storageBucket: "swh-scoreboard.firebasestorage.app",
+    messagingSenderId: "554436348604",
+    appId: "1:554436348604:web:919a1e971373d07df4deb9"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+  const db = getFirestore(app);
+  const fns = getFunctions(app);
+  const provider = new GoogleAuthProvider();
+
+  // ── Hardcoded admin allowlist (mirror of CRM) ──
+  const ADMIN_EMAILS = ['austen@austensmith.com'];
+  const isAdminEmail = (email) => !!email && ADMIN_EMAILS.includes(email.toLowerCase());
+
+  // ── State ──
+  let currentUser = null;
+  let USERS = [];
+  let ANNOUNCEMENTS = [];
+  let CATALOG = [];
+  let WAITLIST = [];
+  let waitlistFilter = 'pending'; // pending | approved | all
+  let activeFilter = 'all';
+  let searchQ = '';
+  let activeTab = 'users';
+
+  // Default activity catalog — used as the initial seed if no platform/activities doc exists yet.
+  const SEED_CATALOG = [
+    { name:'Attend Networking Meeting',           pts:5,  icon:'🏢', cat:'Networking',          lead:true  },
+    { name:'Have a FORMing Conversation',         pts:5,  icon:'💬', cat:'Conversations',       lead:true  },
+    { name:'Good to Meet You Follow Through',     pts:5,  icon:'✉️', cat:'Follow Through',      lead:true  },
+    { name:'Call Someone from CRM',               pts:5,  icon:'📞', cat:'Follow Through',      lead:true  },
+    { name:'Attend 1:1, Coffee, Lunch, etc.',     pts:10, icon:'☕', cat:'High-Value Meetings', lead:true  },
+    { name:'Mail Note or Card',                   pts:10, icon:'💌', cat:'High-Value Meetings', lead:true  },
+    { name:'Give a Referral',                     pts:10, icon:'📤', cat:'Referrals & Results', lead:true  },
+    { name:'Make Introduction',                   pts:10, icon:'🔗', cat:'Referrals & Results', lead:true  },
+    { name:'Receive a Referral',                  pts:8,  icon:'📥', cat:'Referrals & Results', lead:false },
+    { name:'Opportunity Won',                     pts:15, icon:'🏆', cat:'Referrals & Results', lead:false },
+    { name:'Perform Other 8 Step Activities',     pts:1,  icon:'✅', cat:'System',              lead:true  },
+    { name:'Host Event',                          pts:25, icon:'🌟', cat:'Events',              lead:true  },
+  ];
+
+  // ── Auth ──
+  onAuthStateChanged(auth, async (user) => {
+    if (!user) { showLogin(); return; }
+    currentUser = user;
+    if (!isAdminEmail(user.email)) { showDenied(); return; }
+    showApp();
+    await loadUsers();
+  });
+
+  window.doLogin = async () => {
+    try { await signInWithPopup(auth, provider); }
+    catch(e) { showToast('⚠️ Login failed — ' + (e.message||'try again')); }
+  };
+  window.doLogout = async () => { await signOut(auth); };
+  window.goCRM = () => { window.location.href = 'https://crm.stopwastinghandshakes.com'; };
+  window.goScorecard = () => { window.location.href = 'https://app.stopwastinghandshakes.com'; };
+
+  function showLogin() {
+    document.getElementById('login').style.display = 'flex';
+    document.getElementById('denied').style.display = 'none';
+    document.getElementById('app').style.display = 'none';
+  }
+  function showDenied() {
+    document.getElementById('login').style.display = 'none';
+    document.getElementById('denied').style.display = 'flex';
+    document.getElementById('denied-email').textContent = currentUser?.email || '';
+    document.getElementById('app').style.display = 'none';
+  }
+  function showApp() {
+    document.getElementById('login').style.display = 'none';
+    document.getElementById('denied').style.display = 'none';
+    document.getElementById('app').style.display = 'block';
+    document.getElementById('top-user').textContent = currentUser.email || currentUser.displayName || '';
+  }
+
+  // ── Load users ──
+  async function loadUsers(forceRefresh) {
+    const list = document.getElementById('user-list');
+    list.innerHTML = `<div class="loader"><div class="spinner"></div>Loading users…</div>`;
+    try {
+      // Load users AND teams in parallel so the team-select dropdown on each row
+      // has the team list available immediately.
+      const [snap] = await Promise.all([
+        getDocs(collection(db, 'users')),
+        (TEAMS && TEAMS.length > 0 && !forceRefresh) ? Promise.resolve() : (window.loadTeams ? window.loadTeams().catch(() => null) : Promise.resolve()),
+      ]);
+      USERS = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      USERS.sort((a,b) => (b.createdAt||'').localeCompare(a.createdAt||''));
+    } catch(e) {
+      list.innerHTML = `<div class="err">⚠️ Could not load users — ${e.message||'permission denied'}.<small>Your Firestore rules need to allow this admin email to read /users.</small></div>`;
+      return;
+    }
+    renderStats();
+    renderUsers();
+  }
+
+  function renderStats() {
+    const counts = { total: USERS.length, pro: 0, scorecard: 0, free: 0 };
+    USERS.forEach(u => {
+      const p = u.plan || 'free';
+      if (p === 'pro') counts.pro++;
+      else if (p === 'scorecard') counts.scorecard++;
+      else counts.free++;
+    });
+    const tile = (lbl, val, color) => `<div class="stat"><div class="stat-val" style="color:${color};">${val}</div><div class="stat-lbl">${lbl}</div></div>`;
+    document.getElementById('stats').innerHTML =
+      tile('Total Users', counts.total, 'var(--navy)') +
+      tile('Scorecard CRM · $25', counts.pro, 'var(--gold)') +
+      tile('Scorecard · $10', counts.scorecard, 'var(--green)') +
+      tile('Free · No plan', counts.free, 'var(--muted)');
+  }
+
+  function renderUsers() {
+    const el = document.getElementById('user-list');
+    const q = searchQ.toLowerCase().trim();
+    const filtered = USERS.filter(u => {
+      const plan = u.plan || 'free';
+      const planMatch = activeFilter === 'all' || plan === activeFilter;
+      if (!planMatch) return false;
+      if (!q) return true;
+      return ((u.displayName||'') + ' ' + (u.email||'') + ' ' + (u.company||'')).toLowerCase().includes(q);
+    });
+    if (filtered.length === 0) {
+      el.innerHTML = `<div class="empty">No users match your filters.</div>`;
+      return;
+    }
+    // Build a quick lookup of teams (loaded async; falls back to "Load teams" hint if empty)
+    const teamsById = {};
+    (TEAMS || []).forEach(t => { teamsById[t.id] = t; });
+
+    el.innerHTML = filtered.map(u => {
+      const plan = u.plan || 'free';
+      const initials = (u.displayName || u.email || '?').split(/[\s@]/).filter(Boolean).map(s=>s[0]).join('').toUpperCase().slice(0,2);
+      const created = u.createdAt ? new Date(u.createdAt).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—';
+      const isMe = u.id === currentUser.uid;
+      const badge = `<span class="badge badge-${plan}">${plan}</span>`;
+      // Build team dropdown options. Selected = user's current team. "" = no team.
+      const currentTeamId = u.teamId || '';
+      const teamOpts = ['<option value="">No team</option>']
+        .concat((TEAMS || []).map(t => {
+          const planLabel = t.plan === 'team_crm' ? 'CRM' : 'Scorecard';
+          return `<option value="${t.id}" ${currentTeamId===t.id?'selected':''}>${escapeHtml(t.name||'Unnamed')} (${planLabel})</option>`;
+        })).join('');
+      return `<div class="user-row">
+        <div class="avatar">${initials || '?'}</div>
+        <div class="user-meta">
+          <div class="user-name">${u.displayName || '(no name)'}${isMe?'<span class="me-tag">· you</span>':''}</div>
+          <div class="user-email">${u.email || '—'}${u.company?` · ${u.company}`:''}</div>
+          <div class="user-joined">Joined ${created}</div>
+        </div>
+        <div>${badge}</div>
+        <select class="plan-select" onchange="setUserPlan('${u.id}', this.value, this)" ${isMe?'disabled title="Use a different admin to change your own plan"':''}>
+          <option value="free" ${plan==='free'?'selected':''}>Free (no access)</option>
+          <option value="scorecard" ${plan==='scorecard'?'selected':''}>Scorecard · $10</option>
+          <option value="pro" ${plan==='pro'?'selected':''}>Scorecard CRM · $25</option>
+        </select>
+        <select class="team-select" data-current="${currentTeamId}" data-uid="${u.id}" data-email="${escapeHtml(u.email||'')}" onchange="setUserTeam(this)" title="Assign user to a team" style="padding:7px 10px;border:1.5px solid var(--border);border-radius:9px;font-family:inherit;font-size:12px;background:#fff;color:var(--navy);max-width:180px;">
+          ${teamOpts}
+        </select>
+        <button class="small-btn" onclick="inspectUser('${escapeHtml(u.email||'')}','${u.id}')" style="padding:6px 12px;font-size:11px;">🔍 Inspect</button>
+        <button class="btn-danger" onclick="deleteUserAccount('${u.id}','${escapeHtml(u.email||'')}','${escapeHtml(u.displayName||'')}')" ${isMe?'disabled title="Cannot delete your own admin account"':''}>Delete</button>
+      </div>`;
+    }).join('');
+  }
+
+  window.setFilter = (plan, btn) => {
+    activeFilter = plan;
+    document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+    btn.classList.add('active');
+    renderUsers();
+  };
+
+  window.openCreateUser = () => {
+    document.getElementById('cu-email').value = '';
+    document.getElementById('cu-password').value = '';
+    document.getElementById('cu-displayName').value = '';
+    document.getElementById('cu-plan').value = 'scorecard';
+    document.getElementById('cu-result').innerHTML = '';
+    document.getElementById('create-user-modal').classList.add('open');
+  };
+  window.closeCreateUser = () => {
+    document.getElementById('create-user-modal').classList.remove('open');
+  };
+  window.suggestStrongPassword = () => {
+    const chars = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$%';
+    let pw = '';
+    for (let i = 0; i < 16; i++) pw += chars.charAt(Math.floor(Math.random() * chars.length));
+    document.getElementById('cu-password').value = pw;
+  };
+  window.submitCreateUser = async () => {
+    const email = document.getElementById('cu-email').value.trim().toLowerCase();
+    const password = document.getElementById('cu-password').value;
+    const displayName = document.getElementById('cu-displayName').value.trim();
+    const plan = document.getElementById('cu-plan').value;
+    const resultEl = document.getElementById('cu-result');
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { resultEl.innerHTML = '<div class="err">Enter a valid email</div>'; return; }
+    if (password.length < 8) { resultEl.innerHTML = '<div class="err">Password must be at least 8 characters</div>'; return; }
+    resultEl.innerHTML = '<div class="loader"><div class="spinner"></div>Creating user…</div>';
+    try {
+      const create = httpsCallable(fns, 'createTestUser');
+      const res = await create({ email, password, displayName, plan });
+      const action = res.data.created ? 'Created' : 'Updated';
+      resultEl.innerHTML = `<div style="background:#e8f5ec;border:1.5px solid #b6e0c4;border-radius:12px;padding:14px 16px;margin-top:14px;">
+        <div style="font-weight:700;color:var(--green);margin-bottom:6px;">✅ ${action} ${escapeHtml(email)}</div>
+        <div style="font-size:12px;color:var(--muted);line-height:1.6;">Plan: <strong>${res.data.plan}</strong> · UID: <code style="font-size:11px;">${res.data.uid}</code></div>
+        <div style="font-size:12px;color:var(--muted);margin-top:8px;line-height:1.6;">Copy these credentials into App Store Connect (or wherever you need them) <strong>now</strong> — the password is not stored anywhere visible after this dialog closes.</div>
+        <pre style="background:#1a1a1a;color:#fff;padding:12px;border-radius:8px;margin-top:10px;font-size:12px;overflow-x:auto;">Email: ${escapeHtml(email)}\nPassword: ${escapeHtml(password)}</pre>
+      </div>`;
+      await loadUsers(true);
+    } catch(e) {
+      console.error('[createTestUser] failed:', e);
+      resultEl.innerHTML = `<div class="err">⚠️ ${escapeHtml(e.message || 'unknown')}</div>`;
+    }
+  };
+
+  window.sendSampleEmailPrompt = async () => {
+    const email = prompt('Send a sample weekly recap email to which address?', currentUser.email || '');
+    if (!email) return;
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { showToast('⚠️ Invalid email'); return; }
+    showToast('⏳ Sending sample…');
+    try {
+      const send = httpsCallable(fns, 'sendSampleRecap');
+      await send({ email });
+      showToast(`✅ Sample sent to ${email}`);
+    } catch(e) {
+      console.error('[sendSampleRecap] failed:', e);
+      showToast('⚠️ Could not send: ' + (e.message || 'unknown'));
+    }
+  };
+
+  window.deleteUserAccount = async (uid, email, displayName) => {
+    if (uid === currentUser.uid) { showToast('⚠️ Cannot delete your own admin account'); return; }
+    const label = displayName || email || uid;
+    if (!confirm(`Permanently delete ${label}?\n\nThis removes:\n• Their Firebase Auth account (they can no longer sign in)\n• /users/${uid} doc and all subcollections (days, lag, contacts, opportunities, config)\n\nThis cannot be undone.`)) return;
+    if (!confirm(`Final check — really delete ${label}? Type their email out loud to yourself first.`)) return;
+    showToast('⏳ Deleting…');
+    try {
+      const del = httpsCallable(fns, 'deleteUser');
+      await del({ uid });
+      showToast(`✅ Deleted ${label}`);
+      await loadUsers(true);
+    } catch(e) {
+      console.error('[deleteUser] failed:', e);
+      showToast('⚠️ Delete failed: ' + (e.message || 'unknown'));
+    }
+  };
+
+  window.filterUsers = (q) => { searchQ = q || ''; renderUsers(); };
+
+  window.refreshUsers = () => loadUsers(true);
+
+  // ── Tab switcher ──
+  window.switchTab = (name, btn) => {
+    activeTab = name;
+    document.querySelectorAll('.pane').forEach(p => p.classList.remove('active'));
+    document.getElementById('pane-' + name).classList.add('active');
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    if (btn) btn.classList.add('active');
+    if (name === 'announcements' && ANNOUNCEMENTS.length === 0) loadAnnouncements();
+    if (name === 'activities' && CATALOG.length === 0) loadActivities();
+    if (name === 'waitlist') loadWaitlist();
+  };
+
+  // ── Waitlist ──
+  window.loadWaitlist = async () => {
+    const list = document.getElementById('wait-list');
+    list.innerHTML = `<div class="loader"><div class="spinner"></div>Loading waitlist…</div>`;
+    try {
+      const snap = await getDocs(collection(db, 'waitlist'));
+      WAITLIST = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      WAITLIST.sort((a,b) => (b.createdAt||'').localeCompare(a.createdAt||''));
+    } catch(e) {
+      list.innerHTML = `<div class="err">⚠️ Could not load waitlist — ${e.message||'permission denied'}.<small>Firestore rules need to allow admin read on /waitlist.</small></div>`;
+      return;
+    }
+    renderWaitlistStats();
+    renderWaitlist();
+  };
+
+  function renderWaitlistStats() {
+    const counts = { total: WAITLIST.length, pending: 0, approved: 0 };
+    WAITLIST.forEach(w => {
+      if (w.status === 'approved') counts.approved++;
+      else counts.pending++;
+    });
+    const tile = (lbl, val, color) => `<div class="stat"><div class="stat-val" style="color:${color};">${val}</div><div class="stat-lbl">${lbl}</div></div>`;
+    document.getElementById('wait-stats').innerHTML =
+      tile('Total signups', counts.total, 'var(--navy)') +
+      tile('Pending review', counts.pending, 'var(--gold)') +
+      tile('Approved', counts.approved, 'var(--green)');
+  }
+
+  function renderWaitlist() {
+    const el = document.getElementById('wait-list');
+    let rows = WAITLIST;
+    if (waitlistFilter === 'pending') rows = rows.filter(w => w.status !== 'approved');
+    else if (waitlistFilter === 'approved') rows = rows.filter(w => w.status === 'approved');
+    if (rows.length === 0) {
+      el.innerHTML = `<div class="empty">${waitlistFilter === 'pending' ? 'No pending signups.' : waitlistFilter === 'approved' ? 'No approved users yet.' : 'No waitlist entries yet.'}</div>`;
+      return;
+    }
+    el.innerHTML = rows.map(w => {
+      const created = w.createdAt ? new Date(w.createdAt).toLocaleString('en-US',{dateStyle:'medium',timeStyle:'short'}) : '—';
+      const platform = w.platform || 'web';
+      const reason = w.reason || 'paywall';
+      const isApproved = w.status === 'approved';
+      const planPill = isApproved ? `<span class="pill pill-active">Approved · ${w.plan || 'scorecard'}</span>` : '<span class="pill pill-inactive">Pending</span>';
+      const platformPill = `<span class="pill pill-${platform === 'ios-native' ? 'pro' : 'scorecard'}">${platform === 'ios-native' ? 'iOS' : 'Web'}</span>`;
+      const actions = isApproved
+        ? `<button class="btn-danger" onclick="deleteWaitlist('${w.id}')">Delete</button>`
+        : `<button class="small-btn" onclick="approveWaitlist('${w.id}','scorecard')">Approve · Scorecard</button>
+           <button class="small-btn" style="background:#1a1a1a;color:#fff;border-color:#1a1a1a;" onclick="approveWaitlist('${w.id}','pro')">Approve · Pro</button>
+           <button class="btn-danger" onclick="deleteWaitlist('${w.id}')">Reject</button>`;
+      return `<div class="ann-item ${isApproved?'inactive':''}">
+        <div class="ann-icon">${isApproved ? '✅' : '⏳'}</div>
+        <div class="ann-meta">
+          <div class="ann-title">${escapeHtml(w.email || '(no email)')}</div>
+          <div class="ann-foot">
+            ${planPill}${platformPill}
+            <span>· reason: ${escapeHtml(reason)}</span>
+            <span>· ${created}</span>
+            ${w.approvedBy ? `<span>· approved by ${escapeHtml(w.approvedBy)}</span>` : ''}
+          </div>
+        </div>
+        <div class="ann-actions">${actions}</div>
+      </div>`;
+    }).join('');
+  }
+
+  window.setWaitlistFilter = (f, btn) => {
+    waitlistFilter = f;
+    document.querySelectorAll('#wait-filters .chip').forEach(c => c.classList.remove('active'));
+    if (btn) btn.classList.add('active');
+    renderWaitlist();
+  };
+
+  window.approveWaitlist = async (id, plan) => {
+    const entry = WAITLIST.find(w => w.id === id);
+    if (!entry) return;
+    if (!confirm(`Approve ${entry.email} as a ${plan === 'pro' ? 'Scorecard CRM ($25)' : 'Scorecard ($10)'} beta tester?\n\nThis will:\n• Create a Firebase Auth user with this email\n• Set their plan to "${plan}"\n• Email them a "set password & sign in" link\n\nYou'll still need to invite them to TestFlight separately in App Store Connect.`)) return;
+    showToast('⏳ Approving…');
+    try {
+      const approve = httpsCallable(fns, 'approveWaitlistUser');
+      const res = await approve({ waitlistDocId: id, plan });
+      console.log('[approveWaitlist] result:', res.data);
+      showToast(`✅ ${entry.email} approved on ${plan} — welcome email sent`);
+      await loadWaitlist();
+      // Refresh users tab too if we're tracking them
+      if (USERS.length > 0) loadUsers(true);
+    } catch(e) {
+      console.error('[approveWaitlist] failed:', e);
+      showToast('⚠️ Approval failed: ' + (e.message || 'unknown'));
+    }
+  };
+
+  window.deleteWaitlist = async (id) => {
+    const entry = WAITLIST.find(w => w.id === id);
+    if (!entry) return;
+    if (!confirm(`Delete waitlist entry for ${entry.email}? This does NOT delete a Firebase Auth user if they were already approved.`)) return;
+    try {
+      await deleteDoc(doc(db, 'waitlist', id));
+      WAITLIST = WAITLIST.filter(w => w.id !== id);
+      renderWaitlistStats();
+      renderWaitlist();
+      showToast('✅ Removed');
+    } catch(e) {
+      showToast('⚠️ Delete failed: ' + (e.message || 'permission denied'));
+    }
+  };
+
+  // ── Announcements ──
+  window.loadAnnouncements = async () => {
+    const list = document.getElementById('ann-list');
+    list.innerHTML = `<div class="loader"><div class="spinner"></div>Loading announcements…</div>`;
+    try {
+      const snap = await getDocs(collection(db, 'announcements'));
+      ANNOUNCEMENTS = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      ANNOUNCEMENTS.sort((a,b) => (b.createdAt||'').localeCompare(a.createdAt||''));
+    } catch(e) {
+      list.innerHTML = `<div class="err">⚠️ Could not load announcements — ${e.message||'permission denied'}.<small>Firestore rules need to allow admin read on /announcements.</small></div>`;
+      return;
+    }
+    renderAnnouncements();
+  };
+
+  function renderAnnouncements() {
+    const el = document.getElementById('ann-list');
+    if (ANNOUNCEMENTS.length === 0) {
+      el.innerHTML = `<div class="empty">No announcements yet. Publish one above to get started.</div>`;
+      return;
+    }
+    el.innerHTML = ANNOUNCEMENTS.map(a => {
+      const isExpired = a.expiresAt && new Date(a.expiresAt) < new Date();
+      const isInactive = a.active === false || isExpired;
+      const audience = a.audience || 'all';
+      const priority = a.priority || 'normal';
+      const audPill = `<span class="pill pill-${audience}">${audience === 'all' ? 'Everyone' : audience}</span>`;
+      const prioPill = priority === 'urgent' ? '<span class="pill pill-urgent">Urgent</span>' : '';
+      const statusPill = isInactive ? `<span class="pill pill-inactive">${isExpired?'Expired':'Inactive'}</span>` : '<span class="pill pill-active">Active</span>';
+      const created = a.createdAt ? new Date(a.createdAt).toLocaleString('en-US',{dateStyle:'medium',timeStyle:'short'}) : '—';
+      const dismissedCount = a.dismissedCount || 0;
+      return `<div class="ann-item ${isInactive?'inactive':''}">
+        <div class="ann-icon">${a.icon || '📣'}</div>
+        <div class="ann-meta">
+          <div class="ann-title">${escapeHtml(a.title || '(no title)')}</div>
+          <div class="ann-body">${escapeHtml(a.body || '')}</div>
+          <div class="ann-foot">
+            ${audPill}${prioPill}${statusPill}
+            <span>· by ${escapeHtml(a.createdBy || '—')}</span>
+            <span>· ${created}</span>
+            ${dismissedCount ? `<span>· ${dismissedCount} dismissed</span>` : ''}
+          </div>
+        </div>
+        <div class="ann-actions">
+          <button class="small-btn" onclick="toggleAnnouncement('${a.id}')">${isInactive ? 'Reactivate' : 'Deactivate'}</button>
+          <button class="btn-danger" onclick="deleteAnnouncement('${a.id}')">Delete</button>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  window.createAnnouncement = async () => {
+    const title = document.getElementById('ann-title').value.trim();
+    const body = document.getElementById('ann-body').value.trim();
+    const icon = document.getElementById('ann-icon').value.trim() || '📣';
+    const audience = document.getElementById('ann-audience').value;
+    const priority = document.getElementById('ann-priority').value;
+    const expiresInput = document.getElementById('ann-expires').value;
+    const sendEmail = document.getElementById('ann-email').checked;
+    if (!title || !body) { showToast('⚠️ Title and message are required'); return; }
+    if (sendEmail) {
+      if (!confirm(`Send an email blast to all ${audience === 'all' ? 'users' : audience + ' users'} now? This cannot be undone.`)) return;
+    }
+    const data = {
+      title, body, icon, audience, priority, active: true,
+      createdAt: new Date().toISOString(),
+      createdBy: currentUser.email || currentUser.uid,
+      expiresAt: expiresInput ? new Date(expiresInput + 'T23:59:59').toISOString() : null,
+      emailBlast: !!sendEmail,
+    };
+    try {
+      const ref = await addDoc(collection(db, 'announcements'), data);
+      ANNOUNCEMENTS.unshift({ id: ref.id, ...data });
+      ['ann-title','ann-body','ann-icon','ann-expires'].forEach(id => document.getElementById(id).value = '');
+      document.getElementById('ann-email').checked = false;
+      renderAnnouncements();
+      if (sendEmail) {
+        const sentCount = await blastAnnouncementEmail({ id: ref.id, ...data });
+        showToast(`✅ Published & emailed ${sentCount} user${sentCount===1?'':'s'}`);
+      } else {
+        showToast('✅ Published — users will see it on next load');
+      }
+    } catch(e) {
+      showToast('⚠️ Could not publish — ' + (e.message || 'permission denied'));
+    }
+  };
+
+  async function blastAnnouncementEmail(announcement) {
+    // Make sure USERS is loaded
+    if (USERS.length === 0) {
+      try { const snap = await getDocs(collection(db,'users')); USERS = snap.docs.map(d => ({ id:d.id, ...d.data() })); }
+      catch(e) { showToast('⚠️ Could not load users for email blast'); return 0; }
+    }
+    const audience = announcement.audience || 'all';
+    const recipients = USERS.filter(u => {
+      if (!u.email) return false;
+      if (audience === 'all') return true;
+      return (u.plan || 'free') === audience;
+    });
+    if (recipients.length === 0) return 0;
+    const ctaUrl = audience === 'pro'
+      ? 'https://crm.stopwastinghandshakes.com'
+      : audience === 'scorecard'
+        ? 'https://app.stopwastinghandshakes.com'
+        : 'https://stopwastinghandshakes.com';
+    const ctaLabel = audience === 'pro' ? 'Open the CRM' : audience === 'scorecard' ? 'Open the Scorecard' : 'Open SWH';
+    let sent = 0;
+    for (let i = 0; i < recipients.length; i += 400) {
+      const chunk = recipients.slice(i, i + 400);
+      const batch = writeBatch(db);
+      chunk.forEach(u => {
+        const docRef = doc(collection(db, 'mail'));
+        batch.set(docRef, {
+          to: u.email,
+          message: {
+            subject: `${announcement.icon || '📣'}  ${announcement.title}`,
+            html: buildAnnouncementEmailHtml(announcement, u, ctaUrl, ctaLabel),
+          },
+          // metadata for traceability
+          announcementId: announcement.id,
+          recipientUid: u.id,
+          createdAt: new Date().toISOString(),
+        });
+        sent++;
+      });
+      await batch.commit();
+    }
+    return sent;
+  }
+
+  function buildAnnouncementEmailHtml(a, user, ctaUrl, ctaLabel) {
+    const firstName = (user.displayName || '').split(' ')[0] || 'there';
+    const bodyHtml = escapeHtml(a.body).replace(/\n/g, '<br>');
+    const accent = a.priority === 'urgent' ? '#E63946' : '#1a1a1a';
+    return `
+<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f4f4f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1a1a1a;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f4f4f5;padding:40px 16px;">
+    <tr><td align="center">
+      <table role="presentation" width="560" cellpadding="0" cellspacing="0" border="0" style="background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 16px rgba(0,0,0,0.06);max-width:560px;width:100%;">
+        <tr><td style="padding:24px 32px 0;">
+          <div style="font-size:11px;font-weight:800;letter-spacing:0.14em;text-transform:uppercase;color:#6B7280;">Stop Wasting Handshakes</div>
+        </td></tr>
+        <tr><td style="padding:18px 32px 8px;">
+          <div style="font-size:48px;line-height:1;margin-bottom:16px;">${a.icon || '📣'}</div>
+          <h1 style="font-family:Georgia,'Times New Roman',serif;font-size:26px;font-weight:900;line-height:1.2;margin:0 0 14px;color:${accent};">${escapeHtml(a.title)}</h1>
+          <p style="font-size:15px;color:#374151;line-height:1.6;margin:0 0 8px;">Hey ${escapeHtml(firstName)},</p>
+          <div style="font-size:15px;color:#374151;line-height:1.65;margin:0 0 22px;">${bodyHtml}</div>
+        </td></tr>
+        <tr><td style="padding:0 32px 28px;">
+          <a href="${ctaUrl}" style="display:inline-block;background:${accent};color:#ffffff;padding:13px 22px;border-radius:10px;font-weight:700;font-size:14px;text-decoration:none;">${ctaLabel} →</a>
+        </td></tr>
+        <tr><td style="padding:18px 32px 24px;border-top:1px solid #E4E4E7;">
+          <div style="font-size:12px;color:#9CA3AF;line-height:1.55;">You're receiving this because you have an active SWH account. <a href="${ctaUrl}" style="color:#6B7280;">Manage your account</a>.</div>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body></html>`;
+  }
+
+  window.toggleAnnouncement = async (id) => {
+    const a = ANNOUNCEMENTS.find(x => x.id === id); if (!a) return;
+    const newActive = !(a.active !== false);
+    try {
+      await updateDoc(doc(db, 'announcements', id), { active: newActive });
+      a.active = newActive;
+      renderAnnouncements();
+      showToast(newActive ? '✅ Reactivated' : '✅ Deactivated');
+    } catch(e) {
+      showToast('⚠️ ' + (e.message || 'Update failed'));
+    }
+  };
+
+  window.deleteAnnouncement = async (id) => {
+    if (!confirm('Delete this announcement permanently? This cannot be undone.')) return;
+    try {
+      await deleteDoc(doc(db, 'announcements', id));
+      ANNOUNCEMENTS = ANNOUNCEMENTS.filter(a => a.id !== id);
+      renderAnnouncements();
+      showToast('🗑️ Deleted');
+    } catch(e) {
+      showToast('⚠️ ' + (e.message || 'Delete failed'));
+    }
+  };
+
+  // ── Activity catalog ──
+  window.loadActivities = async () => {
+    const list = document.getElementById('act-list');
+    list.innerHTML = `<div class="loader"><div class="spinner"></div>Loading catalog…</div>`;
+    try {
+      const snap = await getDoc(doc(db, 'platform', 'activities'));
+      if (snap.exists()) {
+        CATALOG = (snap.data().list || []).map(a => ({ ...a }));
+      } else {
+        CATALOG = SEED_CATALOG.map(a => ({ ...a }));
+      }
+    } catch(e) {
+      list.innerHTML = `<div class="err">⚠️ Could not load catalog — ${e.message||'permission denied'}.<small>Firestore rules need to allow admin read on /platform.</small></div>`;
+      return;
+    }
+    renderActivities();
+  };
+
+  function renderActivities() {
+    const el = document.getElementById('act-list');
+    if (CATALOG.length === 0) {
+      el.innerHTML = `<div class="empty">No activities in the catalog. Click "+ Add activity" to create one.</div>`;
+      return;
+    }
+    el.innerHTML = CATALOG.map((a,i) => `
+      <div class="act-row">
+        <input class="act-icon-input" type="text" maxlength="4" value="${escapeAttr(a.icon||'')}" oninput="updateActivity(${i},'icon',this.value)">
+        <input class="input" type="text" placeholder="Activity name" value="${escapeAttr(a.name||'')}" oninput="updateActivity(${i},'name',this.value)">
+        <input class="input" type="text" placeholder="Category" value="${escapeAttr(a.cat||'')}" oninput="updateActivity(${i},'cat',this.value)">
+        <input class="input" type="number" min="0" value="${a.pts||0}" style="text-align:center;font-weight:700;" oninput="updateActivity(${i},'pts',parseInt(this.value)||0)">
+        <button class="lead-toggle ${a.lead!==false?'lead':'lag'}" onclick="toggleLead(${i})">${a.lead!==false?'Lead':'Lag'}</button>
+        <div style="display:flex;gap:6px;">
+          <button class="small-btn" onclick="announceActivity(${i})" title="Publish an announcement so users can opt in">📣</button>
+          <button class="btn-danger" onclick="removeActivity(${i})">✕</button>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  window.announceActivity = (i) => {
+    const a = CATALOG[i]; if (!a || !a.name?.trim()) { showToast('⚠️ Save the activity first'); return; }
+    // Pre-fill the announcement form and switch to it
+    document.getElementById('ann-icon').value = a.icon || '⭐';
+    document.getElementById('ann-title').value = `New activity available: ${a.name}`;
+    document.getElementById('ann-body').value = `We just added "${a.name}" (${a.pts} pts) to the activity catalog.\n\nIt's not in your list yet — open Settings → Edit Activities to add it and start tracking it today.`;
+    document.getElementById('ann-audience').value = 'all';
+    document.getElementById('ann-priority').value = 'normal';
+    document.getElementById('ann-email').checked = true;
+    document.querySelector('.tab[data-pane="announcements"]').click();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    showToast('✏️ Pre-filled — review and publish');
+  };
+
+  window.updateActivity = (i, key, val) => { if (CATALOG[i]) CATALOG[i][key] = val; };
+  window.toggleLead = (i) => { if (CATALOG[i]) { CATALOG[i].lead = !(CATALOG[i].lead !== false); renderActivities(); } };
+  window.addActivityRow = () => { CATALOG.push({ name:'New Activity', pts:5, icon:'⭐', cat:'Networking', lead:true }); renderActivities(); };
+  window.removeActivity = (i) => {
+    if (!confirm('Remove "' + (CATALOG[i]?.name||'this activity') + '" from the catalog? Existing user logs are unaffected, but new users won\'t see it.')) return;
+    CATALOG.splice(i,1); renderActivities();
+  };
+
+  window.saveActivities = async () => {
+    const cleaned = CATALOG.filter(a => a.name && a.name.trim()).map(a => ({
+      name: a.name.trim(),
+      pts: Number(a.pts) || 0,
+      icon: a.icon || '⭐',
+      cat: a.cat || 'Networking',
+      lead: a.lead !== false,
+    }));
+    try {
+      await setDoc(doc(db, 'platform', 'activities'), {
+        list: cleaned,
+        updatedAt: new Date().toISOString(),
+        updatedBy: currentUser.email || currentUser.uid,
+      });
+      CATALOG = cleaned.map(a => ({ ...a }));
+      showToast('✅ Catalog saved — apps will pick it up on next load');
+    } catch(e) {
+      showToast('⚠️ ' + (e.message || 'Save failed'));
+    }
+  };
+
+  window.forceSyncActivities = async () => {
+    if (!confirm('Push any NEW activities from the catalog to all users? Activities a user has added or edited themselves will be left untouched. Continue?')) return;
+    if (USERS.length === 0) {
+      try { const snap = await getDocs(collection(db, 'users')); USERS = snap.docs.map(d => ({ id: d.id, ...d.data() })); }
+      catch(e) { showToast('⚠️ Load users first'); return; }
+    }
+    showToast('⏳ Checking ' + USERS.length + ' users for missing activities…');
+    try {
+      let updated = 0, skipped = 0, added = 0;
+      // Process in chunks to throttle reads + batch writes
+      for (let i = 0; i < USERS.length; i += 50) {
+        const chunk = USERS.slice(i, i + 50);
+        // Read each user's existing activity list in parallel
+        const userLists = await Promise.all(chunk.map(async u => {
+          try {
+            const snap = await getDoc(doc(db, 'users', u.id, 'config', 'activities'));
+            return snap.exists() ? (snap.data().list || []) : null;
+          } catch { return null; }
+        }));
+        const batch = writeBatch(db);
+        let batchCount = 0;
+        chunk.forEach((u, idx) => {
+          const existing = userLists[idx];
+          // If user has no list yet, give them the full catalog
+          if (existing === null) {
+            batch.set(doc(db, 'users', u.id, 'config', 'activities'), {
+              list: CATALOG.map(a => ({ ...a })),
+              syncedAt: new Date().toISOString(),
+              syncedBy: currentUser.email || currentUser.uid,
+            }, { merge: true });
+            added += CATALOG.length;
+            updated++;
+            batchCount++;
+            return;
+          }
+          // Additive merge — append catalog items the user is missing (matched by name)
+          const existingNames = new Set(existing.map(a => a.name));
+          const toAdd = CATALOG.filter(g => !existingNames.has(g.name)).map(g => ({ ...g }));
+          if (toAdd.length === 0) { skipped++; return; }
+          const merged = [...existing, ...toAdd];
+          batch.set(doc(db, 'users', u.id, 'config', 'activities'), {
+            list: merged,
+            syncedAt: new Date().toISOString(),
+            syncedBy: currentUser.email || currentUser.uid,
+          }, { merge: true });
+          added += toAdd.length;
+          updated++;
+          batchCount++;
+        });
+        if (batchCount > 0) await batch.commit();
+      }
+      showToast(`✅ Pushed ${added} new activit${added===1?'y':'ies'} across ${updated} user${updated===1?'':'s'} (${skipped} already current)`);
+    } catch(e) {
+      showToast('⚠️ Sync failed — ' + (e.message || 'unknown error'));
+    }
+  };
+
+  function escapeHtml(s) { return String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+  function escapeAttr(s) { return String(s||'').replace(/"/g,'&quot;'); }
+
+  window.setUserPlan = async (uid, newPlan, selectEl) => {
+    if (!isAdminEmail(currentUser?.email)) { showToast('⚠️ Admin only'); return; }
+    if (uid === currentUser.uid) { showToast('⚠️ Use another admin to change your own plan'); return; }
+    const u = USERS.find(x => x.id === uid); if (!u) return;
+    const previous = u.plan || 'free';
+    if (previous === newPlan) return;
+    try {
+      if (selectEl) selectEl.disabled = true;
+      await updateDoc(doc(db, 'users', uid), {
+        plan: newPlan,
+        planUpdatedAt: new Date().toISOString(),
+        planUpdatedBy: currentUser.email || currentUser.uid,
+      });
+      u.plan = newPlan;
+      renderStats();
+      renderUsers();
+      showToast(`✅ ${u.displayName || u.email}: ${previous} → ${newPlan}`);
+    } catch(e) {
+      showToast(`⚠️ Could not update plan — ${e.message || 'permission denied'}`);
+      if (selectEl) { selectEl.value = previous; selectEl.disabled = false; }
+    }
+  };
+
+  // ============================================================
+  // TEAMS TAB
+  // ============================================================
+  const FN_BASE_ADMIN = 'https://us-central1-swh-scoreboard.cloudfunctions.net';
+  let TEAMS = [];
+  let teamFilter = 'all';
+  let teamSearch = '';
+
+  async function _adminAuthHeader() {
+    const u = auth.currentUser;
+    if (!u) throw new Error('Not signed in');
+    const token = await u.getIdToken();
+    return { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' };
+  }
+
+  window.loadTeams = async () => {
+    const list = document.getElementById('team-list');
+    list.innerHTML = `<div class="loader"><div class="spinner"></div>Loading teams…</div>`;
+    try {
+      const headers = await _adminAuthHeader();
+      const r = await fetch(FN_BASE_ADMIN + '/adminListTeams', { method: 'POST', headers });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || 'Load failed');
+      TEAMS = data.teams || [];
+    } catch (e) {
+      list.innerHTML = `<div class="err">⚠️ Could not load teams — ${e.message}</div>`;
+      return;
+    }
+    renderTeamStats();
+    renderTeams();
+  };
+
+  function renderTeamStats() {
+    const total = TEAMS.length;
+    const scorecard = TEAMS.filter(t => (t.plan || 'team_scorecard') === 'team_scorecard').length;
+    const crm = TEAMS.filter(t => t.plan === 'team_crm').length;
+    const active = TEAMS.filter(t => t.active === true).length;
+    const totalSeats = TEAMS.reduce((s, t) => s + (t.seats || 0), 0);
+    const mrr = TEAMS.reduce((s, t) => {
+      if (!t.active) return s;
+      const seats = t.seats || 0;
+      const plan = t.plan || 'team_scorecard';
+      if (plan === 'team_crm') return s + seats * (seats >= 10 ? 15 : 20);
+      return s + seats * (seats >= 10 ? 7 : 8);
+    }, 0);
+    document.getElementById('team-stats').innerHTML = `
+      <div class="ts-tile"><div class="ts-val">${total}</div><div class="ts-lbl">Total Teams</div></div>
+      <div class="ts-tile"><div class="ts-val">${scorecard}</div><div class="ts-lbl">Scorecard Teams</div></div>
+      <div class="ts-tile"><div class="ts-val">${crm}</div><div class="ts-lbl">CRM Teams</div></div>
+      <div class="ts-tile"><div class="ts-val">${active}</div><div class="ts-lbl">Active</div></div>
+      <div class="ts-tile"><div class="ts-val">${totalSeats}</div><div class="ts-lbl">Total Seats</div></div>
+      <div class="ts-tile"><div class="ts-val">$${mrr.toLocaleString()}</div><div class="ts-lbl">MRR (excludes comp)</div></div>
+    `;
+  }
+
+  function renderTeams() {
+    const list = document.getElementById('team-list');
+    let filtered = TEAMS.slice();
+    if (teamFilter !== 'all') {
+      filtered = filtered.filter(t => (t.plan || 'team_scorecard') === teamFilter);
+    }
+    if (teamSearch) {
+      const q = teamSearch.toLowerCase();
+      filtered = filtered.filter(t =>
+        (t.name || '').toLowerCase().includes(q) ||
+        (t.ownerEmail || '').toLowerCase().includes(q)
+      );
+    }
+    if (filtered.length === 0) {
+      list.innerHTML = `<div style="text-align:center;color:var(--muted);padding:40px;">No teams match.</div>`;
+      return;
+    }
+    list.innerHTML = filtered.map(t => {
+      const plan = t.plan || 'team_scorecard';
+      const planLabel = plan === 'team_crm' ? 'CRM' : 'Scorecard';
+      const status = t.subscriptionStatus || (t.active ? 'active' : 'incomplete');
+      const statusClass = ['active','trialing','canceled','comp','incomplete'].includes(status) ? status : 'incomplete';
+      const mrrPerSeat = plan === 'team_crm' ? (t.seats >= 10 ? 15 : 20) : (t.seats >= 10 ? 7 : 8);
+      return `<div class="team-card" onclick="openTeamDetail('${t.id}')">
+        <div>
+          <div class="name">${escapeHtml(t.name || 'Unnamed Team')}</div>
+          <div class="owner">${escapeHtml(t.ownerEmail || t.ownerUid || 'no owner')} · ${t.memberCount} member${t.memberCount===1?'':'s'} · $${mrrPerSeat}/seat</div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-start;">
+          <span class="team-badge ${plan === 'team_crm' ? 'crm' : 'scorecard'}">${planLabel}</span>
+          <span class="team-badge ${statusClass}">${status}</span>
+        </div>
+        <div>
+          <div class="seats">${t.seats || 0}</div>
+          <div class="seats-label">seats</div>
+        </div>
+        <div class="actions" onclick="event.stopPropagation()">
+          ${t.active
+            ? `<button class="danger" onclick="quickComp('${t.id}', false)">Pause</button>`
+            : `<button onclick="quickComp('${t.id}', true)">Comp</button>`}
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  window.setTeamFilter = (val, btn) => {
+    teamFilter = val;
+    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+    if (btn) btn.classList.add('active');
+    renderTeams();
+  };
+  window.filterTeams = (q) => { teamSearch = (q || '').trim(); renderTeams(); };
+
+  window.quickComp = async (teamId, comp) => {
+    const verb = comp ? 'Comp' : 'Pause';
+    if (!confirm(`${verb} this team? ${comp ? 'They get free access.' : 'Members lose access at next refresh.'}`)) return;
+    try {
+      const headers = await _adminAuthHeader();
+      const r = await fetch(FN_BASE_ADMIN + '/adminCompTeam', {
+        method: 'POST', headers, body: JSON.stringify({ teamId, comp }),
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || 'Failed');
+      showToast(`✅ ${verb}'d`);
+      loadTeams();
+    } catch (e) { showToast(`⚠️ ${e.message}`); }
+  };
+
+  // ----- Create Team modal -----
+  window.openCreateTeam = () => {
+    document.getElementById('ct-owner-email').value = '';
+    document.getElementById('ct-team-name').value = '';
+    document.getElementById('ct-plan').value = 'team_scorecard';
+    document.getElementById('ct-seats').value = '3';
+    document.getElementById('ct-comp').checked = true;
+    document.getElementById('create-team-overlay').style.display = 'flex';
+  };
+  window.closeCreateTeam = () => {
+    document.getElementById('create-team-overlay').style.display = 'none';
+  };
+  window.submitCreateTeam = async () => {
+    const ownerEmail = document.getElementById('ct-owner-email').value.trim().toLowerCase();
+    const teamName = document.getElementById('ct-team-name').value.trim();
+    const plan = document.getElementById('ct-plan').value;
+    const seats = parseInt(document.getElementById('ct-seats').value) || 3;
+    const comp = document.getElementById('ct-comp').checked;
+    if (!ownerEmail || !teamName) { showToast('Owner email + team name required'); return; }
+    try {
+      const headers = await _adminAuthHeader();
+      const r = await fetch(FN_BASE_ADMIN + '/adminCreateTeam', {
+        method: 'POST', headers,
+        body: JSON.stringify({ ownerEmail, teamName, plan, seats, comp }),
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || 'Create failed');
+      showToast(`✅ Team created`);
+      closeCreateTeam();
+      loadTeams();
+    } catch (e) { showToast(`⚠️ ${e.message}`); }
+  };
+
+  // ----- Team detail drawer -----
+  window.openTeamDetail = async (teamId) => {
+    document.getElementById('team-detail-overlay').style.display = 'flex';
+    document.getElementById('td-body').innerHTML = `<div class="loader"><div class="spinner"></div>Loading…</div>`;
+    try {
+      const headers = await _adminAuthHeader();
+      const r = await fetch(FN_BASE_ADMIN + '/adminGetTeam', {
+        method: 'POST', headers, body: JSON.stringify({ teamId }),
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || 'Load failed');
+      renderTeamDetail(data.team, data.members, data.invites);
+    } catch (e) {
+      document.getElementById('td-body').innerHTML = `<div class="err">⚠️ ${e.message}</div>`;
+    }
+  };
+  window.closeTeamDetail = () => {
+    document.getElementById('team-detail-overlay').style.display = 'none';
+  };
+
+  function renderTeamDetail(team, members, invites) {
+    const plan = team.plan || 'team_scorecard';
+    const planLabel = plan === 'team_crm' ? 'CRM' : 'Scorecard';
+    const status = team.subscriptionStatus || (team.active ? 'active' : 'incomplete');
+    document.getElementById('td-name').textContent = team.name || 'Unnamed Team';
+    document.getElementById('td-meta').innerHTML = `
+      <span class="team-badge ${plan === 'team_crm' ? 'crm' : 'scorecard'}">${planLabel}</span>
+      <span class="team-badge ${status}">${status}</span>
+      · <input id="td-seats-input" type="number" value="${team.seats||0}" min="1" style="width:52px;padding:2px 6px;border:1.5px solid var(--border);border-radius:6px;font-family:inherit;font-size:12px;color:var(--navy);background:#fff;" onchange="updateTeamSeats('${team.id}',this.value)"> seats
+      · created ${(team.createdAt||'').slice(0,10)}
+    `;
+
+    document.getElementById('td-body').innerHTML = `
+      <div style="font-size:11px;font-weight:800;color:var(--muted);letter-spacing:0.1em;text-transform:uppercase;margin:14px 0 8px;">Add Member</div>
+      <div class="td-add-form">
+        <input type="email" id="td-add-email" placeholder="member@example.com">
+        <select id="td-add-role" style="padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font-family:inherit;font-size:13px;background:#fff;">
+          <option value="member">Member</option>
+          <option value="co_lead">Co-Lead</option>
+          <option value="admin">Admin</option>
+        </select>
+        <button class="btn-primary" onclick="addMemberTo('${team.id}')" style="padding:9px 16px;font-size:13px;">Add</button>
+      </div>
+
+      <div style="font-size:11px;font-weight:800;color:var(--muted);letter-spacing:0.1em;text-transform:uppercase;margin:18px 0 8px;">Members (${members.length})</div>
+      <div>${members.map(m => `
+        <div class="td-member">
+          <div class="td-avatar">${(m.displayName || m.email || '?').slice(0,2).toUpperCase()}</div>
+          <div>
+            <div style="font-size:13px;font-weight:700;color:var(--navy);">${escapeHtml(m.displayName || m.email || 'Member')}${m.role === 'owner' ? ' <span class="team-badge active" style="margin-left:4px;">OWNER</span>' : (m.role === 'admin' ? ' <span class="team-badge trialing" style="margin-left:4px;">ADMIN</span>' : '')}</div>
+            <div style="font-size:11px;color:var(--muted);">${escapeHtml(m.email || '')}</div>
+          </div>
+          <div style="font-size:10px;color:var(--muted);">${m.lastSignIn ? 'Last seen ' + new Date(m.lastSignIn).toLocaleDateString() : '<span style="color:#a05a00;">Never signed in</span>'}</div>
+          <div style="display:flex;gap:6px;align-items:center;">
+            ${m.role === 'owner' ? '' : `
+              <select onchange="changeMemberRole('${team.id}','${m.uid}',this.value,this)" style="padding:4px 6px;border:1.5px solid var(--border);border-radius:6px;font-family:inherit;font-size:11px;background:#fff;color:var(--navy);">
+                <option value="member" ${m.role==='member'?'selected':''}>Member</option>
+                <option value="co_lead" ${m.role==='co_lead'?'selected':''}>Co-Lead</option>
+                <option value="admin" ${m.role==='admin'?'selected':''}>Admin</option>
+              </select>`}
+            ${m.role === 'owner' ? '' : `<button title="Send welcome email" onclick="sendTeamWelcomeEmail('${team.id}','${m.uid}','${escapeHtml(m.email || '').replace(/'/g, "\\'")}')" style="padding:5px 9px;border-radius:6px;background:#fff;border:1px solid var(--border);cursor:pointer;color:var(--navy);font-size:11px;font-weight:700;">📧</button>`}
+            ${m.role === 'owner' ? '' : `<button class="danger" onclick="removeMemberFrom('${team.id}','${m.uid}','${escapeHtml(m.displayName || m.email || 'member').replace(/'/g, "\\'")}')" style="padding:5px 10px;border-radius:6px;background:#fdecea;border:1px solid #f5c6c2;cursor:pointer;color:var(--red);font-size:11px;font-weight:700;">✕</button>`}
+          </div>
+        </div>`).join('')}</div>
+
+      ${invites.length ? `
+        <div style="font-size:11px;font-weight:800;color:var(--muted);letter-spacing:0.1em;text-transform:uppercase;margin:18px 0 8px;">Pending Invites (${invites.filter(i=>i.status==='pending').length})</div>
+        <div>${invites.filter(i=>i.status==='pending').map(i => `
+          <div style="padding:8px 12px;background:#fff7e6;border:1px solid #fbd38d;border-radius:8px;font-size:12px;margin-bottom:4px;">📧 ${escapeHtml(i.email)} · ${i.role}</div>`).join('')}</div>
+      ` : ''}
+
+      <div style="font-size:11px;font-weight:800;color:var(--muted);letter-spacing:0.1em;text-transform:uppercase;margin:22px 0 8px;">Danger Zone</div>
+      <button onclick="deleteTeam('${team.id}','${escapeHtml(team.name||'this team').replace(/'/g, "\\'")}')" style="width:100%;padding:11px;border:1.5px solid #f5c6c2;background:#fdecea;color:var(--red);border-radius:8px;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;">🗑 Delete Team</button>
+    `;
+  }
+
+  window.addMemberTo = async (teamId) => {
+    const email = document.getElementById('td-add-email').value.trim().toLowerCase();
+    const role = document.getElementById('td-add-role').value;
+    if (!email) { showToast('Email required'); return; }
+    try {
+      const headers = await _adminAuthHeader();
+      const r = await fetch(FN_BASE_ADMIN + '/adminAddTeamMember', {
+        method: 'POST', headers, body: JSON.stringify({ teamId, email, role }),
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || 'Add failed');
+      showToast('✅ Member added');
+      openTeamDetail(teamId);
+      loadTeams();
+    } catch (e) { showToast(`⚠️ ${e.message}`); }
+  };
+
+  // Send a "you've been added to the team" email to an existing team member.
+  // Useful when the admin added them via the silent Users-tab flow.
+  window.sendTeamWelcomeEmail = async (teamId, memberUid, email) => {
+    if (!confirm(`Send welcome email to ${email}?\n\nThey'll get a nudge to sign in and find the Team Dashboard.`)) return;
+    try {
+      const headers = await _adminAuthHeader();
+      const r = await fetch(FN_BASE_ADMIN + '/adminSendTeamWelcomeEmail', {
+        method: 'POST', headers, body: JSON.stringify({ teamId, memberUid }),
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || 'Send failed');
+      showToast(`✉️ Sent to ${data.sentTo}`);
+    } catch (e) { showToast(`⚠️ ${e.message}`); }
+  };
+
+  window.updateTeamSeats = async (teamId, seats) => {
+    const n = parseInt(seats);
+    if (!n || n < 1) return;
+    try {
+      const headers = await _adminAuthHeader();
+      const r = await fetch(FN_BASE_ADMIN + '/adminUpdateTeam', {
+        method: 'POST', headers, body: JSON.stringify({ teamId, patch: { seats: n } }),
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || 'Update failed');
+      showToast(`✅ Seats updated to ${n}`);
+      loadTeams();
+    } catch (e) { showToast(`⚠️ ${e.message}`); }
+  };
+
+  window.changeMemberRole = async (teamId, memberUid, role, selectEl) => {
+    try {
+      const headers = await _adminAuthHeader();
+      const r = await fetch(FN_BASE_ADMIN + '/adminChangeMemberRole', {
+        method: 'POST', headers, body: JSON.stringify({ teamId, memberUid, role }),
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || 'Update failed');
+      showToast(`✅ Role updated to ${role}`);
+    } catch (e) {
+      showToast(`⚠️ ${e.message}`);
+      openTeamDetail(teamId); // refresh to restore correct value
+    }
+  };
+
+  window.removeMemberFrom = async (teamId, memberUid, name) => {
+    if (!confirm(`Remove ${name} from the team?`)) return;
+    try {
+      const headers = await _adminAuthHeader();
+      const r = await fetch(FN_BASE_ADMIN + '/adminRemoveTeamMember', {
+        method: 'POST', headers, body: JSON.stringify({ teamId, memberUid }),
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || 'Remove failed');
+      showToast('✅ Removed');
+      openTeamDetail(teamId);
+      loadTeams();
+    } catch (e) { showToast(`⚠️ ${e.message}`); }
+  };
+
+  window.deleteTeam = async (teamId, name) => {
+    if (!confirm(`Delete ${name}? This unbinds all members and deletes the team doc. Stripe subscriptions must be canceled separately.`)) return;
+    try {
+      const headers = await _adminAuthHeader();
+      const r = await fetch(FN_BASE_ADMIN + '/adminDeleteTeam', {
+        method: 'POST', headers, body: JSON.stringify({ teamId }),
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || 'Delete failed');
+      showToast('✅ Team deleted');
+      closeTeamDetail();
+      loadTeams();
+    } catch (e) { showToast(`⚠️ ${e.message}`); }
+  };
+
+  // ----- Set user team (assign/remove via dropdown on user row) -----
+  // Triggered by the team-select <select> on each user row.
+  window.setUserTeam = async (sel) => {
+    const uid = sel.dataset.uid;
+    const email = sel.dataset.email;
+    const currentTeamId = sel.dataset.current || '';
+    const newTeamId = sel.value || '';
+    if (newTeamId === currentTeamId) return; // no-op
+
+    // Confirm so we don't accidentally yank someone out of their team
+    const currentTeam = TEAMS.find(t => t.id === currentTeamId);
+    const newTeam = TEAMS.find(t => t.id === newTeamId);
+    let msg = '';
+    if (currentTeamId && !newTeamId) {
+      msg = `Remove ${email} from "${currentTeam?.name || 'their team'}"?`;
+    } else if (!currentTeamId && newTeamId) {
+      msg = `Add ${email} to "${newTeam?.name || 'this team'}"?`;
+    } else {
+      msg = `Move ${email} from "${currentTeam?.name || 'current'}" to "${newTeam?.name || 'new'}"?`;
+    }
+    if (!confirm(msg)) {
+      sel.value = currentTeamId; // revert dropdown
+      return;
+    }
+
+    sel.disabled = true;
+    try {
+      const headers = await _adminAuthHeader();
+      // Step 1: if user is currently on a team, remove them first.
+      if (currentTeamId) {
+        const r1 = await fetch(FN_BASE_ADMIN + '/adminRemoveTeamMember', {
+          method: 'POST', headers,
+          body: JSON.stringify({ teamId: currentTeamId, memberUid: uid }),
+        });
+        const d1 = await r1.json();
+        if (!r1.ok) {
+          // If they're the OWNER, we can't move them this way — must delete the team first
+          throw new Error(d1.error || 'Could not remove from current team');
+        }
+      }
+      // Step 2: if there's a new team, add them.
+      if (newTeamId) {
+        const r2 = await fetch(FN_BASE_ADMIN + '/adminAddTeamMember', {
+          method: 'POST', headers,
+          body: JSON.stringify({ teamId: newTeamId, email }),
+        });
+        const d2 = await r2.json();
+        if (!r2.ok) throw new Error(d2.error || 'Could not add to new team');
+      }
+      // Refresh both lists so counts + member status reflect reality
+      sel.dataset.current = newTeamId;
+      showToast(newTeamId ? `✅ ${email} → ${newTeam.name}` : `✅ ${email} removed from team`);
+      // Reload both data sets in the background
+      await Promise.all([loadTeams(), loadUsers(true)]);
+    } catch (e) {
+      console.error('[setUserTeam]', e);
+      showToast(`⚠️ ${e.message}`);
+      sel.value = currentTeamId;
+    } finally {
+      sel.disabled = false;
+    }
+  };
+
+  // ----- User inspector -----
+  window.inspectUser = async (email, uid) => {
+    document.getElementById('inspect-overlay').style.display = 'flex';
+    document.getElementById('ins-email').textContent = email || uid;
+    document.getElementById('ins-body').innerHTML = `<div class="loader"><div class="spinner"></div>Inspecting…</div>`;
+    try {
+      const headers = await _adminAuthHeader();
+      const r = await fetch(FN_BASE_ADMIN + '/adminInspectUser', {
+        method: 'POST', headers, body: JSON.stringify({ email, uid }),
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || 'Inspect failed');
+      renderInspect(data);
+    } catch (e) {
+      document.getElementById('ins-body').innerHTML = `<div class="err">⚠️ ${e.message}</div>`;
+    }
+  };
+  window.closeInspect = () => { document.getElementById('inspect-overlay').style.display = 'none'; };
+
+  function renderInspect(d) {
+    const ok = (x) => `<span style="color:var(--green);font-weight:700;">✓</span> ${x}`;
+    const warn = (x) => `<span style="color:#a05a00;font-weight:700;">⚠</span> ${x}`;
+    const bad = (x) => `<span style="color:var(--red);font-weight:700;">✗</span> ${x}`;
+    const row = (label, value) => `<div style="display:grid;grid-template-columns:160px 1fr;gap:14px;padding:7px 0;border-bottom:1px solid #f4f4f5;font-size:13px;"><div style="color:var(--muted);font-weight:600;">${label}</div><div>${value}</div></div>`;
+
+    let html = '';
+
+    // Auth
+    html += `<div style="font-size:11px;font-weight:800;color:var(--muted);letter-spacing:0.1em;text-transform:uppercase;margin:14px 0 6px;">Auth Record</div>`;
+    html += `<div style="background:#fafafa;border:1px solid var(--border);border-radius:10px;padding:10px 14px;">`;
+    html += row('UID', `<code style="font-size:11px;background:#fff;padding:2px 6px;border-radius:4px;">${d.auth.uid}</code>`);
+    html += row('Email', d.auth.email + (d.auth.emailVerified ? ' ' + ok('verified') : ' ' + warn('unverified')));
+    html += row('Display Name', d.auth.displayName || '<em style="color:var(--muted);">(none)</em>');
+    html += row('Providers', (d.auth.providers || []).join(', ') || '<em style="color:var(--muted);">(none)</em>');
+    html += row('Created', d.auth.created ? new Date(d.auth.created).toLocaleString() : '—');
+    html += row('Last sign-in', d.auth.lastSignIn ? new Date(d.auth.lastSignIn).toLocaleString() : '<em style="color:var(--muted);">never</em>');
+    if (d.auth.disabled) html += row('Status', bad('DISABLED'));
+    html += `</div>`;
+
+    // User doc
+    html += `<div style="font-size:11px;font-weight:800;color:var(--muted);letter-spacing:0.1em;text-transform:uppercase;margin:18px 0 6px;">Firestore User Doc (/users/${d.auth.uid})</div>`;
+    html += `<div style="background:#fafafa;border:1px solid var(--border);border-radius:10px;padding:10px 14px;">`;
+    if (!d.userDoc.exists) {
+      html += bad('User doc does NOT exist in Firestore') + ` — auth exists but no /users/{uid} doc. They cannot use the app.`;
+    } else {
+      html += row('Personal plan', `<code>${d.userDoc.plan || 'free'}</code>`);
+      html += row('Team ID', d.userDoc.teamId ? `<code style="font-size:11px;background:#fff;padding:2px 6px;border-radius:4px;">${d.userDoc.teamId}</code>` : '<em style="color:var(--muted);">(not on a team)</em>');
+      html += row('Team role', d.userDoc.teamRole || '<em style="color:var(--muted);">—</em>');
+      html += row('Stripe customer', d.userDoc.stripeCustomerId || '<em style="color:var(--muted);">—</em>');
+      html += row('Stripe sub', d.userDoc.stripeSubscriptionId || '<em style="color:var(--muted);">—</em>');
+      html += row('Sub status', d.userDoc.subscriptionStatus || '<em style="color:var(--muted);">—</em>');
+    }
+    html += `</div>`;
+
+    // Team
+    html += `<div style="font-size:11px;font-weight:800;color:var(--muted);letter-spacing:0.1em;text-transform:uppercase;margin:18px 0 6px;">Team Binding</div>`;
+    html += `<div style="background:#fafafa;border:1px solid var(--border);border-radius:10px;padding:10px 14px;">`;
+    if (d.team) {
+      html += row('Team', `<strong>${d.team.name}</strong> <code style="font-size:10px;color:var(--muted);">${d.team.id}</code>`);
+      html += row('Plan', `<code>${d.team.plan || 'team_scorecard'}</code>`);
+      html += row('Status', d.team.subscriptionStatus || (d.team.active ? 'active' : 'unknown'));
+      html += row('Active?', d.team.active ? ok('yes') : bad('no'));
+      html += row('Seats', d.team.seats);
+      html += row('Owner UID', `<code style="font-size:11px;">${d.team.ownerUid}</code>${d.team.ownerUid === d.auth.uid ? ' ' + ok('this user is the owner') : ''}`);
+      html += row('Member doc', d.memberDoc ? ok(`exists · role: ${d.memberDoc.role || 'member'}`) : bad('MISSING — user.teamId points to team but no member doc found'));
+    } else if (d.userDoc.teamId) {
+      html += bad(`User doc has teamId=${d.userDoc.teamId} but that team doesn't exist`);
+    } else {
+      html += '<em style="color:var(--muted);">Not on any team.</em>';
+    }
+    if (d.ownedTeams && d.ownedTeams.length) {
+      html += `<div style="margin-top:10px;padding-top:10px;border-top:1px solid #f4f4f5;font-size:12px;color:var(--muted);">Also <strong>owns</strong> ${d.ownedTeams.length} team(s): ${d.ownedTeams.map(t => `<code>${t.name}</code>`).join(', ')}</div>`;
+    }
+    html += `</div>`;
+
+    // Effective plan
+    html += `<div style="font-size:11px;font-weight:800;color:var(--muted);letter-spacing:0.1em;text-transform:uppercase;margin:18px 0 6px;">Effective Plan (what getMe returns)</div>`;
+    html += `<div style="background:#fafafa;border:1px solid var(--border);border-radius:10px;padding:14px;display:flex;align-items:center;gap:14px;">`;
+    const planLabels = { free: 'Free', scorecard: 'Scorecard ($10)', pro: 'Pro / Scorecard CRM ($25)' };
+    html += `<div style="font-family:'Playfair Display',Georgia,serif;font-size:24px;font-weight:900;color:var(--navy);">${planLabels[d.effectivePlan] || d.effectivePlan}</div>`;
+    if (d.effectivePlan !== (d.userDoc.plan || 'free')) {
+      html += `<div style="font-size:11px;color:var(--green);background:#e8f5ec;border:1px solid #b6e0c4;padding:4px 9px;border-radius:6px;font-weight:700;letter-spacing:0.04em;">UPGRADED VIA TEAM</div>`;
+    }
+    html += `</div>`;
+
+    // Subcollections (the data integrity check)
+    html += `<div style="font-size:11px;font-weight:800;color:var(--muted);letter-spacing:0.1em;text-transform:uppercase;margin:18px 0 6px;">Data Subcollections (under /users/${d.auth.uid}/)</div>`;
+    html += `<div style="background:#fafafa;border:1px solid var(--border);border-radius:10px;padding:10px 14px;display:grid;grid-template-columns:repeat(3,1fr);gap:10px;">`;
+    Object.entries(d.subcollectionCounts || {}).forEach(([k, v]) => {
+      const filled = typeof v === 'number' && v > 0;
+      html += `<div style="background:#fff;border:1px solid ${filled ? 'var(--green)' : 'var(--border)'};border-radius:8px;padding:10px;text-align:center;">
+        <div style="font-family:'Playfair Display',Georgia,serif;font-size:20px;font-weight:900;color:${filled ? 'var(--green)' : 'var(--muted)'};">${v}</div>
+        <div style="font-size:10px;color:var(--muted);letter-spacing:0.06em;text-transform:uppercase;margin-top:2px;">${k}</div>
+      </div>`;
+    });
+    html += `</div>`;
+    html += `<div style="font-size:11px;color:var(--muted);margin-top:8px;line-height:1.5;">Counts show how many docs exist in each subcollection. <strong>Adding the user to a team should NEVER change these</strong> — their contacts/days/etc stay exactly where they were. If any count is suspiciously zero for an established user, something may have gone wrong.</div>`;
+
+    document.getElementById('ins-body').innerHTML = html;
+  }
+
+  // Auto-load teams when switching to the tab
+  const _origSwitchTab = window.switchTab;
+  window.switchTab = (name, btn) => {
+    _origSwitchTab(name, btn);
+    if (name === 'teams' && TEAMS.length === 0) loadTeams();
+  };
+
+  function showToast(msg) {
+    const t = document.getElementById('toast');
+    if (!t) return;
+    t.textContent = msg;
+    t.classList.add('show');
+    clearTimeout(t._t);
+    t._t = setTimeout(() => t.classList.remove('show'), 2800);
+  }
+  window.showToast = showToast;
+</script>
+</head>
+<body>
+
+<!-- ── LOGIN ── -->
+<div id="login" class="gate" style="display:none;">
+  <div class="gate-mark">SWH</div>
+  <div class="gate-title">SWH Admin</div>
+  <div class="gate-sub">Sign in with your admin Google account to manage users and plans across the platform.</div>
+  <button class="gate-btn" onclick="doLogin()">
+    <svg viewBox="0 0 24 24"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
+    Continue with Google
+  </button>
+</div>
+
+<!-- ── ACCESS DENIED ── -->
+<div id="denied" class="gate" style="display:none;">
+  <div class="gate-mark">SWH</div>
+  <div class="gate-title">Access denied</div>
+  <div class="gate-sub">You're signed in as <strong id="denied-email" style="color:#fff;"></strong>, but this account isn't on the admin allowlist.</div>
+  <button class="gate-btn" onclick="doLogout()">Sign out & switch accounts</button>
+  <button class="gate-link" onclick="goCRM()">← Open the CRM instead</button>
+</div>
+
+<!-- ── ADMIN APP ── -->
+<div id="app" style="display:none;">
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-mark">SWH</div>
+      <div>
+        <div class="brand-title">SWH Admin</div>
+        <div class="brand-sub">Platform control</div>
+      </div>
+    </div>
+    <div class="top-right">
+      <span class="top-user" id="top-user"></span>
+      <button class="top-link" onclick="goCRM()">CRM ↗</button>
+      <button class="top-link" onclick="goScorecard()">Scorecard ↗</button>
+      <button class="top-link" onclick="doLogout()">Sign out</button>
+    </div>
+  </header>
+  <nav class="tabs">
+    <button class="tab active" data-pane="users" onclick="switchTab('users',this)">👥 Users & Plans</button>
+    <button class="tab" data-pane="teams" onclick="switchTab('teams',this)">🏢 Teams</button>
+    <button class="tab" data-pane="waitlist" onclick="switchTab('waitlist',this)">📋 Waitlist</button>
+    <button class="tab" data-pane="announcements" onclick="switchTab('announcements',this)">📣 Announcements</button>
+    <button class="tab" data-pane="activities" onclick="switchTab('activities',this)">🎯 Activity Catalog</button>
+  </nav>
+  <main class="wrap">
+
+    <!-- ── USERS PANE ── -->
+    <section id="pane-users" class="pane active">
+      <div class="page-head">
+        <div>
+          <div class="page-title">Users & Plans</div>
+          <div class="page-sub">Manage who has access to what across both apps.</div>
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;">
+          <button class="btn-primary" onclick="openCreateUser()">+ Create user</button>
+          <button class="btn-ghost" onclick="sendSampleEmailPrompt()">📨 Send sample weekly email</button>
+          <button class="btn-ghost" onclick="refreshUsers()">↻ Refresh</button>
+        </div>
+      </div>
+      <div id="stats" class="stats"></div>
+      <div class="controls">
+        <div class="search">
+          <span class="search-icon">🔍</span>
+          <input type="text" placeholder="Search name, email, or company…" oninput="filterUsers(this.value)">
+        </div>
+        <button class="chip active" onclick="setFilter('all',this)">All</button>
+        <button class="chip" onclick="setFilter('pro',this)">Pro</button>
+        <button class="chip" onclick="setFilter('scorecard',this)">Scorecard</button>
+        <button class="chip" onclick="setFilter('free',this)">Free</button>
+      </div>
+      <div id="user-list"></div>
+    </section>
+
+    <!-- ── TEAMS PANE ── -->
+    <section id="pane-teams" class="pane">
+      <div class="page-head">
+        <div>
+          <div class="page-title">Teams</div>
+          <div class="page-sub">Manage Scorecard and CRM teams across the platform. Create comp teams for pilot accounts, add members, see seats and billing status. No Stripe checkout — direct Firestore management.</div>
+        </div>
+        <div style="display:flex;gap:8px;">
+          <button class="btn-ghost" onclick="loadTeams()">↻ Reload</button>
+          <button class="btn-primary" onclick="openCreateTeam()">+ Create Team</button>
+        </div>
+      </div>
+
+      <!-- Filter bar -->
+      <div style="display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap;">
+        <button class="filter-btn active" data-filter="all" onclick="setTeamFilter('all',this)">All</button>
+        <button class="filter-btn" data-filter="team_scorecard" onclick="setTeamFilter('team_scorecard',this)">Scorecard Teams</button>
+        <button class="filter-btn" data-filter="team_crm" onclick="setTeamFilter('team_crm',this)">CRM Teams</button>
+        <input id="team-search" type="text" placeholder="Search team or owner email…" oninput="filterTeams(this.value)" style="flex:1;min-width:200px;padding:8px 12px;border:1.5px solid var(--border);border-radius:8px;font-family:inherit;font-size:13px;">
+      </div>
+
+      <div id="team-stats" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:18px;"></div>
+      <div id="team-list"></div>
+    </section>
+
+    <!-- ── CREATE TEAM MODAL ── -->
+    <div id="create-team-overlay" class="overlay" style="display:none;">
+      <div class="overlay-card">
+        <div class="overlay-title">Create a Team</div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:14px;line-height:1.5;">Creates a team for the given owner. If owner email doesn't have an SWH account yet, one will be created automatically.</div>
+        <div style="display:flex;flex-direction:column;gap:12px;">
+          <label style="display:block;">
+            <div style="font-size:11px;font-weight:700;color:var(--muted);letter-spacing:0.06em;text-transform:uppercase;margin-bottom:4px;">Owner Email</div>
+            <input id="ct-owner-email" type="email" placeholder="owner@example.com" style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;font-family:inherit;font-size:14px;">
+          </label>
+          <label style="display:block;">
+            <div style="font-size:11px;font-weight:700;color:var(--muted);letter-spacing:0.06em;text-transform:uppercase;margin-bottom:4px;">Team Name</div>
+            <input id="ct-team-name" type="text" placeholder="Acme Sales Team" style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;font-family:inherit;font-size:14px;">
+          </label>
+          <label style="display:block;">
+            <div style="font-size:11px;font-weight:700;color:var(--muted);letter-spacing:0.06em;text-transform:uppercase;margin-bottom:4px;">Plan</div>
+            <select id="ct-plan" style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;font-family:inherit;font-size:14px;background:#fff;">
+              <option value="team_scorecard">Team Scorecard — $8/seat (3-9), $7/seat (10+)</option>
+              <option value="team_crm">Team CRM — $20/seat (3-9), $15/seat (10+) · includes Scorecard</option>
+            </select>
+          </label>
+          <label style="display:block;">
+            <div style="font-size:11px;font-weight:700;color:var(--muted);letter-spacing:0.06em;text-transform:uppercase;margin-bottom:4px;">Starting Seats</div>
+            <input id="ct-seats" type="number" min="3" value="3" style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;font-family:inherit;font-size:14px;">
+          </label>
+          <label style="display:flex;align-items:center;gap:8px;padding:10px;background:#fffaf0;border:1.5px solid #fde68a;border-radius:8px;cursor:pointer;">
+            <input id="ct-comp" type="checkbox" checked style="width:18px;height:18px;cursor:pointer;">
+            <div style="font-size:13px;color:var(--navy);"><strong>Comp this team</strong> — no Stripe charge. Free access until you un-comp it.</div>
+          </label>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:18px;">
+          <button class="btn-ghost" onclick="closeCreateTeam()" style="flex:1;">Cancel</button>
+          <button class="btn-primary" onclick="submitCreateTeam()" style="flex:1;">Create Team</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── USER INSPECTOR DRAWER ── -->
+    <div id="inspect-overlay" class="overlay" style="display:none;">
+      <div class="overlay-card" style="max-width:720px;">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px;">
+          <div>
+            <div class="overlay-title" style="margin-bottom:2px;">🔍 User Inspector</div>
+            <div id="ins-email" style="font-size:12px;color:var(--muted);"></div>
+          </div>
+          <button class="btn-ghost" onclick="closeInspect()">✕</button>
+        </div>
+        <div id="ins-body"></div>
+      </div>
+    </div>
+
+    <!-- ── TEAM DETAIL DRAWER ── -->
+    <div id="team-detail-overlay" class="overlay" style="display:none;">
+      <div class="overlay-card" style="max-width:720px;">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px;">
+          <div>
+            <div class="overlay-title" id="td-name" style="margin-bottom:2px;">Team</div>
+            <div id="td-meta" style="font-size:12px;color:var(--muted);"></div>
+          </div>
+          <button class="btn-ghost" onclick="closeTeamDetail()">✕</button>
+        </div>
+        <div id="td-body"></div>
+      </div>
+    </div>
+
+    <!-- ── WAITLIST PANE ── -->
+    <section id="pane-waitlist" class="pane">
+      <div class="page-head">
+        <div>
+          <div class="page-title">Waitlist</div>
+          <div class="page-sub">People who tapped the paywall and signed up for early access. Approve them as a beta tester to create their account and email them sign-in instructions.</div>
+        </div>
+        <button class="btn-ghost" onclick="loadWaitlist()">↻ Refresh</button>
+      </div>
+      <div id="wait-stats" class="stats"></div>
+      <div class="form-card" style="background:#fffaf0;border-color:#fde68a;">
+        <div style="display:flex;align-items:flex-start;gap:12px;">
+          <div style="font-size:22px;">⚠️</div>
+          <div>
+            <div style="font-size:13px;font-weight:700;color:var(--navy);margin-bottom:4px;">What "approve" does</div>
+            <div style="font-size:12px;color:var(--muted);line-height:1.6;">Clicking <strong>Approve</strong> creates a Firebase Auth user with their email, sets their plan, and emails them a "set password & sign in" link. They can sign in via the iOS app's paywall ("Already a member?") or at <code style="font-size:11px;background:rgba(0,0,0,0.04);padding:2px 6px;border-radius:4px;">app.stopwastinghandshakes.com</code>. <strong>TestFlight invites are separate</strong> — invite them in App Store Connect manually after approving.</div>
+          </div>
+        </div>
+      </div>
+      <div class="controls" id="wait-filters" style="margin-top:18px;">
+        <button class="chip active" onclick="setWaitlistFilter('pending',this)">Pending</button>
+        <button class="chip" onclick="setWaitlistFilter('approved',this)">Approved</button>
+        <button class="chip" onclick="setWaitlistFilter('all',this)">All</button>
+      </div>
+      <div id="wait-list"></div>
+    </section>
+
+    <!-- ── ANNOUNCEMENTS PANE ── -->
+    <section id="pane-announcements" class="pane">
+      <div class="page-head">
+        <div>
+          <div class="page-title">Coaching Moments</div>
+          <div class="page-sub">Broadcast a message to all users — or just one tier. They'll see it the next time they open the app.</div>
+        </div>
+      </div>
+      <div class="form-card">
+        <div style="font-family:'Playfair Display',serif;font-size:18px;font-weight:900;margin-bottom:14px;">New announcement</div>
+        <div class="form-row cols-3">
+          <div class="field" style="grid-column:span 1;">
+            <label class="label">Icon</label>
+            <input class="input" id="ann-icon" type="text" placeholder="💡" maxlength="4" style="text-align:center;font-size:22px;">
+          </div>
+          <div class="field" style="grid-column:span 2;">
+            <label class="label">Title</label>
+            <input class="input" id="ann-title" type="text" placeholder="Q2 Push: Earn double FORM points">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="field">
+            <label class="label">Message</label>
+            <textarea class="textarea" id="ann-body" rows="3" placeholder="What do you want to say? Plain text. Line breaks preserved."></textarea>
+          </div>
+        </div>
+        <div class="form-row cols-3">
+          <div class="field">
+            <label class="label">Audience</label>
+            <select class="select" id="ann-audience">
+              <option value="all">Everyone (free, scorecard, pro)</option>
+              <option value="scorecard">Scorecard only ($10)</option>
+              <option value="pro">Scorecard CRM only ($25)</option>
+            </select>
+          </div>
+          <div class="field">
+            <label class="label">Priority</label>
+            <select class="select" id="ann-priority">
+              <option value="normal">Normal</option>
+              <option value="urgent">Urgent (red banner)</option>
+            </select>
+          </div>
+          <div class="field">
+            <label class="label">Expires (optional)</label>
+            <input class="input" id="ann-expires" type="date">
+          </div>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;flex-wrap:wrap;gap:10px;">
+          <label style="display:inline-flex;align-items:center;gap:8px;font-size:13px;color:var(--navy);cursor:pointer;user-select:none;">
+            <input type="checkbox" id="ann-email" style="width:16px;height:16px;cursor:pointer;">
+            <span><strong>Also email all matching users</strong> <span style="color:var(--muted);">— sends a branded email blast to every user in the audience.</span></span>
+          </label>
+          <button class="btn-primary" onclick="createAnnouncement()">Publish announcement</button>
+        </div>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin:24px 0 12px;">
+        <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.1em;">Active & past</div>
+        <button class="btn-ghost" onclick="loadAnnouncements()">↻ Refresh</button>
+      </div>
+      <div id="ann-list"></div>
+    </section>
+
+    <!-- ── ACTIVITIES PANE ── -->
+    <section id="pane-activities" class="pane">
+      <div class="page-head">
+        <div>
+          <div class="page-title">Activity Catalog</div>
+          <div class="page-sub">The canonical activity list. Edits here are picked up by both apps on next load. New users get this catalog out of the box.</div>
+        </div>
+        <button class="btn-ghost" onclick="loadActivities()">↻ Reload</button>
+      </div>
+      <div class="form-card" style="background:#fffaf0;border-color:#fde68a;">
+        <div style="display:flex;align-items:flex-start;gap:12px;">
+          <div style="font-size:22px;">⚠️</div>
+          <div>
+            <div style="font-size:13px;font-weight:700;color:var(--navy);margin-bottom:4px;">How rollouts work</div>
+            <div style="font-size:12px;color:var(--muted);line-height:1.6;">Edits below update the global catalog at <code style="font-size:11px;background:rgba(0,0,0,0.04);padding:2px 6px;border-radius:4px;">platform/activities</code>. <strong>Point/icon/lead changes propagate automatically</strong> — both apps merge global values on top of each user's list at load time. Use <strong>Force-sync to all users</strong> only when you've <em>added</em> a new activity and want existing users to see it; this is purely additive and never overwrites or removes activities a user has added or edited themselves.</div>
+          </div>
+        </div>
+      </div>
+      <div id="act-list"></div>
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:18px;flex-wrap:wrap;">
+        <button class="small-btn" onclick="addActivityRow()">+ Add activity</button>
+        <div style="display:flex;gap:10px;">
+          <button class="btn-ghost" onclick="forceSyncActivities()">Force-sync to all users</button>
+          <button class="btn-primary" onclick="saveActivities()">Save catalog</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Powered by Lola — decorative footer -->
+    <div style="display:flex;justify-content:center;padding:24px 0 32px;">
+      <span class="lola-badge"><span class="lola-orb"></span><span class="lola-text">powered by</span> <span class="lola-name">Lola</span></span>
+    </div>
+  </main>
+</div>
+
+<!-- Create User Modal -->
+<div id="create-user-modal" class="modal-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:200;align-items:center;justify-content:center;padding:20px;">
+  <div style="background:#fff;border-radius:18px;width:100%;max-width:500px;max-height:90vh;overflow-y:auto;box-shadow:0 16px 48px rgba(0,0,0,0.25);">
+    <div style="padding:22px 24px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">
+      <div>
+        <div style="font-family:'Playfair Display',serif;font-size:20px;font-weight:900;color:var(--navy);">Create user</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:2px;">Manually create a Firebase user with a known password.</div>
+      </div>
+      <button onclick="closeCreateUser()" style="background:transparent;border:none;font-size:22px;color:var(--muted);cursor:pointer;line-height:1;">×</button>
+    </div>
+    <div style="padding:20px 24px;">
+      <div style="display:flex;flex-direction:column;gap:14px;">
+        <div>
+          <label style="display:block;font-size:12px;font-weight:700;color:var(--navy);margin-bottom:6px;">Email</label>
+          <input id="cu-email" type="email" autocomplete="off" placeholder="apple-reviewer@stopwastinghandshakes.com" style="width:100%;padding:11px 13px;border:1.5px solid var(--border);border-radius:10px;font-family:inherit;font-size:14px;outline:none;">
+        </div>
+        <div>
+          <label style="display:block;font-size:12px;font-weight:700;color:var(--navy);margin-bottom:6px;">Password</label>
+          <div style="display:flex;gap:8px;">
+            <input id="cu-password" type="text" autocomplete="off" placeholder="At least 8 characters" style="flex:1;padding:11px 13px;border:1.5px solid var(--border);border-radius:10px;font-family:'SF Mono', Menlo, monospace;font-size:13px;outline:none;">
+            <button onclick="suggestStrongPassword()" style="padding:11px 14px;border:1.5px solid var(--border);background:#fafafa;border-radius:10px;font-family:inherit;font-size:13px;font-weight:600;color:var(--navy);cursor:pointer;white-space:nowrap;">Generate</button>
+          </div>
+        </div>
+        <div>
+          <label style="display:block;font-size:12px;font-weight:700;color:var(--navy);margin-bottom:6px;">Display name (optional)</label>
+          <input id="cu-displayName" type="text" autocomplete="off" placeholder="App Store Reviewer" style="width:100%;padding:11px 13px;border:1.5px solid var(--border);border-radius:10px;font-family:inherit;font-size:14px;outline:none;">
+        </div>
+        <div>
+          <label style="display:block;font-size:12px;font-weight:700;color:var(--navy);margin-bottom:6px;">Plan</label>
+          <select id="cu-plan" style="width:100%;padding:11px 13px;border:1.5px solid var(--border);border-radius:10px;font-family:inherit;font-size:14px;outline:none;background:#fff;">
+            <option value="scorecard">Scorecard ($10)</option>
+            <option value="pro">Scorecard CRM ($25)</option>
+          </select>
+        </div>
+        <div id="cu-result"></div>
+      </div>
+    </div>
+    <div style="padding:16px 24px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:10px;">
+      <button onclick="closeCreateUser()" style="padding:10px 18px;border:1.5px solid var(--border);background:#fff;border-radius:10px;font-family:inherit;font-size:14px;font-weight:600;color:var(--muted);cursor:pointer;">Close</button>
+      <button onclick="submitCreateUser()" style="padding:10px 20px;border:none;background:var(--navy);border-radius:10px;font-family:inherit;font-size:14px;font-weight:700;color:#fff;cursor:pointer;">Create user</button>
+    </div>
+  </div>
+</div>
+<style>#create-user-modal.open{display:flex !important;}</style>
+
+<div class="toast" id="toast"></div>
+
+</body>
+</html>

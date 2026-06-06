@@ -1,0 +1,344 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SWH Links — Stop Wasting Handshakes</title>
+<meta name="description" content="Everything you need from Stop Wasting Handshakes in one place. Start a free trial, open the Scorecard, download the flyer.">
+<link rel="icon" type="image/png" href="assets/swh/swh-lockup-light.png">
+<meta property="og:title" content="Stop Wasting Handshakes — Links">
+<meta property="og:description" content="The Scorecard. The CRM. The 60-day free trial. Get it all from one page.">
+<meta property="og:image" content="https://stopwastinghandshakes.com/og.png">
+<meta property="og:url" content="https://stopwastinghandshakes.com/links.html">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;800;900&family=DM+Sans:wght@400;500;600;700;800;900&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
+<style>
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+  :root{
+    --red:#E63946;
+    --red-d:#b8252f;
+    --red-soft:rgba(230,57,70,0.14);
+    --green:#5A8A6A;
+    --text:#fff;
+    --muted:rgba(255,255,255,0.55);
+    --line:rgba(255,255,255,0.10);
+  }
+  html,body{
+    font-family:'DM Sans',-apple-system,BlinkMacSystemFont,sans-serif;
+    -webkit-font-smoothing:antialiased;
+    color:#fff;
+    background:
+      radial-gradient(ellipse at 15% 5%, rgba(230,57,70,0.22) 0%, transparent 50%),
+      radial-gradient(ellipse at 88% 95%, rgba(230,57,70,0.16) 0%, transparent 55%),
+      linear-gradient(160deg, #1a1a1a 0%, #0a0a0a 100%);
+    background-attachment:fixed;
+    min-height:100vh;
+  }
+  /* Subtle dot grid */
+  body::before{
+    content:'';
+    position:fixed; inset:0;
+    background-image: radial-gradient(rgba(255,255,255,0.04) 1px, transparent 1px);
+    background-size:24px 24px;
+    pointer-events:none;
+    z-index:0;
+  }
+  .page{
+    position:relative; z-index:1;
+    max-width:540px; margin:0 auto;
+    padding:48px 20px 64px;
+  }
+
+  /* ============ Header ============ */
+  .header{ text-align:center; }
+  .badge-mark{
+    width:120px; height:120px; border-radius:50%;
+    background: radial-gradient(circle at 50% 42%, #ffffff 0%, #f4f4f4 85%, #e8e8e8 100%);
+    margin:0 auto;
+    display:flex; align-items:center; justify-content:center;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.5), 0 0 0 2px rgba(230,57,70,0.32);
+    overflow:hidden;
+  }
+  .badge-mark img{ width:82%; height:82%; object-fit:contain; }
+  .name{
+    margin-top:18px;
+    font-family:'Playfair Display',serif;
+    font-size:32px; font-weight:900; letter-spacing:-1px;
+    color:#fff;
+  }
+  .handle{
+    margin-top:4px;
+    font-size:13px; font-weight:600; color:var(--muted);
+  }
+  .pill{
+    display:inline-flex; align-items:center; gap:8px;
+    margin-top:14px;
+    padding:7px 14px; border-radius:999px;
+    background:var(--red-soft);
+    border:1.5px solid rgba(230,57,70,0.45);
+    font-size:10.5px; font-weight:800; letter-spacing:2.4px;
+    color:#f8a3aa; text-transform:uppercase;
+  }
+  .pill::before{ content:''; width:6px; height:6px; border-radius:50%; background:#E63946; }
+
+  /* ============ Section labels ============ */
+  .section-label{
+    margin-top:36px; margin-bottom:14px;
+    font-size:11px; font-weight:800; letter-spacing:0.18em;
+    color:rgba(255,255,255,0.4); text-transform:uppercase;
+    display:flex; align-items:center; gap:10px;
+  }
+  .section-label::after{
+    content:''; flex:1; height:1px;
+    background:linear-gradient(to right, rgba(255,255,255,0.10), transparent);
+  }
+
+  /* ============ Link cards ============ */
+  .link{
+    display:flex; align-items:center; gap:14px;
+    padding:16px 18px;
+    background:rgba(255,255,255,0.05);
+    border:1.5px solid rgba(255,255,255,0.10);
+    border-radius:16px;
+    text-decoration:none;
+    color:inherit;
+    margin-bottom:10px;
+    transition: transform 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+  }
+  .link:hover, .link:focus-visible{
+    transform: translateY(-1px);
+    background:rgba(255,255,255,0.08);
+    border-color:rgba(230,57,70,0.45);
+    outline:none;
+  }
+  .link.primary{
+    background: linear-gradient(135deg, rgba(230,57,70,0.18), rgba(230,57,70,0.05));
+    border-color: rgba(230,57,70,0.45);
+  }
+  .link.primary:hover{
+    background: linear-gradient(135deg, rgba(230,57,70,0.28), rgba(230,57,70,0.10));
+    border-color: rgba(230,57,70,0.75);
+  }
+  .link .ic{
+    width:44px; height:44px; border-radius:11px;
+    display:flex; align-items:center; justify-content:center;
+    font-size:20px;
+    background: linear-gradient(135deg, var(--red), var(--red-d));
+    color:#fff;
+    flex-shrink:0;
+    box-shadow: 0 4px 14px rgba(230,57,70,0.30);
+  }
+  .link.alt .ic{
+    background: linear-gradient(135deg, #1a1a1a, #2a2a2a);
+    color: #E63946;
+    border:1.5px solid rgba(230,57,70,0.25);
+    box-shadow:none;
+  }
+  .link .meta{ flex:1; min-width:0; }
+  .link .t{ font-size:15px; font-weight:800; color:#fff; line-height:1.2; }
+  .link .d{ font-size:12px; color:var(--muted); margin-top:3px; line-height:1.4; }
+  .link .arrow{
+    font-size:18px; color:rgba(255,255,255,0.4);
+    flex-shrink:0;
+  }
+  .link.primary .arrow{ color:#E63946; }
+
+  .tag{
+    display:inline-block;
+    margin-left:6px;
+    font-size:9px; font-weight:800; letter-spacing:0.12em;
+    padding:3px 7px; border-radius:6px;
+    background:rgba(95,138,106,0.20); color:#9bd5ab;
+    border:1px solid rgba(95,138,106,0.40);
+    text-transform:uppercase;
+    vertical-align:middle;
+  }
+  .tag.muted{
+    background:rgba(255,255,255,0.08); color:rgba(255,255,255,0.55);
+    border-color:rgba(255,255,255,0.15);
+  }
+
+  /* ============ Downloads grid (flyer formats) ============ */
+  .grid{
+    display:grid; grid-template-columns:1fr 1fr; gap:10px;
+  }
+  .grid .link{ margin-bottom:0; padding:14px; }
+  .grid .link .t{ font-size:13px; }
+  .grid .link .d{ font-size:11px; }
+  .grid .link .ic{ width:36px; height:36px; font-size:16px; border-radius:9px; }
+
+  /* ============ Footer ============ */
+  .foot{
+    margin-top:40px;
+    text-align:center;
+    font-size:11px; color:rgba(255,255,255,0.32);
+    line-height:1.7;
+  }
+  .foot a{ color:rgba(255,255,255,0.55); text-decoration:none; }
+  .foot a:hover{ color:#E63946; }
+  .foot .row{ display:block; }
+
+  /* ============ Wide-screen tweak ============ */
+  @media (min-width: 720px){
+    .page{ max-width:580px; padding:64px 24px; }
+    .name{ font-size:36px; }
+  }
+</style>
+</head>
+<body>
+  <div class="page">
+
+    <!-- Header / brand block -->
+    <header class="header">
+      <div class="badge-mark"><img src="assets/swh/swh-lockup-light.png" alt="SWH logo"></div>
+      <h1 class="name">Stop Wasting Handshakes</h1>
+      <div class="handle">stopwastinghandshakes.com</div>
+      <div class="pill">Networking that Converts</div>
+    </header>
+
+    <!-- ============ START: PRIMARY CTAs ============ -->
+    <div class="section-label">Start here</div>
+
+    <a class="link primary" href="https://stopwastinghandshakes.com" target="_blank" rel="noopener">
+      <div class="ic">⚡</div>
+      <div class="meta">
+        <div class="t">Start Your Free Trial<span class="tag">60 days</span></div>
+        <div class="d">$10/mo Scorecard. No card to start. Cancel anytime.</div>
+      </div>
+      <div class="arrow">→</div>
+    </a>
+
+    <a class="link" href="https://swh-scoreboard.web.app" target="_blank" rel="noopener">
+      <div class="ic">📊</div>
+      <div class="meta">
+        <div class="t">Open the Scorecard</div>
+        <div class="d">Web app. Works on every device — sign in to start tracking.</div>
+      </div>
+      <div class="arrow">→</div>
+    </a>
+
+    <a class="link" href="https://swh-crm.web.app" target="_blank" rel="noopener">
+      <div class="ic">📇</div>
+      <div class="meta">
+        <div class="t">Open the CRM</div>
+        <div class="d">Contacts, opportunities, follow-through. $25/mo bundled plan.</div>
+      </div>
+      <div class="arrow">→</div>
+    </a>
+
+    <a class="link alt" href="#ios-waitlist" onclick="alert('iOS app coming soon. Want early access? Email austen@stopwastinghandshakes.com'); return false;">
+      <div class="ic">
+        <svg viewBox="0 0 384 512" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M318.7 268.7c-.2-36.7 16.4-64.4 50-84.8-18.8-26.9-47.2-41.7-84.7-44.6-35.5-2.8-74.3 20.7-88.5 20.7-15 0-49.4-19.7-76.4-19.7C63.3 141.2 4 184.8 4 273.5q0 39.3 14.4 81.2c12.8 36.7 59 126.7 107.2 125.2 25.2-.6 43-17.9 75.8-17.9 31.8 0 48.3 17.9 76.4 17.9 48.6-.7 90.4-82.5 102.6-119.3-65.2-30.7-61.7-90-61.7-91.9zM256.4 105c30.1-35.7 27.4-68.2 26.5-79.9-26.6 1.5-57.4 18.1-74.9 38.5-19.3 21.9-30.6 49-28.2 78.9 28.8 2.2 55.1-12.6 76.6-37.5z"/></svg>
+      </div>
+      <div class="meta">
+        <div class="t">iOS App<span class="tag muted">Coming Soon</span></div>
+        <div class="d">Native scoreboard, push reminders, same login. Tap for early access.</div>
+      </div>
+      <div class="arrow">→</div>
+    </a>
+
+    <!-- ============ LEARN ============ -->
+    <div class="section-label">Learn</div>
+
+    <a class="link" href="https://stopwastinghandshakes.com#how-it-works" target="_blank" rel="noopener">
+      <div class="ic">📖</div>
+      <div class="meta">
+        <div class="t">How It Works</div>
+        <div class="d">Lead vs lag activities, the 5-tier ladder, weekly recap.</div>
+      </div>
+      <div class="arrow">→</div>
+    </a>
+
+    <a class="link" href="https://www.amazon.com/dp/B0H2329TRQ" target="_blank" rel="noopener">
+      <div class="ic">📕</div>
+      <div class="meta">
+        <div class="t">Marketing by Referral — the book</div>
+        <div class="d">The playbook behind Stop Wasting Handshakes. On Amazon.</div>
+      </div>
+      <div class="arrow">→</div>
+    </a>
+
+    <a class="link" href="https://stopwastinghandshakes.com#pricing" target="_blank" rel="noopener">
+      <div class="ic">💳</div>
+      <div class="meta">
+        <div class="t">Pricing</div>
+        <div class="d">Scorecard $10. CRM $25. Team plans from $7/seat.</div>
+      </div>
+      <div class="arrow">→</div>
+    </a>
+
+    <!-- ============ DOWNLOAD: FLYER ============ -->
+    <div class="section-label">Download the flyer</div>
+
+    <div class="grid">
+      <a class="link alt" href="exports/swh-flyer-scorecard-print-300dpi.png" target="_blank" download>
+        <div class="ic">🖨️</div>
+        <div class="meta">
+          <div class="t">Print (300dpi)</div>
+          <div class="d">2550×3300 PNG</div>
+        </div>
+      </a>
+      <a class="link alt" href="exports/swh-flyer-scorecard-2x.png" target="_blank" download>
+        <div class="ic">📱</div>
+        <div class="meta">
+          <div class="t">Social (2×)</div>
+          <div class="d">1632×2112 PNG</div>
+        </div>
+      </a>
+      <a class="link alt" href="exports/swh-flyer-scorecard-2x.jpg" target="_blank" download>
+        <div class="ic">📨</div>
+        <div class="meta">
+          <div class="t">Email (JPG)</div>
+          <div class="d">1632×2112 · 376 KB</div>
+        </div>
+      </a>
+      <a class="link alt" href="exports/swh-flyer-scorecard.jpg" target="_blank" download>
+        <div class="ic">💬</div>
+        <div class="meta">
+          <div class="t">SMS (small)</div>
+          <div class="d">816×1056 JPG · 142 KB</div>
+        </div>
+      </a>
+    </div>
+
+    <a class="link" href="flyer.html" target="_blank" style="margin-top:10px;">
+      <div class="ic">👁️</div>
+      <div class="meta">
+        <div class="t">View Flyer in Browser</div>
+        <div class="d">Open the live HTML version — print to PDF from there.</div>
+      </div>
+      <div class="arrow">→</div>
+    </a>
+
+    <!-- ============ CONTACT ============ -->
+    <div class="section-label">Get in touch</div>
+
+    <a class="link alt" href="mailto:austen@stopwastinghandshakes.com">
+      <div class="ic">✉️</div>
+      <div class="meta">
+        <div class="t">Email</div>
+        <div class="d">austen@stopwastinghandshakes.com</div>
+      </div>
+      <div class="arrow">→</div>
+    </a>
+
+    <!-- ============ Footer ============ -->
+    <div class="foot">
+      <span class="row">© 2026 Stop Wasting Handshakes</span>
+      <span class="row">
+        <a href="https://stopwastinghandshakes.com">Home</a>
+        &nbsp;·&nbsp;
+        <a href="https://stopwastinghandshakes.com/privacy.html">Privacy</a>
+        &nbsp;·&nbsp;
+        <a href="https://stopwastinghandshakes.com/terms.html">Terms</a>
+      </span>
+      <span class="row" style="margin-top:14px;display:inline-flex;align-items:center;gap:9px;font-family:'Space Grotesk',inherit;font-size:10px;font-weight:600;letter-spacing:0.18em;text-transform:uppercase;color:rgba(255,255,255,0.55);">
+        <span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:radial-gradient(circle at 32% 30%, #A78BFA 0%, #5B5BD6 55%, #1E3A8A 100%);box-shadow:inset -1px -1.5px 3px rgba(30,58,138,0.55), 0 0 8px rgba(167,139,250,0.45);"></span>
+        powered by <span style="color:#A78BFA;font-weight:700;letter-spacing:0.20em;">Lola</span>
+      </span>
+    </div>
+  </div>
+</body>
+</html>

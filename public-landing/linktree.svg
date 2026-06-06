@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 1080 1080" width="1080" height="1080">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#1a1a1a"/>
+      <stop offset="100%" stop-color="#0a0a0a"/>
+    </linearGradient>
+    <radialGradient id="glowTL" cx="0.2" cy="0.15" r="0.6">
+      <stop offset="0%" stop-color="#E63946" stop-opacity="0.32"/>
+      <stop offset="60%" stop-color="#E63946" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glowBR" cx="0.85" cy="0.85" r="0.5">
+      <stop offset="0%" stop-color="#E63946" stop-opacity="0.22"/>
+      <stop offset="65%" stop-color="#E63946" stop-opacity="0"/>
+    </radialGradient>
+    <pattern id="dots" x="0" y="0" width="32" height="32" patternUnits="userSpaceOnUse">
+      <circle cx="1" cy="1" r="1" fill="rgba(255,255,255,0.05)"/>
+    </pattern>
+    <radialGradient id="badgeBg" cx="0.5" cy="0.42" r="0.7">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="85%" stop-color="#f4f4f4"/>
+      <stop offset="100%" stop-color="#e8e8e8"/>
+    </radialGradient>
+    <clipPath id="badge-clip">
+      <circle cx="540" cy="590" r="350"/>
+    </clipPath>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1080" height="1080" fill="url(#bg)"/>
+  <rect width="1080" height="1080" fill="url(#dots)"/>
+  <rect width="1080" height="1080" fill="url(#glowTL)"/>
+  <rect width="1080" height="1080" fill="url(#glowBR)"/>
+
+  <!-- Eyebrow pill at top — "Networking that Converts" -->
+  <g transform="translate(540, 170)">
+    <rect x="-235" y="-30" width="470" height="60" rx="30" fill="rgba(230,57,70,0.14)" stroke="rgba(230,57,70,0.45)" stroke-width="1.5"/>
+    <circle cx="-205" cy="0" r="6" fill="#E63946"/>
+    <text x="-184" y="8" font-family="-apple-system, 'Helvetica Neue', Arial, sans-serif" font-size="17" font-weight="800" fill="#f8a3aa" letter-spacing="2.8">NETWORKING THAT CONVERTS</text>
+  </g>
+
+  <!-- Subtle outer ring + glow ring for the badge -->
+  <circle cx="540" cy="590" r="385" fill="none" stroke="rgba(230,57,70,0.10)" stroke-width="1.5"/>
+  <circle cx="540" cy="590" r="368" fill="none" stroke="rgba(230,57,70,0.28)" stroke-width="2"/>
+
+  <!-- White circular badge holding the SWH logo -->
+  <circle cx="540" cy="590" r="350" fill="url(#badgeBg)"/>
+  <circle cx="540" cy="590" r="350" fill="none" stroke="rgba(0,0,0,0.06)" stroke-width="1.5"/>
+
+  <!-- SWH mark — clean centered square version (1490×1490).
+       Displayed at 600×600, mathematically centered on the badge (540, 590). -->
+  <g clip-path="url(#badge-clip)">
+    <image xlink:href="logo-mark-clean.png" x="240" y="290" width="600" height="600"/>
+  </g>
+</svg>

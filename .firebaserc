@@ -1,0 +1,24 @@
+{
+  "projects": {
+    "default": "swh-scoreboard"
+  },
+  "targets": {
+    "swh-scoreboard": {
+      "hosting": {
+        "scorecard": [
+          "swh-scoreboard"
+        ],
+        "crm": [
+          "swh-crm"
+        ],
+        "landing": [
+          "swh-landing"
+        ],
+        "admin": [
+          "swh-admin"
+        ]
+      }
+    }
+  },
+  "etags": {}
+}

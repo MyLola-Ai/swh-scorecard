@@ -1,0 +1,23 @@
+{
+  "name": "ios-crm",
+  "version": "1.0.0",
+  "description": "SWH CRM iOS app (Capacitor wrapper)",
+  "dependencies": {
+    "@capacitor-firebase/authentication": "^8.2.0",
+    "@capacitor/app": "^8.1.0",
+    "@capacitor/cli": "^8.3.1",
+    "@capacitor/core": "^8.3.1",
+    "@capacitor/ios": "^8.3.1",
+    "@capacitor/preferences": "^8.0.1",
+    "@capacitor/push-notifications": "^8.0.3",
+    "@capacitor/splash-screen": "^8.0.1",
+    "@capacitor/status-bar": "^8.0.2"
+  },
+  "scripts": {
+    "sync": "npx cap sync ios",
+    "copy": "npx cap copy ios",
+    "open": "npx cap open ios",
+    "add-ios": "npx cap add ios",
+    "doctor": "npx cap doctor"
+  }
+}

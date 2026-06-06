@@ -1,0 +1,39 @@
+{
+  "appId": "com.impactleadershipgroup.swh.scorecard",
+  "appName": "SWH Scorecard",
+  "webDir": "../public-scorecard",
+  "ios": {
+    "scheme": "SWH Scorecard",
+    "contentInset": "never",
+    "limitsNavigationsToAppBoundDomains": false,
+    "preferredContentMode": "mobile",
+    "backgroundColor": "#1a1a1a"
+  },
+  "backgroundColor": "#1a1a1a",
+  "server": {
+    "iosScheme": "https",
+    "hostname": "app.stopwastinghandshakes.com"
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchAutoHide": false,
+      "launchShowDuration": 0,
+      "backgroundColor": "#1a1a1a",
+      "showSpinner": false,
+      "androidSpinnerStyle": "large",
+      "iosSpinnerStyle": "small"
+    },
+    "PushNotifications": {
+      "presentationOptions": ["badge", "sound", "alert"]
+    },
+    "FirebaseAuthentication": {
+      "skipNativeAuth": false,
+      "providers": ["google.com", "apple.com"]
+    },
+    "StatusBar": {
+      "overlaysWebView": true,
+      "style": "DARK",
+      "backgroundColor": "#1a1a1a"
+    }
+  }
+}

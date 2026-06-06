@@ -1,0 +1,113 @@
+/* ============================================================
+   LOLA — Design Tokens v1.0
+   Drop into LoanIQ, MyFlyers.ai, or any Lola surface.
+   ============================================================ */
+
+:root {
+  /* —— The Orb (core brand) —— */
+  --lola-lavender: #A78BFA;   /* highlight, accents */
+  --lola-indigo:   #5B5BD6;   /* core, primary action */
+  --lola-navy:     #1E3A8A;   /* depth, gradient base */
+  --lola-orb: radial-gradient(circle at 32% 30%,
+                #A78BFA 0%, #5B5BD6 55%, #1E3A8A 100%);
+  --lola-orb-text: linear-gradient(120deg,
+                #C4B5FD 0%, #8B7CF0 45%, #5B5BD6 100%);
+
+  /* —— Neutrals (dark mode default) —— */
+  --lola-bg:       #0E0B18;   /* app background (void) */
+  --lola-panel:    #16121F;   /* cards, surfaces */
+  --lola-panel-2:  #1E1A2B;   /* raised surfaces */
+  --lola-text:     #ECE9F5;   /* primary text */
+  --lola-muted:    #9A93B0;   /* secondary text */
+  --lola-faint:    #65607A;   /* tertiary / labels */
+  --lola-off-white:#FBFBFB;   /* light mode bg / inverted text */
+
+  /* —— Lines & borders —— */
+  --lola-line:        rgba(167,139,250,0.14);
+  --lola-line-strong: rgba(167,139,250,0.28);
+
+  /* —— Functional —— */
+  --lola-success: #34D399;
+  --lola-warning: #FBBF24;
+  --lola-danger:  #F87171;
+
+  /* —— Shape —— */
+  --lola-radius-card: 18px;
+  --lola-radius-btn:  10px;
+  --lola-radius-pill: 999px;
+
+  /* —— Elevation & motion —— */
+  --lola-shadow-orb: 0 30px 80px -20px rgba(91,91,214,0.6);
+  --lola-shadow-card: 0 8px 24px -12px rgba(0,0,0,0.5);
+  --lola-orb-float: float 6s ease-in-out infinite;       /* hero idle */
+  --lola-orb-breathe: breathe 3.4s ease-in-out infinite; /* thinking */
+  --lola-transition: 0.3s ease;
+
+  /* —— Type —— */
+  --lola-font-display: 'Space Grotesk', sans-serif;
+  --lola-font-body: 'Inter', sans-serif;
+  --lola-font-mono: 'JetBrains Mono', monospace;
+}
+
+/* Orb avatar — reusable component */
+.lola-orb {
+  border-radius: 50%;
+  background: var(--lola-orb);
+  position: relative;
+  box-shadow: inset -6px -8px 24px rgba(30,58,138,0.5);
+}
+.lola-orb::after {
+  content: "";
+  position: absolute;
+  width: 30%; height: 30%;
+  left: 26%; top: 24%;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255,255,255,0.55), transparent 70%);
+}
+
+/* Float animation for hero / idle states */
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-14px); }
+}
+
+/* Breathing pulse — Lola's "thinking" state.
+   Subtle scale + glow swell, like a slow inhale/exhale. */
+@keyframes breathe {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: inset -6px -8px 24px rgba(30,58,138,0.5),
+                0 0 0 0 rgba(167,139,250,0.0);
+  }
+  50% {
+    transform: scale(1.06);
+    box-shadow: inset -6px -8px 24px rgba(30,58,138,0.5),
+                0 0 28px 6px rgba(167,139,250,0.35);
+  }
+}
+
+/* Apply to any orb to put Lola in "thinking" mode */
+.lola-orb.is-thinking {
+  animation: var(--lola-orb-breathe);
+}
+
+/* Primary button */
+.lola-btn {
+  background: var(--lola-orb);
+  color: #fff;
+  border: 0;
+  padding: 11px 20px;
+  border-radius: var(--lola-radius-btn);
+  font-family: var(--lola-font-display);
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+  transition: var(--lola-transition);
+}
+.lola-btn:hover { filter: brightness(1.1); }
+
+.lola-btn-ghost {
+  background: transparent;
+  border: 1px solid var(--lola-line-strong);
+  color: var(--lola-text);
+}

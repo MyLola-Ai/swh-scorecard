@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 1080 1080" width="1080" height="1080">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#1a1a1a"/>
+      <stop offset="100%" stop-color="#0a0a0a"/>
+    </linearGradient>
+    <radialGradient id="glowTL" cx="0.2" cy="0.15" r="0.55">
+      <stop offset="0%" stop-color="#E63946" stop-opacity="0.30"/>
+      <stop offset="60%" stop-color="#E63946" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glowBR" cx="0.85" cy="0.88" r="0.5">
+      <stop offset="0%" stop-color="#E63946" stop-opacity="0.20"/>
+      <stop offset="65%" stop-color="#E63946" stop-opacity="0"/>
+    </radialGradient>
+    <pattern id="dots" x="0" y="0" width="32" height="32" patternUnits="userSpaceOnUse">
+      <circle cx="1" cy="1" r="1" fill="rgba(255,255,255,0.05)"/>
+    </pattern>
+    <radialGradient id="badgeBg" cx="0.5" cy="0.42" r="0.7">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="85%" stop-color="#f4f4f4"/>
+      <stop offset="100%" stop-color="#e8e8e8"/>
+    </radialGradient>
+    <clipPath id="badge-clip">
+      <circle cx="540" cy="270" r="130"/>
+    </clipPath>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1080" height="1080" fill="url(#bg)"/>
+  <rect width="1080" height="1080" fill="url(#dots)"/>
+  <rect width="1080" height="1080" fill="url(#glowTL)"/>
+  <rect width="1080" height="1080" fill="url(#glowBR)"/>
+
+  <!-- Eyebrow pill at top — "Networking that Converts" -->
+  <g transform="translate(540, 100)">
+    <rect x="-205" y="-24" width="410" height="48" rx="24" fill="rgba(230,57,70,0.14)" stroke="rgba(230,57,70,0.45)" stroke-width="1.5"/>
+    <circle cx="-180" cy="0" r="5" fill="#E63946"/>
+    <text x="-162" y="6" font-family="-apple-system, 'Helvetica Neue', Arial, sans-serif" font-size="14" font-weight="800" fill="#f8a3aa" letter-spacing="2.4">NETWORKING THAT CONVERTS</text>
+  </g>
+
+  <!-- White circular badge with SWH logo -->
+  <circle cx="540" cy="270" r="145" fill="none" stroke="rgba(230,57,70,0.10)" stroke-width="1.5"/>
+  <circle cx="540" cy="270" r="137" fill="none" stroke="rgba(230,57,70,0.28)" stroke-width="2"/>
+  <circle cx="540" cy="270" r="130" fill="url(#badgeBg)"/>
+  <circle cx="540" cy="270" r="130" fill="none" stroke="rgba(0,0,0,0.06)" stroke-width="1.5"/>
+  <g clip-path="url(#badge-clip)">
+    <image xlink:href="logo-mark-clean.png" x="430" y="160" width="220" height="220"/>
+  </g>
+
+  <!-- Headline: Stop Wasting Handshakes -->
+  <text x="540" y="490" text-anchor="middle" font-family="Georgia, 'Playfair Display', 'Times New Roman', serif" font-size="62" font-weight="900" fill="#ffffff" letter-spacing="-2">Stop Wasting Handshakes</text>
+
+  <!-- Subtitle: italic tagline -->
+  <text x="540" y="532" text-anchor="middle" font-family="-apple-system, 'Helvetica Neue', Arial, sans-serif" font-size="20" font-weight="500" font-style="italic" fill="rgba(255,255,255,0.70)" letter-spacing="0.3">The operating system for marketing by referral</text>
+
+  <!-- Red label above QR -->
+  <text x="540" y="592" text-anchor="middle" font-family="-apple-system, 'Helvetica Neue', Arial, sans-serif" font-size="14" font-weight="800" fill="#E63946" letter-spacing="3">SCAN TO START YOUR FREE TRIAL</text>
+
+  <!-- QR code on white rounded card -->
+  <rect x="375" y="615" width="330" height="330" rx="24" fill="#ffffff" stroke="rgba(0,0,0,0.06)" stroke-width="1.5"/>
+  <image xlink:href="qr-swh.png" x="400" y="640" width="280" height="280"/>
+
+  <!-- URL at bottom -->
+  <text x="540" y="1010" text-anchor="middle" font-family="Georgia, 'Playfair Display', serif" font-size="24" font-weight="700" fill="#ffffff" letter-spacing="-0.3">stopwastinghandshakes.com</text>
+</svg>

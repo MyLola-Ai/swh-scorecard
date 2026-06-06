@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 1500 400" width="1500" height="400">
+  <defs>
+    <!-- Clip the embedded logo image to just the mark portion (no bottom text strip) -->
+    <clipPath id="markclip">
+      <rect x="0" y="0" width="400" height="400"/>
+    </clipPath>
+  </defs>
+
+  <!-- MARK (left) — original logo scaled and positioned so the bottom text strip falls outside the clip -->
+  <g clip-path="url(#markclip)">
+    <!-- Scale the 2000x2000 logo so its mark area (~y=100 to y=1550) fits in our 400px box.
+         Scale factor: 400 / 1450 ≈ 0.276
+         Translate so the mark starts at the top of our box.
+         Final: image rendered at 552px wide x 552px tall, positioned at (-76, -28) -->
+    <image xlink:href="logo-mark.png" x="-76" y="-28" width="552" height="552"/>
+  </g>
+
+  <!-- TEXT (right) — Stop Wasting Handshakes, Playfair-style serif, single line if it fits -->
+  <g font-family="Georgia, 'Playfair Display', 'Times New Roman', serif" fill="#0f0f0f">
+    <text x="400" y="225" font-size="84" font-weight="900" letter-spacing="-2.5">Stop Wasting</text>
+    <text x="400" y="310" font-size="84" font-weight="900" letter-spacing="-2.5">Handshakes</text>
+  </g>
+</svg>

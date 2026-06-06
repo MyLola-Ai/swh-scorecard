@@ -1,0 +1,110 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── Helpers ──
+    function isSignedIn() { return request.auth != null; }
+    function isOwner(uid) { return isSignedIn() && request.auth.uid == uid; }
+    function isAdmin() {
+      return isSignedIn()
+        && request.auth.token.email != null
+        && request.auth.token.email.lower() in [
+             'austen@austensmith.com'
+           ];
+    }
+
+    // ── /users — user docs and all subcollections ──
+    match /users/{uid} {
+      allow read:   if isOwner(uid) || isAdmin();
+      allow create: if isOwner(uid);                 // first-time signup creates own doc
+      allow update: if isOwner(uid) || isAdmin();    // admin can flip plan, etc.
+      allow delete: if isAdmin();
+
+      // Catch-all for any subcollection (contacts, days, opportunities, config, lag, …)
+      match /{subcoll}/{docId} {
+        allow read, write: if isOwner(uid) || isAdmin();
+      }
+      match /{subcoll}/{docId}/{nested=**} {
+        allow read, write: if isOwner(uid) || isAdmin();
+      }
+    }
+
+    // ── /announcements — any signed-in user reads; admin writes ──
+    match /announcements/{id} {
+      allow read: if isSignedIn();
+      allow create, update, delete: if isAdmin();
+    }
+
+    // ── /platform — global config (activity catalog, etc.) ──
+    match /platform/{docId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // ── /mail — Trigger Email Extension queue ──
+    // Authed users can enqueue (signup notifications). Admin can blast.
+    // Reads restricted to admin so users can't see each other's email payloads.
+    match /mail/{id} {
+      allow create: if isSignedIn();
+      allow read:   if isAdmin();
+      allow update, delete: if false;
+    }
+
+    // ── /teams — team plan workspaces ──
+    // teams/{teamId}: owner-readable + member-readable; writes ONLY via Cloud Functions (admin SDK).
+    // teams/{teamId}/members/{uid}: self-readable, owner-readable; writes admin-only.
+    // teams/{teamId}/invites/{inviteId}: owner-readable; writes admin-only.
+    // teams/{teamId}/feed/{eventId}: member-readable; writes admin-only.
+    match /teams/{teamId} {
+      function isTeamOwnerHere() {
+        return isSignedIn() && resource.data.ownerUid == request.auth.uid;
+      }
+      function isTeamMemberHere() {
+        return isSignedIn() &&
+          exists(/databases/$(database)/documents/teams/$(teamId)/members/$(request.auth.uid));
+      }
+      allow read: if isAdmin() || isTeamOwnerHere() || isTeamMemberHere();
+      allow create, update, delete: if isAdmin(); // Cloud Functions only
+
+      match /members/{memberUid} {
+        allow read: if isAdmin() || isOwner(memberUid) ||
+          (isSignedIn() && get(/databases/$(database)/documents/teams/$(teamId)).data.ownerUid == request.auth.uid);
+        allow create, update, delete: if isAdmin();
+      }
+
+      match /invites/{inviteId} {
+        allow read: if isAdmin() ||
+          (isSignedIn() && get(/databases/$(database)/documents/teams/$(teamId)).data.ownerUid == request.auth.uid);
+        allow create, update, delete: if isAdmin();
+      }
+
+      match /feed/{eventId} {
+        allow read: if isAdmin() ||
+          (isSignedIn() && exists(/databases/$(database)/documents/teams/$(teamId)/members/$(request.auth.uid)));
+        allow create, update, delete: if isAdmin();
+      }
+    }
+
+    // ── /teamInvites — short, queryable invite tokens for accept-flow ──
+    // Indexed by token so an unauthenticated visitor can read minimal preview data
+    // (team name, inviter name) before signing up. Writes only via Cloud Functions.
+    match /teamInvites/{token} {
+      allow read: if true; // token IS the secret — anyone with it can preview
+      allow create, update, delete: if isAdmin();
+    }
+
+    // ── /waitlist — paywall email capture (no auth required) ──
+    // Anonymous waitlist writes from demo users in WKWebView. Validation
+    // in the rule prevents abuse: must have a string email matching basic
+    // email shape, doc must be small.
+    match /waitlist/{id} {
+      allow create: if request.resource.data.email is string
+                     && request.resource.data.email.size() < 200
+                     && request.resource.data.email.matches('^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$')
+                     && request.resource.data.size() < 10;
+      allow read:   if isAdmin();
+      allow update, delete: if isAdmin();
+    }
+  }
+}

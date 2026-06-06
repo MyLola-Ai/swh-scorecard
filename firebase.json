@@ -1,0 +1,92 @@
+{
+  "hosting": [
+    {
+      "target": "scorecard",
+      "public": "public-scorecard",
+      "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+      "headers": [
+        {
+          "source": "**/*.@(html|json)",
+          "headers": [
+            { "key": "Cache-Control", "value": "no-store, max-age=0, must-revalidate" }
+          ]
+        },
+        {
+          "source": "/",
+          "headers": [
+            { "key": "Cache-Control", "value": "no-store, max-age=0, must-revalidate" }
+          ]
+        }
+      ]
+    },
+    {
+      "target": "crm",
+      "public": "public-crm",
+      "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+      "headers": [
+        {
+          "source": "**/*.@(html|json)",
+          "headers": [
+            { "key": "Cache-Control", "value": "no-store, max-age=0, must-revalidate" }
+          ]
+        },
+        {
+          "source": "/",
+          "headers": [
+            { "key": "Cache-Control", "value": "no-store, max-age=0, must-revalidate" }
+          ]
+        }
+      ]
+    },
+    {
+      "target": "landing",
+      "public": "public-landing",
+      "cleanUrls": true,
+      "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+      "headers": [
+        {
+          "source": "**/*.@(html|json)",
+          "headers": [
+            { "key": "Cache-Control", "value": "no-store, max-age=0, must-revalidate" }
+          ]
+        },
+        {
+          "source": "/",
+          "headers": [
+            { "key": "Cache-Control", "value": "no-store, max-age=0, must-revalidate" }
+          ]
+        }
+      ]
+    },
+    {
+      "target": "admin",
+      "public": "public-admin",
+      "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+      "headers": [
+        {
+          "source": "**/*.@(html|json)",
+          "headers": [
+            { "key": "Cache-Control", "value": "no-store, max-age=0, must-revalidate" }
+          ]
+        },
+        {
+          "source": "/",
+          "headers": [
+            { "key": "Cache-Control", "value": "no-store, max-age=0, must-revalidate" }
+          ]
+        }
+      ]
+    }
+  ],
+  "functions": [
+    {
+      "source": "functions",
+      "codebase": "default",
+      "disallowLegacyRuntimeConfig": true,
+      "ignore": ["node_modules", ".git", "firebase-debug.log", "firebase-debug.*.log", "*.local"]
+    }
+  ],
+  "firestore": {
+    "rules": "firestore.rules"
+  }
+}

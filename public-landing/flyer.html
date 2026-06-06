@@ -1,0 +1,397 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SWH Scorecard — Stop Wasting Handshakes</title>
+<meta name="description" content="The networking scorecard for people who close. Track lead and lag indicators, see your tier, hit your weekly goal.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;800;900&family=DM+Sans:wght@400;500;600;700;800;900&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
+<style>
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+  :root{
+    --navy:#0a0a0a;
+    --navy-2:#1a1a1a;
+    --red:#E63946;
+    --red-d:#b8252f;
+    --red-soft:rgba(230,57,70,0.14);
+    --gold:#E63946;
+    --text:#0a0a0a;
+    --muted:#6B7280;
+    --card:#ffffff;
+    --border:#E4E4E7;
+    --bg:#F4F4F5;
+  }
+  html,body{background:#0a0a0a;color:#fff;font-family:'DM Sans',-apple-system,BlinkMacSystemFont,sans-serif;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;}
+  body{display:flex;justify-content:center;padding:24px 16px;min-height:100vh;}
+
+  /* The flyer canvas — US Letter portrait. 8.5"x11" = 816x1056px at 96dpi.
+     We scale to fit on screen; print rules pin it to letter. */
+  .flyer{
+    width:816px; height:1056px;
+    background:
+      radial-gradient(ellipse at 15% 10%, rgba(230,57,70,0.22) 0%, transparent 45%),
+      radial-gradient(ellipse at 88% 92%, rgba(230,57,70,0.18) 0%, transparent 50%),
+      linear-gradient(160deg, #1a1a1a 0%, #0a0a0a 100%);
+    position:relative;
+    overflow:hidden;
+    border-radius:24px;
+    box-shadow:0 24px 80px rgba(0,0,0,0.5);
+    color:#fff;
+    padding:40px 56px 32px;
+    display:flex; flex-direction:column;
+  }
+  /* Dot grid overlay — subtle texture */
+  .flyer::before{
+    content:'';
+    position:absolute; inset:0;
+    background-image: radial-gradient(rgba(255,255,255,0.05) 1px, transparent 1px);
+    background-size:24px 24px;
+    pointer-events:none;
+  }
+  .flyer > *{ position:relative; z-index:1; }
+
+  /* ========== Top bar ========== */
+  .topbar{ display:flex; align-items:center; justify-content:space-between; }
+  .brand{ display:flex; align-items:center; gap:14px; }
+  .brand-mark{
+    width:58px; height:58px; border-radius:50%;
+    background: radial-gradient(circle at 50% 42%, #ffffff 0%, #f4f4f4 85%, #e8e8e8 100%);
+    display:flex; align-items:center; justify-content:center;
+    box-shadow:0 4px 16px rgba(0,0,0,0.35), 0 0 0 1.5px rgba(230,57,70,0.28);
+    overflow:hidden;
+    flex-shrink:0;
+  }
+  .brand-mark img{
+    width:78%; height:78%; object-fit:contain; display:block;
+  }
+  .brand-text{ font-size:11px; font-weight:800; letter-spacing:2.4px; color:rgba(255,255,255,0.55); text-transform:uppercase; line-height:1.3; }
+  .brand-text .title{ display:block; font-family:'Playfair Display',serif; font-size:16px; font-weight:800; color:#fff; letter-spacing:-0.2px; text-transform:none; line-height:1.1; margin-bottom:2px; }
+  .pill{
+    display:inline-flex; align-items:center; gap:8px;
+    padding:8px 14px; border-radius:999px;
+    background:var(--red-soft);
+    border:1.5px solid rgba(230,57,70,0.45);
+    font-size:11px; font-weight:800; letter-spacing:2.4px;
+    color:#f8a3aa; text-transform:uppercase;
+  }
+  .pill::before{ content:''; width:6px; height:6px; border-radius:50%; background:#E63946; }
+
+  /* ========== Hero ========== */
+  .hero{ margin-top:28px; }
+  .hero h1{
+    font-family:'Playfair Display',serif;
+    font-size:64px; font-weight:900;
+    letter-spacing:-2.2px;
+    line-height:0.98;
+    color:#fff;
+  }
+  .hero h1 .accent{ color:#E63946; }
+  .hero .sub{
+    margin-top:14px;
+    font-size:16px; font-weight:500;
+    color:rgba(255,255,255,0.72);
+    line-height:1.5; max-width:560px;
+  }
+  .hero .sub em{ font-style:italic; color:#fff; }
+
+  /* ========== Phone mockup + score block ========== */
+  .showcase{
+    margin-top:24px;
+    display:grid;
+    grid-template-columns: 250px 1fr;
+    gap:24px;
+    align-items:center;
+  }
+  /* Stylized scorecard tile — mimics the app's day card */
+  .day-card{
+    background:linear-gradient(135deg,#1a1a1a 0%, #2a2a2a 100%);
+    border:1.5px solid rgba(255,255,255,0.08);
+    border-radius:18px;
+    padding:22px 20px;
+    position:relative; overflow:hidden;
+    box-shadow:0 12px 40px rgba(0,0,0,0.4);
+  }
+  .day-card::after{
+    content:''; position:absolute; top:-40px; right:-40px;
+    width:140px; height:140px; border-radius:50%;
+    background:rgba(230,57,70,0.18);
+  }
+  .day-card .ey{ font-size:10px; font-weight:700; letter-spacing:0.16em; color:rgba(255,255,255,0.4); text-transform:uppercase; }
+  .day-card .date{ margin-top:4px; font-family:'Playfair Display',serif; font-size:14px; font-weight:700; color:#E63946; }
+  .day-card .pts-row{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; margin-top:18px; }
+  .day-card .pts-val{ font-family:'Playfair Display',serif; font-size:30px; font-weight:900; color:#fff; line-height:1; }
+  .day-card .pts-lbl{ font-size:9px; letter-spacing:0.08em; color:rgba(255,255,255,0.45); margin-top:5px; }
+  .day-card .pace{ margin-top:14px; padding-top:12px; border-top:1px solid rgba(255,255,255,0.1); display:flex; justify-content:space-between; align-items:center; font-size:11px; }
+  .day-card .pace .left{ color:rgba(255,255,255,0.5); }
+  .day-card .pace .right{ color:#E63946; font-weight:700; }
+  .day-card .tier{
+    margin-top:14px; padding:10px 12px; border-radius:10px;
+    background:linear-gradient(135deg, rgba(212,168,71,0.18), rgba(212,168,71,0.06));
+    border:1px solid rgba(212,168,71,0.35);
+    display:flex; align-items:center; gap:10px; font-size:11px; font-weight:700; color:#F0D578;
+    letter-spacing:0.04em;
+  }
+  .day-card .tier .medal{ width:18px; height:18px; border-radius:50%; background:#D4A847; color:#fff; display:flex; align-items:center; justify-content:center; font-family:'Playfair Display',serif; font-size:10px; font-weight:900; }
+
+  /* Right-side feature grid */
+  .features{
+    display:grid; grid-template-columns:1fr 1fr; gap:12px;
+  }
+  .feature{
+    background:rgba(255,255,255,0.04);
+    border:1px solid rgba(255,255,255,0.08);
+    border-radius:12px;
+    padding:12px 14px;
+  }
+  .feature .ic{
+    width:30px; height:30px; border-radius:8px;
+    background:linear-gradient(135deg,#E63946,#b8252f);
+    display:flex; align-items:center; justify-content:center;
+    font-size:14px; color:#fff;
+    margin-bottom:8px;
+  }
+  .feature .t{ font-family:'Playfair Display',serif; font-size:15px; font-weight:800; color:#fff; }
+  .feature .d{ font-size:11.5px; line-height:1.45; color:rgba(255,255,255,0.6); margin-top:3px; }
+
+  /* ========== Pricing strip ========== */
+  .pricing{
+    margin-top:20px;
+    display:grid; grid-template-columns:1fr auto auto; gap:16px;
+    align-items:center;
+    background:rgba(255,255,255,0.04);
+    border:1.5px solid rgba(255,255,255,0.10);
+    border-radius:16px;
+    padding:16px 20px;
+  }
+  .pricing .lead{ display:flex; flex-direction:column; gap:4px; }
+  .pricing .lead .price{
+    font-family:'Playfair Display',serif; font-weight:900;
+    font-size:38px; color:#fff; line-height:1; letter-spacing:-1px;
+  }
+  .pricing .lead .price small{ font-size:14px; font-weight:600; color:rgba(255,255,255,0.55); margin-left:6px; letter-spacing:0; }
+  .pricing .lead .sub{ font-size:12px; color:rgba(255,255,255,0.55); }
+  .pricing .badge{
+    background:rgba(95,138,106,0.18);
+    border:1px solid rgba(95,138,106,0.45);
+    color:#9bd5ab;
+    padding:6px 12px; border-radius:8px;
+    font-size:11px; font-weight:800; letter-spacing:0.08em; text-transform:uppercase;
+  }
+  .pricing .cta{
+    background:linear-gradient(135deg,#E63946 0%,#b8252f 100%);
+    color:#fff; font-weight:800; font-size:14px;
+    padding:14px 22px; border-radius:12px;
+    text-decoration:none;
+    box-shadow:0 6px 20px rgba(230,57,70,0.45);
+    letter-spacing:0.02em;
+  }
+
+  /* ========== iOS coming soon ========== */
+  .ios-row{
+    margin-top:14px;
+    display:flex; align-items:center; gap:14px;
+    padding:12px 16px;
+    background:rgba(255,255,255,0.03);
+    border:1px dashed rgba(255,255,255,0.15);
+    border-radius:14px;
+  }
+  .ios-row .apple{
+    width:42px; height:42px; border-radius:50%;
+    background:#000; border:1.5px solid rgba(255,255,255,0.18);
+    display:flex; align-items:center; justify-content:center;
+    flex-shrink:0;
+  }
+  .ios-row .apple svg{ width:20px; height:24px; fill:#fff; }
+  .ios-row .copy .t{ font-size:14px; font-weight:800; color:#fff; }
+  .ios-row .copy .d{ font-size:12px; color:rgba(255,255,255,0.55); margin-top:2px; }
+  .ios-row .tag{
+    margin-left:auto;
+    font-size:10px; font-weight:800; letter-spacing:0.16em; text-transform:uppercase;
+    color:#f8a3aa; background:var(--red-soft);
+    border:1px solid rgba(230,57,70,0.4);
+    padding:6px 10px; border-radius:8px;
+  }
+
+  /* ========== Bottom: QR + URL ========== */
+  .bottom{
+    margin-top:auto;
+    padding-top:18px;
+    display:grid; grid-template-columns:84px 1fr auto; gap:16px; align-items:center;
+    border-top:1px solid rgba(255,255,255,0.08);
+  }
+  .qr-tile{
+    width:84px; height:84px; border-radius:12px;
+    background:#fff; padding:6px;
+    display:flex; align-items:center; justify-content:center;
+    box-shadow:0 6px 24px rgba(0,0,0,0.35);
+  }
+  .qr-tile img{ width:100%; height:100%; display:block; }
+  .bottom .lead{ display:flex; flex-direction:column; gap:4px; }
+  .bottom .lead .scan{ font-size:11px; font-weight:800; letter-spacing:0.18em; text-transform:uppercase; color:#E63946; }
+  .bottom .lead .url{
+    font-family:'Playfair Display',serif; font-size:24px; font-weight:800; color:#fff; line-height:1.1;
+    letter-spacing:-0.3px;
+  }
+  .bottom .lead .promise{ font-size:12px; color:rgba(255,255,255,0.55); margin-top:2px; }
+  .bottom .credit{ font-size:10px; color:rgba(255,255,255,0.35); letter-spacing:0.12em; text-transform:uppercase; text-align:right; }
+  .bottom .credit .row{ display:block; }
+
+  /* ========== Print ========== */
+  @page { size: letter; margin: 0; }
+  @media print {
+    html, body{ background:#0a0a0a !important; padding:0 !important; }
+    .flyer{
+      width:8.5in; height:11in;
+      border-radius:0; box-shadow:none;
+      page-break-after:always;
+    }
+    .no-print{ display:none !important; }
+  }
+
+  /* Screen-only print hint */
+  .print-hint{
+    position:fixed; bottom:14px; right:14px;
+    background:#fff; color:#0a0a0a;
+    padding:10px 16px; border-radius:999px;
+    font-size:13px; font-weight:700;
+    box-shadow:0 8px 24px rgba(0,0,0,0.35);
+    cursor:pointer; border:none;
+    z-index:10;
+  }
+  @media (max-width: 880px){
+    body{ padding:12px; }
+    .flyer{ width:100%; height:auto; min-height:auto; padding:32px 28px; border-radius:16px; }
+    .hero h1{ font-size:48px; letter-spacing:-1.5px; }
+    .showcase{ grid-template-columns:1fr; }
+    .features{ grid-template-columns:1fr 1fr; }
+    .pricing{ grid-template-columns:1fr; gap:14px; text-align:center; }
+    .pricing .cta{ justify-self:stretch; text-align:center; }
+    .bottom{ grid-template-columns:80px 1fr; }
+    .bottom .credit{ display:none; }
+    .qr-tile{ width:80px; height:80px; }
+  }
+</style>
+</head>
+<body>
+  <div class="flyer">
+    <!-- Top bar -->
+    <div class="topbar">
+      <div class="brand">
+        <div class="brand-mark"><img src="assets/swh/swh-lockup-light.png" alt="SWH logo" /></div>
+        <div class="brand-text">
+          <span class="title">Stop Wasting Handshakes</span>
+          The Scorecard
+        </div>
+      </div>
+      <div class="pill">Networking that Converts</div>
+    </div>
+
+    <!-- Hero -->
+    <div class="hero">
+      <h1>Stop wasting<br><span class="accent">handshakes.</span></h1>
+      <div class="sub">
+        The networking scorecard for people who close. Log the activities that actually move business, see your tier climb in real time, and end the week knowing exactly what you did to earn it.
+      </div>
+    </div>
+
+    <!-- Showcase: app preview + features -->
+    <div class="showcase">
+      <!-- Stylized day card mimicking the app -->
+      <div class="day-card">
+        <div class="ey">TODAY</div>
+        <div class="date">Thu, May 21</div>
+        <div class="pts-row">
+          <div>
+            <div class="pts-val">175</div>
+            <div class="pts-lbl">POINTS</div>
+          </div>
+          <div>
+            <div class="pts-val">7</div>
+            <div class="pts-lbl">LEAD ACTS</div>
+          </div>
+          <div>
+            <div class="pts-val">2</div>
+            <div class="pts-lbl">LAG WINS</div>
+          </div>
+        </div>
+        <div class="pace">
+          <span class="left">Weekly Pace</span>
+          <span class="right">117% of Goal</span>
+        </div>
+        <div class="tier">
+          <div class="medal">2</div>
+          <div>PROFESSIONAL NETWORKER</div>
+        </div>
+      </div>
+
+      <!-- Features -->
+      <div class="features">
+        <div class="feature">
+          <div class="ic">🎯</div>
+          <div class="t">Lead &amp; Lag clarity</div>
+          <div class="d">Separate the actions you control from the results that follow. Earn the activity, then earn the outcome.</div>
+        </div>
+        <div class="feature">
+          <div class="ic">📈</div>
+          <div class="t">Five tier ladder</div>
+          <div class="d">Watch yourself climb from Active to Master Networker week by week. Real progress, visible daily.</div>
+        </div>
+        <div class="feature">
+          <div class="ic">⚡</div>
+          <div class="t">30-second log</div>
+          <div class="d">Tap the activities you did today. That is it. No notes, no follow-up forms, no excuses.</div>
+        </div>
+        <div class="feature">
+          <div class="ic">📊</div>
+          <div class="t">Weekly recap</div>
+          <div class="d">Email yourself a Sunday-night summary. What you did, where you spiked, where you slipped.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Pricing strip -->
+    <div class="pricing">
+      <div class="lead">
+        <div class="price">$10<small>/month</small></div>
+        <div class="sub">Cancel anytime. No card on file to start.</div>
+      </div>
+      <div class="badge">60-Day Free Trial</div>
+      <a class="cta" href="https://stopwastinghandshakes.com">Start Free Trial →</a>
+    </div>
+
+    <!-- iOS coming soon -->
+    <div class="ios-row">
+      <div class="apple">
+        <svg viewBox="0 0 384 512" aria-hidden="true"><path d="M318.7 268.7c-.2-36.7 16.4-64.4 50-84.8-18.8-26.9-47.2-41.7-84.7-44.6-35.5-2.8-74.3 20.7-88.5 20.7-15 0-49.4-19.7-76.4-19.7C63.3 141.2 4 184.8 4 273.5q0 39.3 14.4 81.2c12.8 36.7 59 126.7 107.2 125.2 25.2-.6 43-17.9 75.8-17.9 31.8 0 48.3 17.9 76.4 17.9 48.6-.7 90.4-82.5 102.6-119.3-65.2-30.7-61.7-90-61.7-91.9zM256.4 105c30.1-35.7 27.4-68.2 26.5-79.9-26.6 1.5-57.4 18.1-74.9 38.5-19.3 21.9-30.6 49-28.2 78.9 28.8 2.2 55.1-12.6 76.6-37.5z"/></svg>
+      </div>
+      <div class="copy">
+        <div class="t">iOS app — coming soon to the App Store</div>
+        <div class="d">Native scoreboard. Push reminders. Same login. Web app works today on every device.</div>
+      </div>
+      <div class="tag">Coming Soon</div>
+    </div>
+
+    <!-- Bottom: QR + URL -->
+    <div class="bottom">
+      <div class="qr-tile"><img src="qr-swh.png" alt="QR code to stopwastinghandshakes.com"></div>
+      <div class="lead">
+        <div class="scan">Scan or visit</div>
+        <div class="url">stopwastinghandshakes.com</div>
+        <div class="promise">Start your free trial. Track your first handshake in under a minute.</div>
+      </div>
+      <div class="credit">
+        <span class="row">Stop Wasting Handshakes</span>
+        <span class="row">© 2026 SWH</span>
+        <span class="row" style="display:inline-flex;align-items:center;gap:7px;margin-top:3px;font-family:'Space Grotesk',inherit;letter-spacing:0.18em;font-weight:600;color:rgba(255,255,255,0.55);">
+          <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:radial-gradient(circle at 32% 30%, #A78BFA 0%, #5B5BD6 55%, #1E3A8A 100%);box-shadow:inset -1px -1.5px 3px rgba(30,58,138,0.55), 0 0 6px rgba(167,139,250,0.45);"></span>
+          powered by <span style="color:#A78BFA;font-weight:700;letter-spacing:0.20em;">Lola</span>
+        </span>
+      </div>
+    </div>
+  </div>
+
+  <button class="print-hint no-print" onclick="window.print()">🖨️ Print / Save as PDF</button>
+</body>
+</html>

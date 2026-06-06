@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0a0a0a"/>
+      <stop offset="60%" stop-color="#1a1a1a"/>
+      <stop offset="100%" stop-color="#2a1416"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.78" cy="0.28" r="0.6">
+      <stop offset="0%" stop-color="#E63946" stop-opacity="0.22"/>
+      <stop offset="55%" stop-color="#E63946" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="mark" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#E63946"/>
+      <stop offset="100%" stop-color="#b8252f"/>
+    </linearGradient>
+    <pattern id="dots" x="0" y="0" width="24" height="24" patternUnits="userSpaceOnUse">
+      <circle cx="1" cy="1" r="0.8" fill="rgba(255,255,255,0.04)"/>
+    </pattern>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <rect width="1200" height="630" fill="url(#dots)"/>
+  <rect width="1200" height="630" fill="url(#glow)"/>
+
+  <!-- TOP ROW: brand + pill -->
+  <g transform="translate(80, 64)">
+    <!-- Brand mark -->
+    <rect x="0" y="0" width="64" height="64" rx="14" fill="url(#mark)"/>
+    <text x="32" y="42" font-family="Georgia, 'Playfair Display', serif" font-size="22" font-weight="900" fill="#ffffff" text-anchor="middle" letter-spacing="0.5">SWH</text>
+
+    <!-- Brand name + subtitle -->
+    <text x="84" y="32" font-family="-apple-system, 'Helvetica Neue', Arial, sans-serif" font-size="22" font-weight="800" fill="#ffffff" letter-spacing="-0.2">Stop Wasting Handshakes</text>
+    <text x="84" y="54" font-family="-apple-system, 'Helvetica Neue', Arial, sans-serif" font-size="12" font-weight="700" fill="rgba(255,255,255,0.45)" letter-spacing="2">NETWORKING THAT CONVERTS</text>
+  </g>
+
+  <!-- Top-right pill -->
+  <g transform="translate(720, 78)">
+    <rect x="0" y="0" width="400" height="40" rx="20" fill="rgba(230,57,70,0.14)" stroke="rgba(230,57,70,0.45)" stroke-width="1.5"/>
+    <circle cx="22" cy="20" r="4" fill="#E63946"/>
+    <text x="40" y="26" font-family="-apple-system, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="800" fill="#f8a3aa" letter-spacing="1">THE OS FOR REFERRAL MARKETING</text>
+  </g>
+
+  <!-- HEADLINE -->
+  <g transform="translate(80, 270)">
+    <text x="0" y="0" font-family="Georgia, 'Playfair Display', serif" font-size="80" font-weight="900" fill="#ffffff" letter-spacing="-2">Stop wasting handshakes.</text>
+    <text x="0" y="86" font-family="Georgia, 'Playfair Display', serif" font-size="80" font-weight="900" fill="#E63946" letter-spacing="-2">Start building revenue.</text>
+  </g>
+
+  <!-- Subhead -->
+  <g transform="translate(80, 478)">
+    <text x="0" y="0" font-family="-apple-system, 'Helvetica Neue', Arial, sans-serif" font-size="22" font-weight="400" fill="rgba(255,255,255,0.72)">The Manifesto, the Scorecard, and the CRM. Built for the professional</text>
+    <text x="0" y="30" font-family="-apple-system, 'Helvetica Neue', Arial, sans-serif" font-size="22" font-weight="400" fill="rgba(255,255,255,0.72)">whose business runs on referrals.</text>
+  </g>
+
+  <!-- BOTTOM ROW: stats -->
+  <g transform="translate(80, 558)">
+    <!-- Stat 1 -->
+    <text x="0" y="0" font-family="Georgia, 'Playfair Display', serif" font-size="38" font-weight="900" fill="#ffffff" letter-spacing="-1">10</text>
+    <text x="0" y="20" font-family="-apple-system, 'Helvetica Neue', Arial, sans-serif" font-size="10" font-weight="800" fill="rgba(255,255,255,0.5)" letter-spacing="1.6">TENETS</text>
+
+    <!-- Divider -->
+    <rect x="76" y="-22" width="1" height="40" fill="rgba(255,255,255,0.1)"/>
+
+    <!-- Stat 2 -->
+    <text x="100" y="0" font-family="Georgia, 'Playfair Display', serif" font-size="38" font-weight="900" fill="#ffffff" letter-spacing="-1">8</text>
+    <text x="100" y="20" font-family="-apple-system, 'Helvetica Neue', Arial, sans-serif" font-size="10" font-weight="800" fill="rgba(255,255,255,0.5)" letter-spacing="1.6">FOLLOW-THROUGH STEPS</text>
+
+    <!-- Divider -->
+    <rect x="294" y="-22" width="1" height="40" fill="rgba(255,255,255,0.1)"/>
+
+    <!-- Stat 3 -->
+    <text x="316" y="0" font-family="Georgia, 'Playfair Display', serif" font-size="38" font-weight="900" fill="#ffffff" letter-spacing="-1">2</text>
+    <text x="316" y="20" font-family="-apple-system, 'Helvetica Neue', Arial, sans-serif" font-size="10" font-weight="800" fill="rgba(255,255,255,0.5)" letter-spacing="1.6">APPS. ONE SYSTEM.</text>
+  </g>
+
+  <!-- BOTTOM ROW: domain + CTA -->
+  <g transform="translate(1120, 558)">
+    <text x="0" y="0" font-family="-apple-system, 'Helvetica Neue', Arial, sans-serif" font-size="12" font-weight="800" fill="#E63946" letter-spacing="1.4" text-anchor="end">START FREE TRIAL →</text>
+    <text x="0" y="22" font-family="Georgia, 'Playfair Display', serif" font-size="22" font-weight="700" fill="#ffffff" text-anchor="end">stopwastinghandshakes.com</text>
+  </g>
+</svg>

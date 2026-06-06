@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>OG Preview — Stop Wasting Handshakes</title>
+<meta name="robots" content="noindex">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=DM+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  *,*::before,*::after { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 0;
+    font-family: 'DM Sans', sans-serif;
+    background: #2a2a2a;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px 20px;
+    gap: 24px;
+  }
+  .note {
+    color: rgba(255,255,255,0.7);
+    font-size: 14px;
+    max-width: 1200px;
+    line-height: 1.6;
+    text-align: center;
+  }
+  .note strong { color: #fff; }
+  .note code {
+    background: rgba(255,255,255,0.1);
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 13px;
+    color: #fbbf24;
+  }
+
+  /* THE OG CARD — exactly 1200 × 630 */
+  .og {
+    width: 1200px;
+    height: 630px;
+    background:
+      radial-gradient(ellipse at 70% 30%, rgba(230,57,70,0.22) 0%, rgba(230,57,70,0) 55%),
+      linear-gradient(160deg, #0a0a0a 0%, #1a1a1a 60%, #2a1416 100%);
+    color: #fff;
+    padding: 64px 80px;
+    position: relative;
+    overflow: hidden;
+    font-family: 'DM Sans', sans-serif;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    box-shadow: 0 24px 80px rgba(0,0,0,0.55);
+  }
+
+  /* Subtle texture: dot grid */
+  .og::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image: radial-gradient(rgba(255,255,255,0.04) 1px, transparent 1px);
+    background-size: 24px 24px;
+    pointer-events: none;
+  }
+
+  .row-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: relative;
+    z-index: 2;
+  }
+
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+  .brand-mark {
+    width: 64px; height: 64px;
+    background: linear-gradient(135deg, #E63946 0%, #b8252f 100%);
+    border-radius: 14px;
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Playfair Display', serif;
+    font-size: 22px;
+    font-weight: 900;
+    color: #fff;
+    box-shadow: 0 8px 24px rgba(230,57,70,0.35);
+    letter-spacing: 0.02em;
+  }
+  .brand-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .brand-name {
+    font-size: 22px;
+    font-weight: 800;
+    letter-spacing: -0.01em;
+    color: #fff;
+  }
+  .brand-sub {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.45);
+  }
+
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    background: rgba(230,57,70,0.14);
+    border: 1.5px solid rgba(230,57,70,0.45);
+    border-radius: 999px;
+    padding: 10px 20px;
+    font-size: 13px;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #f8a3aa;
+  }
+  .pill::before {
+    content: '';
+    width: 8px; height: 8px;
+    background: #E63946;
+    border-radius: 50%;
+    box-shadow: 0 0 12px rgba(230,57,70,0.8);
+  }
+
+  .row-headline {
+    position: relative;
+    z-index: 2;
+    margin-top: -10px;
+  }
+  h1 {
+    margin: 0;
+    font-family: 'Playfair Display', serif;
+    font-weight: 900;
+    font-size: 84px;
+    line-height: 1;
+    letter-spacing: -0.025em;
+    color: #fff;
+    max-width: 920px;
+  }
+  h1 em {
+    font-style: normal;
+    color: #E63946;
+  }
+  .sub {
+    margin: 24px 0 0;
+    font-size: 22px;
+    line-height: 1.45;
+    color: rgba(255,255,255,0.72);
+    max-width: 820px;
+    font-weight: 400;
+  }
+
+  .row-bottom {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: relative;
+    z-index: 2;
+  }
+  .stats {
+    display: flex;
+    align-items: center;
+    gap: 36px;
+  }
+  .stat .num {
+    font-family: 'Playfair Display', serif;
+    font-size: 44px;
+    font-weight: 900;
+    line-height: 1;
+    color: #fff;
+    letter-spacing: -0.02em;
+  }
+  .stat .lbl {
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.5);
+    margin-top: 8px;
+  }
+  .stat-divider {
+    width: 1px;
+    height: 50px;
+    background: rgba(255,255,255,0.1);
+  }
+  .url {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 6px;
+  }
+  .url .domain {
+    font-family: 'Playfair Display', serif;
+    font-size: 22px;
+    font-weight: 700;
+    color: #fff;
+    letter-spacing: -0.005em;
+  }
+  .url .cta {
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: #E63946;
+  }
+
+  /* Print-friendly: hide the helper note when capturing */
+  @media print {
+    body { background: #fff; padding: 0; }
+    .note { display: none; }
+    .og { box-shadow: none; }
+  }
+</style>
+</head>
+<body>
+
+<div class="note">
+  <strong>How to capture this as og.png:</strong>
+  In Chrome → DevTools (<code>Cmd+Opt+I</code>) → toggle device toolbar (<code>Cmd+Shift+M</code>) →
+  set viewport to <code>1200 × 630</code> → right-click the card below → <strong>Capture node screenshot</strong>.
+  Save the result as <code>public-landing/og.png</code> and redeploy.
+</div>
+
+<div class="og" id="og-card">
+  <div class="row-top">
+    <div class="brand">
+      <div class="brand-mark">SWH</div>
+      <div class="brand-text">
+        <div class="brand-name">Stop Wasting Handshakes</div>
+        <div class="brand-sub">Networking that converts</div>
+      </div>
+    </div>
+    <div class="pill">The Operating System for Referral Marketing</div>
+  </div>
+
+  <div class="row-headline">
+    <h1>Stop wasting handshakes.<br><em>Start building revenue.</em></h1>
+    <p class="sub">The Manifesto, the Scorecard, and the CRM. Built for the professional whose business runs on referrals.</p>
+  </div>
+
+  <div class="row-bottom">
+    <div class="stats">
+      <div class="stat">
+        <div class="num">10</div>
+        <div class="lbl">Tenets</div>
+      </div>
+      <div class="stat-divider"></div>
+      <div class="stat">
+        <div class="num">8</div>
+        <div class="lbl">Follow-Through Steps</div>
+      </div>
+      <div class="stat-divider"></div>
+      <div class="stat">
+        <div class="num">2</div>
+        <div class="lbl">Apps. One System.</div>
+      </div>
+    </div>
+    <div class="url">
+      <div class="cta">Start free trial →</div>
+      <div class="domain">stopwastinghandshakes.com</div>
+    </div>
+  </div>
+</div>
+
+<div class="note">
+  Preview shows exactly how the card will render at <strong>1200×630</strong> across LinkedIn, X, iMessage, Slack, Discord, and Google's social search results.
+</div>
+
+</body>
+</html>

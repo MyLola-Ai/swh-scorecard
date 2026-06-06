@@ -1,0 +1,33 @@
+{
+  "appId": "com.impactleadershipgroup.swh.crm",
+  "appName": "SWH CRM",
+  "webDir": "../public-crm",
+  "ios": {
+    "scheme": "SWH CRM",
+    "contentInset": "always",
+    "limitsNavigationsToAppBoundDomains": false,
+    "preferredContentMode": "mobile",
+    "backgroundColor": "#0E1D32"
+  },
+  "backgroundColor": "#0E1D32",
+  "server": {
+    "iosScheme": "https",
+    "hostname": "crm.stopwastinghandshakes.com"
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchAutoHide": true,
+      "launchShowDuration": 2000,
+      "backgroundColor": "#0E1D32",
+      "showSpinner": false,
+      "iosSpinnerStyle": "small"
+    },
+    "PushNotifications": {
+      "presentationOptions": ["badge", "sound", "alert"]
+    },
+    "FirebaseAuthentication": {
+      "skipNativeAuth": false,
+      "providers": ["google.com", "apple.com", "microsoft.com"]
+    }
+  }
+}

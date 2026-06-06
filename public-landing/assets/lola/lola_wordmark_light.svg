@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 340 100" width="340" height="100">
+  <defs>
+    <radialGradient id="lolaOrbWL" cx="32%" cy="30%" r="72%">
+      <stop offset="0%" stop-color="#A78BFA"/>
+      <stop offset="55%" stop-color="#5B5BD6"/>
+      <stop offset="100%" stop-color="#1E3A8A"/>
+    </radialGradient>
+    <radialGradient id="lolaGlowWL" cx="36%" cy="38%" r="40%">
+      <stop offset="0%" stop-color="rgba(255,255,255,0.55)"/>
+      <stop offset="100%" stop-color="rgba(255,255,255,0)"/>
+    </radialGradient>
+  </defs>
+  <style>
+    .mark { font-family: 'Space Grotesk', -apple-system, sans-serif; font-weight: 700; font-size: 72px; letter-spacing: 2px; fill: #0A0A0A; }
+  </style>
+  <circle cx="44" cy="50" r="32" fill="url(#lolaOrbWL)"/>
+  <circle cx="36" cy="40" r="10" fill="url(#lolaGlowWL)"/>
+  <text x="92" y="73" class="mark">LOLA</text>
+</svg>
