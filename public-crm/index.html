@@ -9815,31 +9815,37 @@ const myLolaIntegrationService = (() => {
         throw new Error('MyLola is not connected. Connect in Settings → Integrations.');
       }
 
-      // Step 2 — fresh contact.
+      // Step 2 — fresh contact (server reads its own copy; we don\'t
+      // ship the snapshot over the wire to avoid trust issues — the
+      // user could otherwise edit the contact mid-flight).
       const snap = await getDoc(ref);
       if (!snap.exists()) throw new Error('Contact not found.');
       /** @type {SwhContact} */
       const swhContact = Object.assign({ id: contactId }, snap.data());
 
-      // Step 3 — payload.
-      const payload = mapSwhContactToMyLolaPayload(swhContact, options);
+      // Step 3 — payload preview (client-side, used for the modal\'s
+      // read-only summary). The authoritative mapping happens
+      // server-side inside sendContactToMyLola so an attacker can\'t
+      // fabricate fields.
+      mapSwhContactToMyLolaPayload(swhContact, options);
 
-      // Step 4 — TODO(mylola-api): replace with a callable Cloud Function.
-      //   Suggested shape:
-      //     const fn = httpsCallable(functions, 'sendContactToMyLola');
-      //     const { data } = await fn({ payload });
-      //     return { myLolaContactId, myLolaOpportunityId } from data;
-      //   For now: simulate a network round-trip + return synthetic IDs.
-      await new Promise((r) => setTimeout(r, 450));
-      const mockMyLolaContactId = `mlola-contact-${contactId.slice(0, 6)}-${Date.now()}`;
-      const mockMyLolaOpportunityId = (payload.createAs === 'mortgage_prospect' || payload.createAs === 'past_client')
-        ? `mlola-opp-${contactId.slice(0, 6)}-${Date.now()}`
-        : null;
+      // Step 4 — call the SWH Cloud Function that proxies to MyLola\'s
+      // acceptSwhContact endpoint (in loaniq-75a20) with the shared
+      // bearer secret. The secret never reaches the browser.
+      const sendFn = httpsCallable(functions, 'sendContactToMyLola');
+      const { data: r } = await sendFn({ contactId, options });
+      if (!r || !r.ok) {
+        throw new Error((r && r.message) || 'MyLola sync failed.');
+      }
+      const newMyLolaContactId = r.myLolaContactId;
+      const newMyLolaOpportunityId = r.myLolaOpportunityId || null;
+      const newMyLolaKind = r.kind || 'referral_partner';
 
       // Step 5 — stamp success on SWH doc.
       await setDoc(ref, {
-        myLolaContactId: mockMyLolaContactId,
-        myLolaOpportunityId: mockMyLolaOpportunityId,
+        myLolaContactId: newMyLolaContactId,
+        myLolaOpportunityId: newMyLolaOpportunityId,
+        myLolaKind: newMyLolaKind,
         myLolaSyncStatus: 'synced',
         myLolaLastSyncedAt: serverTimestamp(),
         myLolaSyncError: null,
@@ -9854,8 +9860,8 @@ const myLolaIntegrationService = (() => {
 
       return {
         ok: true,
-        myLolaContactId: mockMyLolaContactId,
-        myLolaOpportunityId: mockMyLolaOpportunityId,
+        myLolaContactId: newMyLolaContactId,
+        myLolaOpportunityId: newMyLolaOpportunityId,
       };
     } catch (err) {
       const message = err?.message || 'Unknown error';
@@ -10039,8 +10045,14 @@ window.onSendToMyLolaClick = async function(contactId) {
     );
     if (!choice) return;
     if (choice.trim().toLowerCase().startsWith('v')) {
-      // TODO(mylola-api): deep link to the contact in MyLola.
-      window.open(`https://mylola.ai/crm/contacts/${encodeURIComponent(contact.myLolaContactId)}`, '_blank');
+      // Deep link by kind — households and referralPartners live at
+      // different routes inside the MyLola CRM. Defaults to partner if
+      // kind wasn\'t stamped (older syncs from before the kind field
+      // landed).
+      const path = contact.myLolaKind === 'household'
+        ? `https://mylola.ai/crm/households/${encodeURIComponent(contact.myLolaContactId)}`
+        : `https://mylola.ai/crm/partners/${encodeURIComponent(contact.myLolaContactId)}`;
+      window.open(path, '_blank');
       return;
     }
     if (choice.trim().toLowerCase().startsWith('r')) {

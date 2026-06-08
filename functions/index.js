@@ -5264,6 +5264,170 @@ exports.mintApptCustomToken = onCall({
 });
 
 // ============================================================
+// MYLOLA INTEGRATION — sendContactToMyLola
+// ============================================================
+//
+// Browser-callable. The SWH CRM (public-crm/index.html) calls this
+// with a contactId + sync options. The function:
+//   1. Verifies the caller is signed-in to SWH Auth.
+//   2. Reads the SWH contact from /users/{uid}/contacts/{contactId}.
+//   3. Builds the MyLola payload (mirrors the browser-side
+//      mapSwhContactToMyLolaPayload).
+//   4. POSTs to the acceptSwhContact endpoint in loaniq-75a20 with a
+//      shared bearer secret.
+//   5. Returns { ok, myLolaContactId, myLolaOpportunityId, kind } so
+//      the browser can stamp the SWH contact doc with the sync result.
+//
+// This is the SAME pattern as syncApptPlan → upgradePlan (below). The
+// secret never reaches the browser — it stays in Cloud Function env.
+//
+// Secret required: MYLOLA_INTEGRATION_SECRET (must match the
+// SWH_INTEGRATION_SECRET set on loaniq-75a20\'s mylola codebase).
+
+const MYLOLA_INTEGRATION_SECRET = defineSecret('MYLOLA_INTEGRATION_SECRET');
+const MYLOLA_ACCEPT_SWH_CONTACT_URL =
+  'https://us-central1-loaniq-75a20.cloudfunctions.net/acceptSwhContact';
+
+/** Mirror of public-crm/index.html\'s mapSwhContactToMyLolaPayload —
+ *  kept in lockstep so the payload shape matches what acceptSwhContact
+ *  validates. The browser-side mapper exists so a fast "dry-run preview"
+ *  is possible without a CF round-trip; this server-side version is
+ *  authoritative because the SWH user can\'t tamper with it. */
+function mapSwhContactToMyLolaPayloadCF(contactId, swhContact, options) {
+  const fullName = (swhContact.name || '').trim();
+  let firstName, lastName;
+  if (fullName) {
+    const parts = fullName.split(/\s+/);
+    if (parts.length === 1) {
+      firstName = parts[0];
+    } else {
+      firstName = parts[0];
+      lastName = parts.slice(1).join(' ');
+    }
+  }
+
+  const tags = ['SWH'];
+  if (swhContact.relationshipType) tags.push(swhContact.relationshipType);
+  if (options.createAs && options.createAs !== 'contact') tags.push(options.createAs);
+
+  const payload = {
+    firstName,
+    lastName,
+    fullName: fullName || undefined,
+    email: swhContact.email || undefined,
+    phone: swhContact.phone || undefined,
+    company: swhContact.company || undefined,
+    relationshipType: swhContact.relationshipType || undefined,
+    source: 'SWH',
+    sourceContactId: contactId,
+    tags,
+    createAs: options.createAs,
+  };
+
+  if (options.includeNotes) {
+    if (swhContact.notes) payload.notes = swhContact.notes;
+    if (swhContact.form) payload.formNotes = swhContact.form;
+  }
+  if (options.includeRelationshipScore) {
+    payload.activitySummary = {
+      stepsCompleted: typeof swhContact.steps === 'number' ? swhContact.steps : null,
+      stepsTotal: 8,
+      metAt: swhContact.event || null,
+    };
+  }
+  return payload;
+}
+
+exports.sendContactToMyLola = onCall(
+  {
+    secrets: [MYLOLA_INTEGRATION_SECRET],
+    timeoutSeconds: 30,
+    memory: '256MiB',
+    cors: true,
+  },
+  async (req) => {
+    const uid = req.auth?.uid;
+    if (!uid) throw new HttpsError('unauthenticated', 'Sign in required');
+
+    const { contactId, options } = req.data || {};
+    if (!contactId || typeof contactId !== 'string') {
+      throw new HttpsError('invalid-argument', 'contactId required');
+    }
+    if (!options || !options.createAs) {
+      throw new HttpsError('invalid-argument', 'options.createAs required');
+    }
+
+    // Read the caller\'s email — used to route the contact to the right
+    // MyLola user (resolved via getUserByEmail on the loaniq side).
+    const userRecord = await admin.auth().getUser(uid);
+    const swhUserEmail = userRecord.email;
+    if (!swhUserEmail) {
+      throw new HttpsError('failed-precondition', 'SWH user has no email — cannot route to MyLola');
+    }
+
+    // Read the SWH contact.
+    const contactSnap = await admin.firestore()
+      .doc(`users/${uid}/contacts/${contactId}`).get();
+    if (!contactSnap.exists) {
+      throw new HttpsError('not-found', `Contact ${contactId} not found`);
+    }
+    const swhContact = contactSnap.data();
+    const payload = mapSwhContactToMyLolaPayloadCF(contactId, swhContact, options);
+
+    // POST to loaniq.
+    let res;
+    try {
+      res = await fetch(MYLOLA_ACCEPT_SWH_CONTACT_URL, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${MYLOLA_INTEGRATION_SECRET.value().trim()}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ swhUserEmail, payload }),
+      });
+    } catch (err) {
+      console.error('[sendContactToMyLola] network error', err);
+      throw new HttpsError('unavailable', 'Could not reach MyLola. Try again in a moment.');
+    }
+
+    const bodyText = await res.text();
+    if (!res.ok) {
+      console.warn(`[sendContactToMyLola] acceptSwhContact ${res.status}: ${bodyText}`);
+      // Try to surface a useful error string. acceptSwhContact returns
+      // JSON for 4xx with a `message`; fall back to raw text otherwise.
+      let userMessage = bodyText;
+      try {
+        const parsed = JSON.parse(bodyText);
+        if (parsed && typeof parsed.message === 'string') userMessage = parsed.message;
+      } catch (_) { /* not JSON */ }
+      // 404 = no MyLola user — bubble up as the failed-precondition
+      // category so the UI can prompt the user to create one.
+      if (res.status === 404) {
+        throw new HttpsError('failed-precondition', userMessage || 'No MyLola account found for your email.');
+      }
+      throw new HttpsError('internal', userMessage || `MyLola sync failed (${res.status})`);
+    }
+
+    let parsed;
+    try {
+      parsed = JSON.parse(bodyText);
+    } catch (err) {
+      console.warn('[sendContactToMyLola] failed to parse response', err, bodyText);
+      throw new HttpsError('internal', 'MyLola returned an unparseable response.');
+    }
+
+    return {
+      ok: true,
+      myLolaUserId: parsed.myLolaUserId,
+      myLolaContactId: parsed.myLolaContactId,
+      myLolaOpportunityId: parsed.myLolaOpportunityId ?? null,
+      kind: parsed.kind,
+      upserted: !!parsed.upserted,
+    };
+  },
+);
+
+// ============================================================
 // MYAPPOINTMENT.AI PLAN SYNC HELPER (called from stripeWebhook)
 // ============================================================
 //
