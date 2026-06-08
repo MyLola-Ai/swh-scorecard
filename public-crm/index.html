@@ -1683,6 +1683,20 @@ html,body{height:100%;font-family:'DM Sans',sans-serif;background:var(--bg);colo
                     <button id="settings-appt-copy-btn" onclick="copyApptLink()" style="padding:6px 12px;background:var(--bg);border:1px solid var(--border);border-radius:8px;font-family:'DM Sans',sans-serif;font-size:12px;font-weight:600;color:var(--navy);cursor:pointer;flex-shrink:0;">Copy</button>
                   </div>
                 </div>
+                <!-- ===== CRM INTEGRATIONS — MYLOLA ===== -->
+                <div style="font-size:10px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:var(--muted);margin-bottom:9px;">CRM Integrations</div>
+                <div class="settings-card">
+                  <div class="settings-row" id="settings-mylola-row">
+                    <div class="sr-left">
+                      <div class="sr-icon" style="background:linear-gradient(135deg,#7B61FF,#5B47CC);color:#fff;">🪷</div>
+                      <div>
+                        <div class="sr-text">MyLola (mortgage CRM)</div>
+                        <div class="sr-sub" id="settings-mylola-sub">Send SWH contacts into your mortgage CRM</div>
+                      </div>
+                    </div>
+                    <button id="settings-mylola-btn" onclick="onMyLolaSettingsClick()" style="padding:6px 12px;background:var(--bg);border:1px solid var(--border);border-radius:8px;font-family:'DM Sans',sans-serif;font-size:12px;font-weight:600;color:var(--navy);cursor:pointer;flex-shrink:0;">Connect</button>
+                  </div>
+                </div>
                 <!-- ===== FOLLOW-THROUGH PLAYBOOKS ===== -->
                 <div style="font-size:10px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:var(--muted);margin-bottom:9px;">Follow-Through Playbooks</div>
                 <div class="settings-card">
@@ -6175,6 +6189,7 @@ function buildExpandDetail(c) {
       <button class="ne-action-btn" onclick="openAddOpp('${c.id}','${c.name}')"><span class="ne-action-icon">💼</span><span class="ne-action-lbl">Add Opp</span></button>
       <button class="ne-action-btn" onclick="openSyncContactModal('${c.id}')"><span class="ne-action-icon">📇</span><span class="ne-action-lbl">Save</span></button>
       ${apptUserSlug && apptBookingPages.length ? `<button class="ne-action-btn" onclick="openBookContactModal('${c.id}')"><span class="ne-action-icon">📅</span><span class="ne-action-lbl">Book</span></button>` : ''}
+      <button class="ne-action-btn" onclick="onSendToMyLolaClick('${c.id}')" title="${c.myLolaSyncStatus === 'synced' ? 'In MyLola — view or re-sync' : 'Send to MyLola (mortgage CRM)'}"><span class="ne-action-icon">🪷</span><span class="ne-action-lbl">${c.myLolaSyncStatus === 'synced' ? 'In MyLola' : 'MyLola'}</span></button>
     </div>
     <div class="ne-tabs">
       <button class="ne-tab active" onclick="setNeTab('${c.id}','profile',this)">Profile</button>
@@ -7872,6 +7887,13 @@ function refreshSettingsSubLabelsCRM() {
   // MyAppointment.AI sub-labels
   updateSettingsApptSub();
 
+  // MyLola integration row — kick off async refresh, fire-and-forget.
+  // The row stays in its current state until the Firestore read returns,
+  // which avoids a flash of "Loading…" on every settings entry.
+  if (typeof refreshMyLolaSettingsRow === 'function') {
+    refreshMyLolaSettingsRow().catch((err) => console.warn('[refreshMyLolaSettingsRow]', err));
+  }
+
   const ws = document.getElementById('settings-weekstart-sub');
   if (ws) ws.textContent = dayLabelCRM(userWeekStartDay);
   const we = document.getElementById('settings-weeklyemail-sub');
@@ -9481,7 +9503,746 @@ window.closeBookContactModal = function() {
 };
 
 
+// ═══════════════════════════════════════════════════════════════════════════
+// MyLola integration — SWH → MyLola CRM connector (Phase 1)
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// Goal: let a SWH user send a relationship/contact into MyLola (the mortgage
+// CRM) as a mortgage-related contact or opportunity, WITHOUT merging the two
+// apps. Architecture is integration/connector, not a database union.
+//
+// This module is the SWH-side surface. The MyLola Cloud Function endpoints
+// it talks to may not exist yet — until they do, the service functions are
+// stubbed and resolve a mocked success so the UX wires up end-to-end. Every
+// stub is marked with `TODO(mylola-api)` so the swap is a grep away.
+//
+// Storage of integration state:
+//   /users/{uid}/integrations/mylola         (single doc)
+//     .connectionStatus    'disconnected' | 'connected' | 'error'
+//     .myLolaUserId        string | null
+//     .connectedAt         Timestamp | null
+//     .lastSyncAt          Timestamp | null
+//     .lastSyncError       string | null
+//
+// Per-contact sync state lives on the contact doc itself:
+//   /users/{uid}/contacts/{id}
+//     .myLolaContactId       string | undefined
+//     .myLolaOpportunityId   string | undefined
+//     .myLolaSyncStatus      'not_synced' | 'synced' | 'error' | 'pending'
+//     .myLolaLastSyncedAt    Timestamp | undefined
+//     .myLolaSyncError       string | undefined
+//
+// Future hooks (DO NOT BUILD YET — placeholders in this module):
+//   - two-way sync (MyLola → SWH)
+//   - batch sync UI
+//   - MyLola deep links back to SWH
+//   - shared MyQueso login
+//   - conflict resolution / activity-timeline mirror
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * @typedef {Object} SwhContact
+ * @property {string} id
+ * @property {string} name                 Full name from SWH (single field).
+ * @property {string=} email
+ * @property {string=} phone
+ * @property {string=} company
+ * @property {string=} relationshipType    e.g. 'realtor', 'past_client', etc.
+ * @property {string=} notes               Open-ended notes from the contact card.
+ * @property {Object=} form                FORM-method notes (Family/Occupation/Recreation/Money).
+ * @property {string=} event               Where they met.
+ * @property {number=} steps               8-Steps progress.
+ * @property {string=} myLolaContactId
+ * @property {string=} myLolaOpportunityId
+ * @property {string=} myLolaSyncStatus
+ * @property {Date|null=} myLolaLastSyncedAt
+ * @property {string|null=} myLolaSyncError
+ */
+
+/**
+ * @typedef {Object} SendToMyLolaOptions
+ * @property {'contact'|'referral_partner'|'mortgage_prospect'|'realtor_partner'|'past_client'} createAs
+ * @property {boolean=} includeNotes              Recent SWH notes / activity.
+ * @property {boolean=} includeRelationshipScore  Score + step progress + cadence.
+ * @property {string=}  leadSourceLabel           Override default 'SWH' source label.
+ */
+
+/**
+ * @typedef {Object} MyLolaPayload
+ * @property {string=} firstName
+ * @property {string=} lastName
+ * @property {string=} fullName
+ * @property {string=} email
+ * @property {string=} phone
+ * @property {string=} company
+ * @property {string=} relationshipType
+ * @property {'SWH'} source
+ * @property {string} sourceContactId
+ * @property {string[]} tags
+ * @property {string=} notes
+ * @property {Object=} formNotes
+ * @property {Object=} activitySummary
+ * @property {SendToMyLolaOptions['createAs']} createAs
+ */
+
+/**
+ * @typedef {Object} MyLolaConnectionStatus
+ * @property {'connected'|'disconnected'|'error'|'unknown'} status
+ * @property {string|null} myLolaUserId
+ * @property {Date|null} connectedAt
+ * @property {Date|null} lastSyncAt
+ * @property {string|null} lastSyncError
+ */
+
+/**
+ * Split a single-field name into (firstName, lastName). Naive but matches
+ * SWH\'s single-name field convention.
+ * @param {string=} fullName
+ * @returns {{firstName: string|undefined, lastName: string|undefined}}
+ */
+function splitNameForMyLola(fullName) {
+  if (!fullName) return { firstName: undefined, lastName: undefined };
+  const trimmed = String(fullName).trim();
+  if (!trimmed) return { firstName: undefined, lastName: undefined };
+  const parts = trimmed.split(/\s+/);
+  if (parts.length === 1) return { firstName: parts[0], lastName: undefined };
+  return { firstName: parts[0], lastName: parts.slice(1).join(' ') };
+}
+
+/**
+ * Build the MyLola-side payload from a SWH contact + the user\'s options
+ * chosen in the "Send to MyLola" modal. Keep this PURE so it can be reused
+ * by future batch-sync flows without dragging in UI state.
+ *
+ * @param {SwhContact} swhContact
+ * @param {SendToMyLolaOptions} options
+ * @returns {MyLolaPayload}
+ */
+function mapSwhContactToMyLolaPayload(swhContact, options) {
+  if (!swhContact || !swhContact.id) {
+    throw new Error('mapSwhContactToMyLolaPayload: swhContact.id is required');
+  }
+  if (!options || !options.createAs) {
+    throw new Error('mapSwhContactToMyLolaPayload: options.createAs is required');
+  }
+
+  const { firstName, lastName } = splitNameForMyLola(swhContact.name);
+  const tags = ['SWH'];
+  if (swhContact.relationshipType) tags.push(swhContact.relationshipType);
+  if (options.createAs && options.createAs !== 'contact') tags.push(options.createAs);
+
+  /** @type {MyLolaPayload} */
+  const payload = {
+    firstName,
+    lastName,
+    fullName: swhContact.name || undefined,
+    email: swhContact.email || undefined,
+    phone: swhContact.phone || undefined,
+    company: swhContact.company || undefined,
+    relationshipType: swhContact.relationshipType || undefined,
+    source: 'SWH',
+    sourceContactId: swhContact.id,
+    tags,
+    createAs: options.createAs,
+  };
+
+  if (options.includeNotes) {
+    payload.notes = swhContact.notes || undefined;
+    if (swhContact.form) payload.formNotes = swhContact.form;
+  }
+
+  if (options.includeRelationshipScore) {
+    payload.activitySummary = {
+      stepsCompleted: typeof swhContact.steps === 'number' ? swhContact.steps : null,
+      stepsTotal: 8,
+      metAt: swhContact.event || null,
+      // Future: cadence (days since last touch), score, recent activity rows.
+      // Wire these in once the SWH activity log is exposed via a helper.
+    };
+  }
+
+  return payload;
+}
+
+/**
+ * Service namespace. All MyLola-side network calls go through here so the
+ * UI never speaks to the API directly. Today the implementations are stubs;
+ * each one is annotated with `TODO(mylola-api)`. Once the MyLola endpoints
+ * are live, swap the stub body for the real call — the function signatures
+ * are frozen.
+ */
+const myLolaIntegrationService = (() => {
+  // In-memory cached connection status so repeat reads inside one session
+  // don\'t hammer Firestore. Populated lazily on first call.
+  /** @type {MyLolaConnectionStatus|null} */
+  let cachedStatus = null;
+
+  /** Firestore v9 reference to the user\'s mylola integration doc. */
+  function integrationDocRef() {
+    const u = (typeof currentUser !== 'undefined' && currentUser) ? currentUser : null;
+    if (!u || !u.uid) throw new Error('Not signed in');
+    return doc(db, 'users', u.uid, 'integrations', 'mylola');
+  }
+
+  /** Firestore v9 reference to a SWH contact. */
+  function contactDocRef(contactId) {
+    const u = (typeof currentUser !== 'undefined' && currentUser) ? currentUser : null;
+    if (!u || !u.uid) throw new Error('Not signed in');
+    return doc(db, 'users', u.uid, 'contacts', contactId);
+  }
+
+  /**
+   * @returns {Promise<MyLolaConnectionStatus>}
+   */
+  async function getMyLolaConnectionStatus({ forceRefresh = false } = {}) {
+    if (!forceRefresh && cachedStatus) return cachedStatus;
+    try {
+      const snap = await getDoc(integrationDocRef());
+      if (!snap.exists()) {
+        cachedStatus = {
+          status: 'disconnected',
+          myLolaUserId: null,
+          connectedAt: null,
+          lastSyncAt: null,
+          lastSyncError: null,
+        };
+        return cachedStatus;
+      }
+      const d = snap.data() || {};
+      cachedStatus = {
+        status: d.connectionStatus || 'disconnected',
+        myLolaUserId: d.myLolaUserId || null,
+        connectedAt: d.connectedAt?.toDate ? d.connectedAt.toDate() : null,
+        lastSyncAt: d.lastSyncAt?.toDate ? d.lastSyncAt.toDate() : null,
+        lastSyncError: d.lastSyncError || null,
+      };
+      return cachedStatus;
+    } catch (err) {
+      console.warn('[myLolaIntegrationService] getMyLolaConnectionStatus failed', err);
+      cachedStatus = {
+        status: 'unknown',
+        myLolaUserId: null,
+        connectedAt: null,
+        lastSyncAt: null,
+        lastSyncError: err?.message || 'unknown',
+      };
+      return cachedStatus;
+    }
+  }
+
+  /**
+   * TODO(mylola-api): replace the stub with an OAuth-style handshake to
+   * MyLola. The real flow will probably be: SWH redirects to MyLola, user
+   * approves, MyLola redirects back with a code, SWH exchanges for an
+   * access token via a Cloud Function. For now we write a stub doc so the
+   * UI can transition to the "connected" state.
+   */
+  async function connectMyLola() {
+    // TODO(mylola-api): real OAuth handshake.
+    const mockMyLolaUserId = `mock-mylola-${Date.now()}`;
+    await setDoc(integrationDocRef(), {
+      connectionStatus: 'connected',
+      myLolaUserId: mockMyLolaUserId,
+      connectedAt: serverTimestamp(),
+      lastSyncAt: null,
+      lastSyncError: null,
+    }, { merge: true });
+    cachedStatus = null;  // bust cache
+    return getMyLolaConnectionStatus({ forceRefresh: true });
+  }
+
+  /**
+   * Tear down the connection (UI-side). TODO(mylola-api): also revoke
+   * the access token on the MyLola side.
+   */
+  async function disconnectMyLola() {
+    // TODO(mylola-api): revoke MyLola-side credentials.
+    await setDoc(integrationDocRef(), {
+      connectionStatus: 'disconnected',
+      myLolaUserId: null,
+      lastSyncError: null,
+    }, { merge: true });
+    cachedStatus = null;
+    return getMyLolaConnectionStatus({ forceRefresh: true });
+  }
+
+  /**
+   * Sanity-check the connection by pinging MyLola. TODO(mylola-api): call
+   * a /ping endpoint that echoes the connected user back. For now resolves
+   * `true` when the cached/persisted status is 'connected'.
+   * @returns {Promise<{ok: boolean, message: string}>}
+   */
+  async function testConnection() {
+    const status = await getMyLolaConnectionStatus({ forceRefresh: true });
+    if (status.status !== 'connected') {
+      return { ok: false, message: 'Not connected to MyLola yet.' };
+    }
+    // TODO(mylola-api): real ping. Mock latency to feel like a network hop.
+    await new Promise((r) => setTimeout(r, 350));
+    return { ok: true, message: 'Connected to MyLola.' };
+  }
+
+  /**
+   * Push a single contact into MyLola.
+   *
+   * Flow:
+   *   1. Mark the SWH contact `myLolaSyncStatus: 'pending'` so the UI can
+   *      render a spinner immediately.
+   *   2. Look up the SWH contact (fresh — caller may have stale state).
+   *   3. Build the payload via mapSwhContactToMyLolaPayload().
+   *   4. Send to MyLola (TODO: real Cloud Function call).
+   *   5. On success: stamp myLolaContactId / myLolaOpportunityId /
+   *      myLolaSyncStatus: 'synced' / myLolaLastSyncedAt on the SWH doc.
+   *   6. On failure: stamp myLolaSyncStatus: 'error' + myLolaSyncError.
+   *
+   * @param {string} contactId
+   * @param {SendToMyLolaOptions} options
+   * @returns {Promise<{ok: boolean, myLolaContactId?: string, myLolaOpportunityId?: string|null, error?: string}>}
+   */
+  async function sendContactToMyLola(contactId, options) {
+    if (!contactId) throw new Error('sendContactToMyLola: contactId required');
+    const ref = contactDocRef(contactId);
+
+    // Step 1 — pending state.
+    await setDoc(ref, {
+      myLolaSyncStatus: 'pending',
+      myLolaSyncError: null,
+    }, { merge: true });
+
+    try {
+      const status = await getMyLolaConnectionStatus({ forceRefresh: false });
+      if (status.status !== 'connected') {
+        throw new Error('MyLola is not connected. Connect in Settings → Integrations.');
+      }
+
+      // Step 2 — fresh contact.
+      const snap = await getDoc(ref);
+      if (!snap.exists()) throw new Error('Contact not found.');
+      /** @type {SwhContact} */
+      const swhContact = Object.assign({ id: contactId }, snap.data());
+
+      // Step 3 — payload.
+      const payload = mapSwhContactToMyLolaPayload(swhContact, options);
+
+      // Step 4 — TODO(mylola-api): replace with a callable Cloud Function.
+      //   Suggested shape:
+      //     const fn = httpsCallable(functions, 'sendContactToMyLola');
+      //     const { data } = await fn({ payload });
+      //     return { myLolaContactId, myLolaOpportunityId } from data;
+      //   For now: simulate a network round-trip + return synthetic IDs.
+      await new Promise((r) => setTimeout(r, 450));
+      const mockMyLolaContactId = `mlola-contact-${contactId.slice(0, 6)}-${Date.now()}`;
+      const mockMyLolaOpportunityId = (payload.createAs === 'mortgage_prospect' || payload.createAs === 'past_client')
+        ? `mlola-opp-${contactId.slice(0, 6)}-${Date.now()}`
+        : null;
+
+      // Step 5 — stamp success on SWH doc.
+      await setDoc(ref, {
+        myLolaContactId: mockMyLolaContactId,
+        myLolaOpportunityId: mockMyLolaOpportunityId,
+        myLolaSyncStatus: 'synced',
+        myLolaLastSyncedAt: serverTimestamp(),
+        myLolaSyncError: null,
+      }, { merge: true });
+
+      // Roll up to the integration doc.
+      await setDoc(integrationDocRef(), {
+        lastSyncAt: serverTimestamp(),
+        lastSyncError: null,
+      }, { merge: true });
+      cachedStatus = null;
+
+      return {
+        ok: true,
+        myLolaContactId: mockMyLolaContactId,
+        myLolaOpportunityId: mockMyLolaOpportunityId,
+      };
+    } catch (err) {
+      const message = err?.message || 'Unknown error';
+      // Step 6 — stamp error on SWH doc.
+      try {
+        await setDoc(ref, {
+          myLolaSyncStatus: 'error',
+          myLolaSyncError: message,
+        }, { merge: true });
+        await setDoc(integrationDocRef(), {
+          lastSyncError: message,
+        }, { merge: true });
+      } catch (writeErr) {
+        console.warn('[myLolaIntegrationService] failed to persist sync error', writeErr);
+      }
+      cachedStatus = null;
+      return { ok: false, error: message };
+    }
+  }
+
+  /**
+   * Re-sync a contact that\'s already been synced. Reuses the same flow
+   * as the initial send so MyLola sees an upsert. Carries forward the
+   * createAs the contact was originally synced as if we have it, else
+   * defaults to 'contact'.
+   * @param {string} contactId
+   * @param {SendToMyLolaOptions=} overrideOptions
+   */
+  async function resyncContactToMyLola(contactId, overrideOptions) {
+    const opts = overrideOptions || { createAs: 'contact', includeNotes: true, includeRelationshipScore: true };
+    return sendContactToMyLola(contactId, opts);
+  }
+
+  return {
+    connectMyLola,
+    disconnectMyLola,
+    testConnection,
+    sendContactToMyLola,
+    resyncContactToMyLola,
+    getMyLolaConnectionStatus,
+  };
+})();
+
+// Expose on window so inline onclick handlers and dev-console can reach in.
+window.myLolaIntegrationService = myLolaIntegrationService;
+window.mapSwhContactToMyLolaPayload = mapSwhContactToMyLolaPayload;
+
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MyLola UI handlers — Settings row + Send modal + contact-profile button
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Refresh the Settings → Integrations → MyLola row to reflect current
+ * connection state. Called on screen entry + after connect/disconnect.
+ */
+window.refreshMyLolaSettingsRow = async function() {
+  const subEl = document.getElementById('settings-mylola-sub');
+  const btnEl = document.getElementById('settings-mylola-btn');
+  if (!subEl || !btnEl) return;
+  try {
+    const status = await myLolaIntegrationService.getMyLolaConnectionStatus({ forceRefresh: true });
+    if (status.status === 'connected') {
+      const when = status.lastSyncAt
+        ? `· last sync ${status.lastSyncAt.toLocaleDateString('en-US',{month:'short',day:'numeric'})}`
+        : '· no syncs yet';
+      subEl.textContent = `Connected ${when}`;
+      btnEl.textContent = 'Manage';
+    } else if (status.status === 'error') {
+      subEl.textContent = status.lastSyncError ? `Error: ${status.lastSyncError}` : 'Connection error';
+      btnEl.textContent = 'Reconnect';
+    } else {
+      subEl.textContent = 'Send SWH contacts into your mortgage CRM';
+      btnEl.textContent = 'Connect';
+    }
+  } catch (err) {
+    console.warn('[refreshMyLolaSettingsRow] error', err);
+    subEl.textContent = 'Unable to load status';
+    btnEl.textContent = 'Connect';
+  }
+};
+
+/**
+ * Click handler for the Settings MyLola row CTA button (Connect / Manage /
+ * Reconnect). Opens the MyLola settings modal.
+ */
+window.onMyLolaSettingsClick = async function() {
+  const status = await myLolaIntegrationService.getMyLolaConnectionStatus({ forceRefresh: true });
+  openMyLolaSettingsModal(status);
+};
+
+window.openMyLolaSettingsModal = function(status) {
+  const overlay = document.getElementById('mylola-settings-overlay');
+  if (!overlay) return;
+  const isConnected = status && status.status === 'connected';
+  document.getElementById('mylola-settings-status').textContent = isConnected ? 'Connected' : (status?.status === 'error' ? 'Connection error' : 'Not connected');
+  document.getElementById('mylola-settings-userid').textContent = status?.myLolaUserId || '—';
+  document.getElementById('mylola-settings-lastsync').textContent = status?.lastSyncAt
+    ? status.lastSyncAt.toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })
+    : '—';
+  document.getElementById('mylola-settings-error').textContent = status?.lastSyncError || '';
+  document.getElementById('mylola-settings-error').style.display = status?.lastSyncError ? 'block' : 'none';
+
+  // Toggle Connect / Disconnect / Test buttons based on state.
+  document.getElementById('mylola-btn-connect').style.display    = isConnected ? 'none' : 'inline-flex';
+  document.getElementById('mylola-btn-disconnect').style.display = isConnected ? 'inline-flex' : 'none';
+  document.getElementById('mylola-btn-test').style.display       = isConnected ? 'inline-flex' : 'none';
+
+  overlay.classList.add('open');
+};
+
+window.closeMyLolaSettingsModal = function() {
+  document.getElementById('mylola-settings-overlay')?.classList.remove('open');
+};
+
+window.onMyLolaConnectClick = async function() {
+  const btn = document.getElementById('mylola-btn-connect');
+  if (btn) { btn.disabled = true; btn.textContent = 'Connecting…'; }
+  try {
+    const status = await myLolaIntegrationService.connectMyLola();
+    await refreshMyLolaSettingsRow();
+    openMyLolaSettingsModal(status);
+  } catch (err) {
+    alert('Could not connect to MyLola: ' + (err?.message || 'unknown'));
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Connect'; }
+  }
+};
+
+window.onMyLolaDisconnectClick = async function() {
+  if (!confirm('Disconnect MyLola? You can reconnect anytime. SWH contacts already synced will stay in MyLola.')) return;
+  const btn = document.getElementById('mylola-btn-disconnect');
+  if (btn) { btn.disabled = true; btn.textContent = 'Disconnecting…'; }
+  try {
+    const status = await myLolaIntegrationService.disconnectMyLola();
+    await refreshMyLolaSettingsRow();
+    openMyLolaSettingsModal(status);
+  } catch (err) {
+    alert('Could not disconnect: ' + (err?.message || 'unknown'));
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Disconnect'; }
+  }
+};
+
+window.onMyLolaTestClick = async function() {
+  const btn = document.getElementById('mylola-btn-test');
+  if (btn) { btn.disabled = true; btn.textContent = 'Testing…'; }
+  try {
+    const r = await myLolaIntegrationService.testConnection();
+    alert(r.ok ? `✅ ${r.message}` : `⚠️ ${r.message}`);
+  } catch (err) {
+    alert('Test failed: ' + (err?.message || 'unknown'));
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Test sync'; }
+  }
+};
+
+/**
+ * Click handler for the per-contact "Send to MyLola" button on the
+ * expanded contact profile. Decides between connect-prompt, view-in-mylola,
+ * and the create-modal based on current state.
+ */
+window.onSendToMyLolaClick = async function(contactId) {
+  const contact = (typeof CONTACTS !== 'undefined' && CONTACTS) ? CONTACTS.find(c => c.id === contactId) : null;
+  if (!contact) { alert('Contact not found.'); return; }
+
+  const status = await myLolaIntegrationService.getMyLolaConnectionStatus({ forceRefresh: true });
+  if (status.status !== 'connected') {
+    if (confirm('Connect to MyLola first?\n\nMyLola is the mortgage CRM. Connecting lets you push SWH relationships in as contacts or opportunities.')) {
+      // Open the settings modal so the user can complete the handshake.
+      onMyLolaSettingsClick();
+    }
+    return;
+  }
+
+  // Already synced? Offer view + resync instead of opening the create modal.
+  if (contact.myLolaSyncStatus === 'synced' && contact.myLolaContactId) {
+    const choice = prompt(
+      `${contact.name} is already in MyLola (id: ${contact.myLolaContactId}).\n\nType:\n  v  → view in MyLola\n  r  → re-sync now\n  (leave blank to cancel)`,
+      ''
+    );
+    if (!choice) return;
+    if (choice.trim().toLowerCase().startsWith('v')) {
+      // TODO(mylola-api): deep link to the contact in MyLola.
+      window.open(`https://mylola.ai/crm/contacts/${encodeURIComponent(contact.myLolaContactId)}`, '_blank');
+      return;
+    }
+    if (choice.trim().toLowerCase().startsWith('r')) {
+      const r = await myLolaIntegrationService.resyncContactToMyLola(contactId);
+      alert(r.ok ? '✅ Re-synced to MyLola.' : `⚠️ Re-sync failed: ${r.error || 'unknown'}`);
+      return;
+    }
+    return;
+  }
+
+  // Fresh send → open create modal.
+  openSendToMyLolaModal(contact);
+};
+
+window.openSendToMyLolaModal = function(contact) {
+  const overlay = document.getElementById('send-mylola-overlay');
+  if (!overlay) return;
+
+  // Hydrate read-only summary rows.
+  document.getElementById('send-mylola-name').textContent    = contact.name || '—';
+  document.getElementById('send-mylola-phone').textContent   = contact.phone || '—';
+  document.getElementById('send-mylola-email').textContent   = contact.email || '—';
+  document.getElementById('send-mylola-company').textContent = contact.company || '—';
+  document.getElementById('send-mylola-rel').textContent     = contact.relationshipType || '—';
+  document.getElementById('send-mylola-notes').textContent   = (contact.notes || '').slice(0, 200) || '—';
+  document.getElementById('send-mylola-form').textContent    = contact.form ? 'FORM notes will be included' : 'No FORM notes';
+
+  // Reset selections.
+  document.querySelectorAll('#send-mylola-overlay [data-mylola-createas]').forEach((b) => {
+    b.classList.remove('selected');
+    b.style.background = 'var(--bg)';
+    b.style.color = 'var(--text)';
+  });
+  document.getElementById('send-mylola-include-notes').checked = true;
+  document.getElementById('send-mylola-include-score').checked = true;
+
+  // Stash contact id so the primary CTA can read it.
+  overlay.dataset.contactId = contact.id;
+
+  overlay.classList.add('open');
+};
+
+window.closeSendToMyLolaModal = function() {
+  document.getElementById('send-mylola-overlay')?.classList.remove('open');
+};
+
+window.onSendToMyLolaCreateAsClick = function(btn, value) {
+  document.querySelectorAll('#send-mylola-overlay [data-mylola-createas]').forEach((b) => {
+    b.classList.remove('selected');
+    b.style.background = 'var(--bg)';
+    b.style.color = 'var(--text)';
+  });
+  btn.classList.add('selected');
+  btn.style.background = 'var(--navy)';
+  btn.style.color = '#fff';
+  btn.dataset.selected = '1';
+  const overlay = document.getElementById('send-mylola-overlay');
+  if (overlay) overlay.dataset.createAs = value;
+};
+
+window.onSendToMyLolaSubmit = async function() {
+  const overlay = document.getElementById('send-mylola-overlay');
+  if (!overlay) return;
+  const contactId = overlay.dataset.contactId || '';
+  const createAs = overlay.dataset.createAs || 'contact';
+  if (!contactId) { alert('Missing contact id.'); return; }
+
+  const includeNotes = !!document.getElementById('send-mylola-include-notes').checked;
+  const includeRelationshipScore = !!document.getElementById('send-mylola-include-score').checked;
+  /** @type {SendToMyLolaOptions} */
+  const options = { createAs, includeNotes, includeRelationshipScore };
+
+  const primary = document.getElementById('send-mylola-submit-btn');
+  if (primary) { primary.disabled = true; primary.textContent = 'Sending…'; }
+
+  try {
+    const r = await myLolaIntegrationService.sendContactToMyLola(contactId, options);
+    if (r.ok) {
+      // Refresh the in-memory contact so the UI shows synced state without a
+      // full reload.
+      if (typeof CONTACTS !== 'undefined' && Array.isArray(CONTACTS)) {
+        const idx = CONTACTS.findIndex((c) => c.id === contactId);
+        if (idx >= 0) {
+          CONTACTS[idx].myLolaContactId = r.myLolaContactId;
+          CONTACTS[idx].myLolaOpportunityId = r.myLolaOpportunityId || null;
+          CONTACTS[idx].myLolaSyncStatus = 'synced';
+        }
+      }
+      closeSendToMyLolaModal();
+      alert(`✅ Sent to MyLola.\n\nContact id: ${r.myLolaContactId}${r.myLolaOpportunityId ? `\nOpportunity id: ${r.myLolaOpportunityId}` : ''}`);
+      // Bounce the settings sub-label so the user sees the new lastSync.
+      if (typeof refreshMyLolaSettingsRow === 'function') refreshMyLolaSettingsRow();
+    } else {
+      alert(`⚠️ Could not send to MyLola: ${r.error || 'unknown'}`);
+    }
+  } catch (err) {
+    alert(`⚠️ Could not send to MyLola: ${err?.message || 'unknown'}`);
+  } finally {
+    if (primary) { primary.disabled = false; primary.textContent = 'Create in MyLola'; }
+  }
+};
+
+
 </script>
+<!-- ════ MYLOLA SETTINGS MODAL ════
+     Surfaced from Settings → Integrations → MyLola. Shows connection
+     status + last sync + error + the Connect / Disconnect / Test buttons.
+     Designed to feel out-of-the-way — SWH users who don\'t use MyLola
+     never see this unless they tap the integrations row. -->
+<div class="ctx-overlay" id="mylola-settings-overlay" onclick="if(event.target===this)closeMyLolaSettingsModal()">
+  <div class="ctx-box" style="max-width:420px;">
+    <div class="ctx-header">
+      <div class="ctx-handle mobile-only"></div>
+      <div class="ctx-icon" style="background:linear-gradient(135deg,#7B61FF,#5B47CC);color:#fff;">🪷</div>
+      <div class="ctx-title">MyLola integration</div>
+      <div class="ctx-subtitle">Send SWH contacts into MyLola, the mortgage CRM</div>
+    </div>
+    <div class="ctx-body" style="display:flex;flex-direction:column;gap:10px;">
+      <div style="display:flex;flex-direction:column;gap:6px;padding:12px 14px;border:1.5px solid var(--border);border-radius:10px;background:var(--bg);">
+        <div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;">
+          <span style="color:var(--muted);">Status</span>
+          <span id="mylola-settings-status" style="font-weight:600;color:var(--text);">—</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;">
+          <span style="color:var(--muted);">MyLola user ID</span>
+          <span id="mylola-settings-userid" style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text);max-width:60%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">—</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;">
+          <span style="color:var(--muted);">Last sync</span>
+          <span id="mylola-settings-lastsync" style="font-weight:500;color:var(--text);">—</span>
+        </div>
+        <div id="mylola-settings-error" style="display:none;font-size:11px;color:#dc2626;padding:6px 8px;border-radius:6px;background:rgba(220,38,38,0.08);margin-top:4px;"></div>
+      </div>
+      <div style="font-size:11px;color:var(--muted);line-height:1.5;padding:0 4px;">
+        SWH stays the daily-relationship tracker. MyLola handles the mortgage CRM side — pipelines, deal stages, lender doc flow. Connecting lets you send relationships into MyLola one tap at a time without duplicating data entry.
+      </div>
+    </div>
+    <div class="ctx-footer" style="display:flex;gap:8px;flex-wrap:wrap;">
+      <button id="mylola-btn-connect" onclick="onMyLolaConnectClick()" style="display:inline-flex;flex:1;min-width:120px;justify-content:center;align-items:center;padding:10px 14px;border:none;border-radius:10px;background:linear-gradient(135deg,#7B61FF,#5B47CC);color:#fff;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;">Connect</button>
+      <button id="mylola-btn-test" onclick="onMyLolaTestClick()" style="display:none;flex:1;min-width:100px;justify-content:center;align-items:center;padding:10px 14px;border:1.5px solid var(--border);border-radius:10px;background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;">Test sync</button>
+      <button id="mylola-btn-disconnect" onclick="onMyLolaDisconnectClick()" style="display:none;flex:1;min-width:120px;justify-content:center;align-items:center;padding:10px 14px;border:1.5px solid #fecaca;border-radius:10px;background:var(--bg);color:#dc2626;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;">Disconnect</button>
+      <button class="ctx-cancel" style="flex:1;min-width:80px;" onclick="closeMyLolaSettingsModal()">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- ════ SEND TO MYLOLA MODAL ════
+     Opens from each contact profile when the user taps "Send to MyLola"
+     (and MyLola is connected). Shows a read-only summary of what will be
+     sent, plus the create-as picker + optional toggles for notes + score.
+     Pure presentation — all work goes through myLolaIntegrationService. -->
+<div class="ctx-overlay" id="send-mylola-overlay" onclick="if(event.target===this)closeSendToMyLolaModal()">
+  <div class="ctx-box" style="max-width:440px;">
+    <div class="ctx-header">
+      <div class="ctx-handle mobile-only"></div>
+      <div class="ctx-icon" style="background:linear-gradient(135deg,#7B61FF,#5B47CC);color:#fff;">🪷</div>
+      <div class="ctx-title">Send to MyLola</div>
+      <div class="ctx-subtitle">Create as a contact or opportunity in your mortgage CRM</div>
+    </div>
+    <div class="ctx-body" style="display:flex;flex-direction:column;gap:14px;">
+      <!-- Read-only summary of what gets sent. -->
+      <div style="display:flex;flex-direction:column;gap:5px;padding:12px 14px;border:1.5px solid var(--border);border-radius:10px;background:var(--bg);">
+        <div style="display:flex;justify-content:space-between;gap:14px;font-size:12px;"><span style="color:var(--muted);">Name</span><span id="send-mylola-name" style="font-weight:600;color:var(--text);text-align:right;">—</span></div>
+        <div style="display:flex;justify-content:space-between;gap:14px;font-size:12px;"><span style="color:var(--muted);">Phone</span><span id="send-mylola-phone" style="font-weight:500;color:var(--text);text-align:right;">—</span></div>
+        <div style="display:flex;justify-content:space-between;gap:14px;font-size:12px;"><span style="color:var(--muted);">Email</span><span id="send-mylola-email" style="font-weight:500;color:var(--text);text-align:right;max-width:60%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">—</span></div>
+        <div style="display:flex;justify-content:space-between;gap:14px;font-size:12px;"><span style="color:var(--muted);">Company</span><span id="send-mylola-company" style="font-weight:500;color:var(--text);text-align:right;">—</span></div>
+        <div style="display:flex;justify-content:space-between;gap:14px;font-size:12px;"><span style="color:var(--muted);">Relationship</span><span id="send-mylola-rel" style="font-weight:500;color:var(--text);text-align:right;">—</span></div>
+        <div style="display:flex;justify-content:space-between;gap:14px;font-size:12px;"><span style="color:var(--muted);">Notes</span><span id="send-mylola-notes" style="font-weight:500;color:var(--text);text-align:right;max-width:60%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">—</span></div>
+        <div style="display:flex;justify-content:space-between;gap:14px;font-size:12px;"><span style="color:var(--muted);">FORM</span><span id="send-mylola-form" style="font-weight:500;color:var(--text);text-align:right;">—</span></div>
+      </div>
+
+      <!-- Create-as picker — 5 options, single-select, dataset-driven. -->
+      <div>
+        <div style="font-size:10px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:var(--muted);margin-bottom:7px;">Create as</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;">
+          <button type="button" data-mylola-createas="contact"           onclick="onSendToMyLolaCreateAsClick(this,'contact')"           style="padding:8px 12px;border:1.5px solid var(--border);border-radius:999px;background:var(--bg);font-family:'DM Sans',sans-serif;font-size:12.5px;font-weight:600;color:var(--text);cursor:pointer;">Contact only</button>
+          <button type="button" data-mylola-createas="referral_partner"  onclick="onSendToMyLolaCreateAsClick(this,'referral_partner')"  style="padding:8px 12px;border:1.5px solid var(--border);border-radius:999px;background:var(--bg);font-family:'DM Sans',sans-serif;font-size:12.5px;font-weight:600;color:var(--text);cursor:pointer;">Referral Partner</button>
+          <button type="button" data-mylola-createas="mortgage_prospect" onclick="onSendToMyLolaCreateAsClick(this,'mortgage_prospect')" style="padding:8px 12px;border:1.5px solid var(--border);border-radius:999px;background:var(--bg);font-family:'DM Sans',sans-serif;font-size:12.5px;font-weight:600;color:var(--text);cursor:pointer;">Mortgage Prospect</button>
+          <button type="button" data-mylola-createas="realtor_partner"   onclick="onSendToMyLolaCreateAsClick(this,'realtor_partner')"   style="padding:8px 12px;border:1.5px solid var(--border);border-radius:999px;background:var(--bg);font-family:'DM Sans',sans-serif;font-size:12.5px;font-weight:600;color:var(--text);cursor:pointer;">Realtor Partner</button>
+          <button type="button" data-mylola-createas="past_client"       onclick="onSendToMyLolaCreateAsClick(this,'past_client')"       style="padding:8px 12px;border:1.5px solid var(--border);border-radius:999px;background:var(--bg);font-family:'DM Sans',sans-serif;font-size:12.5px;font-weight:600;color:var(--text);cursor:pointer;">Past Client</button>
+        </div>
+      </div>
+
+      <!-- Optional include toggles. -->
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text);cursor:pointer;">
+          <input type="checkbox" id="send-mylola-include-notes" checked style="width:16px;height:16px;cursor:pointer;">
+          Include recent SWH notes &amp; activity
+        </label>
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text);cursor:pointer;">
+          <input type="checkbox" id="send-mylola-include-score" checked style="width:16px;height:16px;cursor:pointer;">
+          Include relationship score &amp; history
+        </label>
+      </div>
+    </div>
+    <div class="ctx-footer">
+      <button class="ctx-cancel" style="flex:1;" onclick="closeSendToMyLolaModal()">Cancel</button>
+      <button id="send-mylola-submit-btn" onclick="onSendToMyLolaSubmit()" style="flex:1.4;padding:11px 14px;border:none;border-radius:10px;background:linear-gradient(135deg,#7B61FF,#5B47CC);color:#fff;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:700;cursor:pointer;">Create in MyLola</button>
+    </div>
+  </div>
+</div>
+
 <!-- ════ SYNC CONTACT MODAL ════ -->
 <div class="ctx-overlay" id="sync-contact-overlay" onclick="if(event.target===this)closeSyncContactModal()">
   <div class="ctx-box" style="max-width:360px;">
