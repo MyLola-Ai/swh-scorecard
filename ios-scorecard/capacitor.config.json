@@ -9,9 +9,16 @@
     "preferredContentMode": "mobile",
     "backgroundColor": "#1a1a1a"
   },
+  "android": {
+    "backgroundColor": "#1a1a1a",
+    "allowMixedContent": false,
+    "captureInput": true,
+    "webContentsDebuggingEnabled": false
+  },
   "backgroundColor": "#1a1a1a",
   "server": {
     "iosScheme": "https",
+    "androidScheme": "https",
     "hostname": "app.stopwastinghandshakes.com"
   },
   "plugins": {

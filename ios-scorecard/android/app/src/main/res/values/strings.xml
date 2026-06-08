@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">SWH Scorecard</string>
+    <string name="title_activity_main">SWH Scorecard</string>
+    <string name="package_name">com.impactleadershipgroup.swh.scorecard</string>
+    <string name="custom_url_scheme">com.impactleadershipgroup.swh.scorecard</string>
+</resources>

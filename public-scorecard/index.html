@@ -29,12 +29,17 @@
 <script>
   (function(){
     try {
-      var native = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+      var cap = window.Capacitor;
+      var native = !!(cap && cap.isNativePlatform && cap.isNativePlatform());
       if (native) {
         // documentElement is the <html> tag. Class is set before <body> renders, so the
-        // CSS rule `html.native-platform .web-only { display: none !important; }` applies
-        // on first paint — pricing cards never flash.
+        // CSS rules `html.native-platform .web-only { display: none !important; }` and
+        // `html.android-platform .ios-only { display: none !important; }` apply on
+        // first paint — pricing cards and Apple Sign-In button never flash on Android.
         document.documentElement.classList.add('native-platform');
+        var platform = (cap.getPlatform && cap.getPlatform()) || '';
+        if (platform === 'android') document.documentElement.classList.add('android-platform');
+        if (platform === 'ios')     document.documentElement.classList.add('ios-platform');
       }
     } catch (_) { /* ignore */ }
   })();
@@ -95,10 +100,15 @@
   };
   // Detect Capacitor native shell early so we can pick WKWebView-safe transports
   const isNativeEarly = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
-  // Apply a CSS hook so we can hide all subscribe / pricing UI on iOS (App Store guideline 3.1.1).
-  // Web HTML stays unchanged; native iOS gets neutral copy instead of "Subscribe / $X/mo" CTAs.
+  const _nativePlatform = isNativeEarly && window.Capacitor.getPlatform ? window.Capacitor.getPlatform() : null;
+  const isAndroidNative = () => _nativePlatform === 'android';
+  const isIOSNative    = () => _nativePlatform === 'ios';
+  // Apply CSS hooks so we can hide pricing CTAs (App Store 3.1.1) and
+  // platform-specific UI (Apple Sign-In hidden on Android).
   if (isNativeEarly) {
     document.documentElement.classList.add('native-platform');
+    if (_nativePlatform === 'android') document.documentElement.classList.add('android-platform');
+    if (_nativePlatform === 'ios')     document.documentElement.classList.add('ios-platform');
     // StatusBar.overlaysWebView is set in capacitor.config.json — no JS call needed.
     //
     // Hide the native splash after the first paint so WKWebView is immediately
@@ -112,9 +122,13 @@
     });
   }
 
-  // ===== RevenueCat (iOS IAP) — public API key, safe to ship in client code =====
-  // From RevenueCat → Apps & providers → API keys → SWH Scorecard iOS (Public API key)
-  const REVENUECAT_IOS_API_KEY = 'appl_nbhmRDbmuarjSPcoHhkyQNdOBAL';
+  // ===== RevenueCat — public API keys, safe to ship in client code =====
+  // iOS: RevenueCat → Apps & providers → API keys → SWH Scorecard iOS (Public API key)
+  const REVENUECAT_IOS_API_KEY     = 'appl_nbhmRDbmuarjSPcoHhkyQNdOBAL';
+  // Android: RevenueCat → Apps & providers → API keys → SWH Scorecard Android (Public API key)
+  // TODO: replace with real Android key once Google Play app is created in RC dashboard
+  const REVENUECAT_ANDROID_API_KEY = 'TODO_ANDROID_RC_KEY';
+  const REVENUECAT_API_KEY = isAndroidNative() ? REVENUECAT_ANDROID_API_KEY : REVENUECAT_IOS_API_KEY;
   // WKWebView (capacitor:// origin) can't keep Firestore's WebChannel streaming
   // transport open — writes hang for 15s. Force long-polling on native instead.
   const db = isNativeEarly
@@ -637,6 +651,30 @@
       // Push notifications — fire and forget, never blocks boot
       initPushNotifications(me.uid).catch(() => {});
 
+      // Android hardware back button — @capacitor/app is already installed and
+      // registers on window.Capacitor.Plugins.App. Prevent exit on inner screens;
+      // allow exit from home or when no history (standard Android UX).
+      if (isAndroidNative()) {
+        try {
+          const CapApp = window.Capacitor.Plugins.App;
+          if (CapApp && typeof CapApp.addListener === 'function') {
+            CapApp.addListener('backButton', ({ canGoBack }) => {
+              const activeScreen = document.querySelector('.screen.active');
+              const isHome = activeScreen && activeScreen.id === 'screen-home';
+              const paywallOpen = document.getElementById('paywall-modal')?.classList.contains('open');
+              if (paywallOpen) {
+                try { closePaywall(); } catch(_) {}
+              } else if (isHome || !canGoBack) {
+                CapApp.exitApp();
+              } else {
+                window.history.back();
+              }
+            });
+            console.log('[android] back button handler registered');
+          }
+        } catch(e) { console.warn('[android] back button setup failed:', e.message); }
+      }
+
       // ── Stage 4: routing ────────────────────────────────────────────────────
       showLoader(false);
       console.log('[boot] routing — userPlan:', userPlan, '_syncingSubscription:', _syncingSubscription);
@@ -816,7 +854,7 @@
         body: JSON.stringify({
           email,
           reason: pendingPaywallReason || 'paywall',
-          platform: isNative() ? 'ios-native' : 'web'
+          platform: isAndroidNative() ? 'android-native' : (isNative() ? 'ios-native' : 'web')
         }),
         signal: ctrl.signal
       });
@@ -1368,8 +1406,8 @@
   async function setupRevenueCat(uid) {
     if (!isNativeEarly) return; // web path uses Stripe, not RC
     if (_rcConfigured) return;  // idempotent
-    if (!REVENUECAT_IOS_API_KEY || REVENUECAT_IOS_API_KEY.startsWith('TODO')) {
-      console.warn('[RC] API key not configured — IAP is disabled on this build');
+    if (!REVENUECAT_API_KEY || REVENUECAT_API_KEY.startsWith('TODO')) {
+      console.warn('[RC] API key not configured for platform', _nativePlatform, '— IAP is disabled on this build');
       return;
     }
     try {
@@ -1378,10 +1416,10 @@
         console.warn('[RC] Purchases plugin not registered (build may not include @revenuecat/purchases-capacitor)');
         return;
       }
-      console.log('[RC] configure starting for uid', uid);
+      console.log('[RC] configure starting for uid', uid, 'platform', _nativePlatform);
       // 6s timeout on configure — native plugin can hang if network is unavailable
       await withTimeout(
-        Purchases.configure({ apiKey: REVENUECAT_IOS_API_KEY, appUserID: uid || null }),
+        Purchases.configure({ apiKey: REVENUECAT_API_KEY, appUserID: uid || null }),
         6000,
         'RC.configure'
       );
@@ -3683,6 +3721,15 @@
   .native-only { display: none !important; }
   html.native-platform .native-only { display: block !important; }
   html.native-platform .settings-row.native-only { display: flex !important; }
+  /* iOS-only: visible on iOS native, hidden on Android and web */
+  .ios-only { display: none !important; }
+  html.ios-platform .ios-only { display: block !important; }
+  html.ios-platform .settings-row.ios-only { display: flex !important; }
+  /* Android-only: visible on Android native, hidden on iOS and web */
+  .android-only { display: none !important; }
+  html.android-platform .android-only { display: block !important; }
+  /* Apple Sign-In is unavailable on Android — always hide */
+  html.android-platform #signin-apple-btn { display: none !important; }
   :root{--navy:#1a1a1a;--navy-light:#2a2a2a;--gold:#E63946;--gold-light:#f25862;--bg:#EBEBEC;--card:#FFFFFF;--text:#1a1a1a;--text-muted:#6B7280;--green:#5A8A6A;--red:#E63946;--border:#E4E4E7;--radius:18px;--shadow:0 4px 24px rgba(0,0,0,0.10);}
   *{box-sizing:border-box;margin:0;padding:0;}
   html{background:#1a1a1a;-webkit-text-size-adjust:100%;text-size-adjust:100%;width:100%;max-width:100%;overflow-x:hidden;}
