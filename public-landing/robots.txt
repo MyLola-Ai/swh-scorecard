@@ -1,0 +1,5 @@
+# stopwastinghandshakes.com — robots.txt
+User-agent: *
+Allow: /
+
+Sitemap: https://stopwastinghandshakes.com/sitemap.xml

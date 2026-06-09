@@ -1,0 +1,20 @@
+{
+  "name": "Stop Wasting Handshakes — CRM",
+  "short_name": "SWH CRM",
+  "description": "The simple daily relationship CRM. Track every contact, never lose a handshake.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "theme_color": "#0A2540",
+  "background_color": "#FFFFFF",
+  "icons": [
+    {
+      "src": "/assets/swh-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["productivity", "business"]
+}

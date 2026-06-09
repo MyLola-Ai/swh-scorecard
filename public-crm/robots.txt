@@ -1,0 +1,5 @@
+# Stop Wasting Handshakes — robots.txt
+User-agent: *
+Disallow: /
+
+# Authenticated CRM / app surface — no public content to index.
