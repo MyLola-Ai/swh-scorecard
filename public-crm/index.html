@@ -10,6 +10,8 @@
 <link rel="apple-touch-icon" href="assets/swh/swh-lockup-light.png">
 <title>SWH CRM — Stop Wasting Handshakes</title>
 <link rel="icon" href="assets/swh/swh-lockup-light.png">
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#0A2540">
 <meta property="og:title" content="SWH CRM — Stop Wasting Handshakes">
 <meta property="og:description" content="The networking CRM built on the 8-Step Follow-Through System. Track contacts, log activities, and turn handshakes into referral partners.">
 <meta property="og:image" content="https://swh-crm.web.app/assets/swh/swh-lockup-light.png">
@@ -3558,6 +3560,9 @@ onAuthStateChanged(auth, async user => {
     showLoader(false);
     showApp();
     if (typeof refreshSettingsSubLabelsCRM === 'function') refreshSettingsSubLabelsCRM();
+    // Record when this user was last active in the CRM (used by team leads to see "last in CRM").
+    // Fire-and-forget — non-blocking, non-fatal.
+    setDoc(doc(db, 'users', user.uid), { lastSeenAt: new Date().toISOString() }, { merge: true }).catch(() => {});
   } else {
     // If a cross-product token exchange is still in flight, hold the
     // loader instead of flashing the login screen. The listener will
@@ -4025,6 +4030,22 @@ function renderAnnouncementsBanner() {
 
 function escapeHtmlCRM(s) { return String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
+// Returns a human-readable "last seen in CRM" label for team member rows.
+function formatLastSeen(isoString) {
+  if (!isoString) return 'Never opened';
+  try {
+    const ms = new Date(isoString).getTime();
+    if (!ms) return 'Never opened';
+    const diffMs = Date.now() - ms;
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    if (diffDays === 0) return 'Active today';
+    if (diffDays === 1) return 'Yesterday';
+    if (diffDays <= 6) return `${diffDays} days ago`;
+    const d = new Date(isoString);
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  } catch (_) { return 'Never opened'; }
+}
+
 window.dismissAnnouncement = async function(id) {
   ANNOUNCEMENTS = ANNOUNCEMENTS.filter(a => a.id !== id);
   dismissedAnnouncements[id] = new Date().toISOString();
@@ -4375,6 +4396,7 @@ function renderCrmTeamDashboard() {
         <div style="flex:1;min-width:0;">
           <div style="font-size:13px;font-weight:700;color:var(--text);">${safeName}${m.role==='owner'?' <span style="font-size:9px;background:var(--gold);color:#fff;padding:2px 6px;border-radius:4px;font-weight:700;letter-spacing:0.04em;margin-left:4px;">OWNER</span>':m.role==='co_lead'?' <span style="font-size:9px;background:#1F4F87;color:#fff;padding:2px 6px;border-radius:4px;font-weight:700;letter-spacing:0.04em;margin-left:4px;">CO-LEAD</span>':''}</div>
           <div style="font-size:11px;color:var(--muted);">${safeEmail}</div>
+          <div style="font-size:10px;color:${m.lastSeenAt && (Date.now()-new Date(m.lastSeenAt).getTime())<86400000?'#16a34a':'var(--muted)'};margin-top:2px;">Last in CRM: ${formatLastSeen(m.lastSeenAt)}</div>
         </div>
         ${isOwner ? `<div style="color:var(--muted);font-size:13px;flex-shrink:0;">›</div>` : ''}
         ${isOwner && m.role !== 'owner' && (s.role === 'owner' || m.role !== 'co_lead') ? `<button onclick="event.stopPropagation();crmRemoveMember('${m.uid}','${safeEmailJs}')" style="width:28px;height:28px;border-radius:50%;background:#fdecea;border:1px solid #f5c6c2;cursor:pointer;color:var(--red);font-size:13px;">✕</button>` : ''}

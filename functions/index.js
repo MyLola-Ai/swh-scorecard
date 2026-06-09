@@ -1,4 +1,4 @@
-const {onCall, onRequest} = require('firebase-functions/v2/https');
+const {onCall, onRequest, HttpsError} = require('firebase-functions/v2/https');
 const {onSchedule} = require('firebase-functions/v2/scheduler');
 const {defineSecret} = require('firebase-functions/params');
 const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
@@ -93,8 +93,16 @@ exports.scanBusinessCard = onCall({
   enforceAppCheck: false,
   secrets: [ANTHROPIC_API_KEY],
 }, async (request) => {
-  const { imageBase64, mediaType } = request.data;
-  if (!imageBase64) throw new Error('No image provided');
+  // Auth-first — callable harness will return 401 for HttpsError('unauthenticated')
+  // instead of 500 INTERNAL (which is what a plain `throw new Error()` gives).
+  // Caller is always a SWH-signed-in user (browser SDK attaches the bearer); we
+  // never expect anonymous traffic here, but the gate keeps the function out of
+  // the noisy-log 500 bucket if a scraper finds the URL.
+  if (!request.auth) {
+    throw new HttpsError('unauthenticated', 'Sign in required to scan business cards.');
+  }
+  const { imageBase64, mediaType } = request.data || {};
+  if (!imageBase64) throw new HttpsError('invalid-argument', 'imageBase64 required');
 
   const response = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
@@ -391,6 +399,12 @@ exports.submitWaitlist = onRequest({ cors: true }, async (req, res) => {
 
 // ===== Waitlist approval — admin promotes a /waitlist entry to a real account =====
 const ADMIN_EMAILS = ['austen@austensmith.com'];
+
+// Sender address for all outbound mail written to the `mail` collection.
+// Must match a verified sender in the SMTP credentials configured for the
+// firestore-send-email extension.  Update this if your SMTP uses a different
+// verified domain.
+const MAIL_FROM = 'SWH Reports <noreply@stopwastinghandshakes.com>';
 
 exports.approveWaitlistUser = onCall({ cors: true }, async (request) => {
   const callerEmail = (request.auth?.token?.email || '').toLowerCase();
@@ -1047,16 +1061,28 @@ exports.weeklyActivityEmail = onSchedule({
   timeZone: 'UTC',
 }, async () => {
   const now = new Date();
-  const usersSnap = await db.collection('users').get();
-  const sendPromises = [];
 
-  for (const userDoc of usersSnap.docs) {
+  // Helper: parse current hour in a given timezone, normalizing midnight correctly.
+  // toLocaleString with hour12:false returns "24" for midnight in some Node versions;
+  // modulo 24 converts that to 0 so the match against targetHour (0–23) works.
+  function localHour(tz) {
+    return parseInt(now.toLocaleString('en-US', { hour: 'numeric', hour12: false, timeZone: tz })) % 24;
+  }
+  function localDayName(tz) {
+    return now.toLocaleString('en-US', { weekday: 'long', timeZone: tz }).toLowerCase();
+  }
+
+  const usersSnap = await db.collection('users').get();
+  let personalSent = 0;
+
+  // Process all users in parallel to avoid sequential-await timeouts on large user bases.
+  await Promise.all(usersSnap.docs.map(async (userDoc) => {
     const uid = userDoc.id;
     const userData = userDoc.data() || {};
     const settingsSnap = await db.doc(`users/${uid}/config/settings`).get();
     const settings = settingsSnap.data() || {};
-    if (!settings.weeklyEmailEnabled) continue;
-    if (!userData.email) continue;
+    if (!settings.weeklyEmailEnabled) return;
+    if (!userData.email) return;
 
     const tz = settings.weeklyEmailTimezone || 'America/Chicago';
     const targetDay = (settings.weeklyEmailDay || 'monday').toLowerCase();
@@ -1064,31 +1090,48 @@ exports.weeklyActivityEmail = onSchedule({
 
     let userDayName, userHour;
     try {
-      userDayName = now.toLocaleString('en-US', { weekday: 'long', timeZone: tz }).toLowerCase();
-      userHour = parseInt(now.toLocaleString('en-US', { hour: 'numeric', hour12: false, timeZone: tz }));
-    } catch(e) { console.warn('[weeklyEmail] bad timezone for', uid, tz); continue; }
+      userDayName = localDayName(tz);
+      userHour = localHour(tz);
+    } catch(e) { console.warn('[weeklyEmail] bad timezone for', uid, tz); return; }
 
-    if (userDayName !== targetDay || userHour !== targetHour) continue;
+    if (userDayName !== targetDay || userHour !== targetHour) return;
+
+    // Idempotency: skip if we already sent a report within the past 23 hours
+    // to guard against duplicate Cloud Scheduler firings on the same hour.
+    const lastSent = settings.lastWeeklyEmailDate;
+    if (lastSent) {
+      const hoursSinceSent = (now.getTime() - new Date(lastSent).getTime()) / (1000 * 60 * 60);
+      if (hoursSinceSent < 23) {
+        console.log('[weeklyEmail] skipping', uid, '— already sent', Math.round(hoursSinceSent), 'h ago');
+        return;
+      }
+    }
 
     const stats = await computeUserWeeklyStats(uid);
-    if (!stats) continue;
+    if (!stats) return;
 
-    sendPromises.push(
-      db.collection('mail').add({
+    try {
+      await db.collection('mail').add({
+        from: MAIL_FROM,
         to: [userData.email],
-        message: { subject: renderRecapSubject(stats), html: renderRecapHTML(stats), text: renderRecapText(stats) }
-      })
-    );
-  }
+        message: { subject: renderRecapSubject(stats), html: renderRecapHTML(stats), text: renderRecapText(stats) },
+      });
+      // Mark sent so a retry of this scheduler invocation doesn't double-send.
+      await db.doc(`users/${uid}/config/settings`).set({ lastWeeklyEmailDate: now.toISOString() }, { merge: true });
+      personalSent++;
+    } catch(mailErr) {
+      console.error('[weeklyEmail] failed to queue mail for', uid, mailErr.message);
+    }
+  }));
 
-  await Promise.all(sendPromises);
-  console.log(`[weeklyEmail] sent ${sendPromises.length} personal email(s)`);
+  console.log(`[weeklyEmail] queued ${personalSent} personal email(s)`);
 
   // Team weekly reports
-  const teamReportPromises = [];
+  let teamSent = 0;
   try {
     const teamsSnap = await db.collection('teams').where('weeklyReportEnabled', '==', true).get();
-    for (const teamDoc of teamsSnap.docs) {
+
+    await Promise.all(teamsSnap.docs.map(async (teamDoc) => {
       const team = teamDoc.data() || {};
       const tz = team.weeklyReportTimezone || 'America/Chicago';
       const targetDay = (team.weeklyReportDay || 'monday').toLowerCase();
@@ -1096,13 +1139,20 @@ exports.weeklyActivityEmail = onSchedule({
 
       let teamDayName, teamHour;
       try {
-        teamDayName = now.toLocaleString('en-US', { weekday: 'long', timeZone: tz }).toLowerCase();
-        teamHour = parseInt(now.toLocaleString('en-US', { hour: 'numeric', hour12: false, timeZone: tz }));
-      } catch(e) { continue; }
-      if (teamDayName !== targetDay || teamHour !== targetHour) continue;
+        teamDayName = localDayName(tz);
+        teamHour = localHour(tz);
+      } catch(e) { return; }
+      if (teamDayName !== targetDay || teamHour !== targetHour) return;
+
+      // Idempotency: skip if already sent a team report within 23 hours
+      const lastTeamSent = team.lastWeeklyReportDate;
+      if (lastTeamSent) {
+        const hoursSince = (now.getTime() - new Date(lastTeamSent).getTime()) / (1000 * 60 * 60);
+        if (hoursSince < 23) return;
+      }
 
       const teamStats = await computeTeamWeeklyStats(teamDoc.id);
-      if (!teamStats) continue;
+      if (!teamStats) return;
 
       // Collect recipients: owner + all co_leads
       const membersSnap = await db.collection('teams').doc(teamDoc.id).collection('members').get();
@@ -1117,16 +1167,22 @@ exports.weeklyActivityEmail = onSchedule({
         if ((m.role === 'co_lead' || m.role === 'owner') && m.email) recipientEmails.add(m.email);
       });
 
-      if (!recipientEmails.size) continue;
-      teamReportPromises.push(
-        db.collection('mail').add({
+      if (!recipientEmails.size) return;
+
+      try {
+        await db.collection('mail').add({
+          from: MAIL_FROM,
           to: Array.from(recipientEmails),
-          message: { subject: renderTeamRecapSubject(teamStats), html: renderTeamRecapHTML(teamStats), text: renderTeamRecapText(teamStats) }
-        })
-      );
-    }
-    await Promise.all(teamReportPromises);
-    console.log(`[weeklyEmail] sent ${teamReportPromises.length} team report(s)`);
+          message: { subject: renderTeamRecapSubject(teamStats), html: renderTeamRecapHTML(teamStats), text: renderTeamRecapText(teamStats) },
+        });
+        await db.doc(`teams/${teamDoc.id}`).set({ lastWeeklyReportDate: now.toISOString() }, { merge: true });
+        teamSent++;
+      } catch(mailErr) {
+        console.error('[weeklyEmail] failed to queue team mail for', teamDoc.id, mailErr.message);
+      }
+    }));
+
+    console.log(`[weeklyEmail] queued ${teamSent} team report(s)`);
   } catch(e) { console.error('[weeklyEmail] team reports error:', e); }
 });
 
@@ -1146,8 +1202,9 @@ exports.sendMyRecap = onRequest({ cors: true }, async (req, res) => {
     if (!stats) { res.status(400).json({ error: 'No activity logged in the past week — log a few entries first.' }); return; }
 
     await db.collection('mail').add({
+      from: MAIL_FROM,
       to: [email],
-      message: { subject: renderRecapSubject(stats), html: renderRecapHTML(stats), text: renderRecapText(stats) }
+      message: { subject: renderRecapSubject(stats), html: renderRecapHTML(stats), text: renderRecapText(stats) },
     });
     res.json({ ok: true, email, totalPts: stats.totalPts });
   } catch (e) { sendErr(res, e); }
@@ -1162,8 +1219,9 @@ exports.sendSampleRecap = onCall({ cors: true }, async (request) => {
 
   const stats = getDemoStats();
   await db.collection('mail').add({
+    from: MAIL_FROM,
     to: [email],
-    message: { subject: '[Sample] ' + renderRecapSubject(stats), html: renderRecapHTML(stats), text: renderRecapText(stats) }
+    message: { subject: '[Sample] ' + renderRecapSubject(stats), html: renderRecapHTML(stats), text: renderRecapText(stats) },
   });
   return { ok: true, email };
 });
@@ -1572,6 +1630,7 @@ exports.sendTeamReportNow = onRequest({ cors: true }, async (req, res) => {
     if (!recipientEmails.size) { res.status(400).json({ error: 'No recipients found.' }); return; }
 
     await db.collection('mail').add({
+      from: MAIL_FROM,
       to: Array.from(recipientEmails),
       message: {
         subject: renderTeamRecapSubject(stats),
@@ -1582,6 +1641,47 @@ exports.sendTeamReportNow = onRequest({ cors: true }, async (req, res) => {
 
     res.json({ ok: true, recipients: Array.from(recipientEmails), weekStart: stats.weekStart, weekEnd: stats.weekEnd });
   } catch (e) { console.error('[sendTeamReportNow]', e); sendErr(res, e); }
+});
+
+// ===== checkMailQueue — admin diagnostic: returns delivery status of recent mail docs =====
+// GET/POST, Bearer auth required (admin only).
+// Returns the last 20 mail docs with their delivery.state + delivery.error fields.
+// Use this to diagnose firestore-send-email extension issues — if delivery.state is
+// 'ERROR', delivery.error will tell you exactly why (bad SMTP, missing FROM, etc.)
+exports.checkMailQueue = onRequest({ cors: true }, async (req, res) => {
+  if (req.method === 'OPTIONS') { res.status(204).send(''); return; }
+  try {
+    const decoded = await requireAuth(req);
+    const callerEmail = (decoded.email || '').toLowerCase();
+    if (!ADMIN_EMAILS.includes(callerEmail)) { res.status(403).json({ error: 'admin only' }); return; }
+
+    const snap = await db.collection('mail').orderBy('delivery.startTime', 'desc').limit(20).get()
+      .catch(() => db.collection('mail').limit(20).get()); // fallback if no index yet
+
+    const docs = snap.docs.map(d => {
+      const data = d.data();
+      return {
+        id: d.id,
+        to: data.to,
+        from: data.from || '(none — using DEFAULT_FROM)',
+        subject: data.message?.subject,
+        delivery: data.delivery || null,
+      };
+    });
+
+    const summary = {
+      total: docs.length,
+      byState: docs.reduce((acc, d) => {
+        const s = d.delivery?.state || 'PENDING/NO_STATE';
+        acc[s] = (acc[s] || 0) + 1;
+        return acc;
+      }, {}),
+      configuredFrom: MAIL_FROM,
+      docs,
+    };
+
+    res.json(summary);
+  } catch (e) { console.error('[checkMailQueue]', e); sendErr(res, e); }
 });
 
 // ===== saveTeamDomainSettings — owner/co_lead sets the team's SSO domain config =====
@@ -2776,7 +2876,21 @@ exports.getTeamSummary = onRequest({ cors: true }, async (req, res) => {
     const role = team.ownerUid === uid ? 'owner' : (userData.teamRole || 'member');
 
     const membersSnap = await db.collection('teams').doc(teamId).collection('members').get();
-    const members = membersSnap.docs.map(d => d.data());
+
+    // Fetch lastSeenAt (CRM last-opened timestamp) from each member's user doc in parallel.
+    const members = await Promise.all(membersSnap.docs.map(async (d) => {
+      const memberData = d.data();
+      // uid might be stored as 'uid' or inferred from the doc id
+      const memberUid = memberData.uid || d.id;
+      let lastSeenAt = memberData.lastSeenAt || null;
+      if (memberUid && !lastSeenAt) {
+        try {
+          const userSnap = await db.collection('users').doc(memberUid).get();
+          if (userSnap.exists) lastSeenAt = userSnap.data().lastSeenAt || null;
+        } catch (_) {}
+      }
+      return { ...memberData, lastSeenAt };
+    }));
 
     // Owner / co_lead / admin: include pending invites
     let pendingInvites = [];
@@ -5152,8 +5266,12 @@ function getLoaniqAdminApp() {
 exports.mintApptCustomToken = onCall({
   secrets: [MYAPPOINTMENT_SA_KEY, MYAPPOINTMENT_UPGRADE_SECRET],
 }, async (request) => {
+  // Was `throw new Error('unauthenticated')` which the v2 onCall harness
+  // surfaces as a 500 INTERNAL — wrong category, pollutes logs, and lets
+  // monitoring miss real bugs in the bucket. HttpsError('unauthenticated')
+  // gets translated to the proper 401 (UNAUTHENTICATED) callable error.
   if (!request.auth) {
-    throw new Error('unauthenticated');
+    throw new HttpsError('unauthenticated', 'Sign in required.');
   }
   const swhUid = request.auth.uid;
   const email  = request.auth.token?.email || null;
@@ -5472,7 +5590,9 @@ async function syncApptPlan(uid, billingRef) {
 exports.getApptData = onCall({
   secrets: [LOANIQ_SA_KEY],
 }, async (request) => {
-  if (!request.auth) throw new Error('unauthenticated');
+  // Was `throw new Error('unauthenticated')` → 500 INTERNAL. HttpsError
+  // gets the v2 onCall harness to return a proper 401 UNAUTHENTICATED.
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in required.');
 
   const email  = request.auth.token?.email || null;
   const swhUid = request.auth.uid;
