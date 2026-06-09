@@ -930,9 +930,12 @@
         await bootNative();
       } else {
         const cred = await withTimeout(createUserWithEmailAndPassword(auth, email, password), 15000, 'createUserWithEmailAndPassword');
-        // Initialize user doc so they have a /users/{uid} record from day 1
+        // Initialize user doc so they have a /users/{uid} record from day 1.
+        // `doc` + `setDoc` are already imported at the top of this module from
+        // firebase-firestore.js 10.12.0 — don\'t re-import from 10.7.1 (was a
+        // leftover from before the top-level import; loaded a second copy of
+        // the Firestore SDK + created a second module instance).
         try {
-          const { doc, setDoc } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js');
           await setDoc(doc(db, 'users', cred.user.uid), {
             email, plan: 'free', createdAt: new Date().toISOString(),
           }, { merge: true });
