@@ -472,6 +472,7 @@
   let userPhone = '';
   let userSmsOptIn = false;
   let editingDate = null;
+  let _savingInterval = null;
   let calReminderEnabled = false;
   let calReminderHour = 19; // Default 7:00 PM
   let calReminderEventId = '';
@@ -2118,6 +2119,27 @@
     if (!requirePaid('submit')) return;
     const targetKey=editingDate||getTodayKey();
 
+    // Show blocking overlay immediately so nothing can be tapped during the save
+    const _overlay = document.getElementById('save-overlay');
+    if (_overlay) _overlay.classList.add('visible');
+
+    // Saving animation on button
+    if (_savingInterval) clearInterval(_savingInterval);
+    let _dots = 1;
+    const _saveLabel = document.getElementById('submit-btn-label');
+    if (_saveLabel) _saveLabel.textContent = 'Saving.';
+    _savingInterval = setInterval(() => {
+      _dots = (_dots % 3) + 1;
+      if (_saveLabel) _saveLabel.textContent = 'Saving' + '.'.repeat(_dots);
+    }, 400);
+
+    const _abortSave = (msg) => {
+      if (_overlay) _overlay.classList.remove('visible');
+      if (_savingInterval) { clearInterval(_savingInterval); _savingInterval = null; }
+      if (_saveLabel) _saveLabel.textContent = '✓ Save';
+      showToast(msg);
+    };
+
     // Native path — single Cloud Function call, server-side merge with existing CRM data
     if (isNativeEarly) {
       let totalPts=0, leadPts=0, lagPts=0;
@@ -2131,7 +2153,7 @@
           totalPts+=c*act.pts;
         }
       });
-      if (totalPts===0) { showToast('⚠️ Log at least one activity first'); return; }
+      if (totalPts===0 && !editingDate) { _abortSave('⚠️ Log at least one activity first'); return; }
       try {
         await NativeAPI.call('saveDay', {
           dateKey: targetKey,
@@ -2143,25 +2165,29 @@
         });
       } catch(e) {
         console.error('[submitToday] failed:', e);
-        showToast('⚠️ Could not save: ' + (e.message || 'unknown'));
+        _abortSave('⚠️ Could not save: ' + (e.message || 'unknown'));
         return;
       }
       // Update local state
-      const entry = {
-        dateKey: targetKey, dateLabel: formatDateLabel(targetKey),
-        weekKey: getWeekStart(targetKey), monthKey: getMonthKey(targetKey),
-        totalPts, leadPts, lagPts, breakdown, categoryPts: catPts, counts: { ...todayCounts },
-        submitted: true, submittedAt: new Date().toISOString()
-      };
       const idx = history.findIndex(h => h.dateKey === targetKey);
-      if (idx >= 0) history[idx] = entry; else history.unshift(entry);
-      history.sort((a,b) => b.dateKey.localeCompare(a.dateKey));
-      editingDate = null;
-      document.getElementById('submit-btn-label').textContent = '✓ Save';
-      const _eb = document.getElementById('edit-day-banner'); if (_eb) _eb.style.display = 'none';
-      document.getElementById('home-date-label').textContent = formatDateLabel(getTodayKey());
-      renderActivities(); renderStats('week');
-      showToast('✅ Day saved! Check Coaching for insights.');
+      if (totalPts === 0) {
+        if (idx >= 0) history.splice(idx, 1);
+      } else {
+        const entry = {
+          dateKey: targetKey, dateLabel: formatDateLabel(targetKey),
+          weekKey: getWeekStart(targetKey), monthKey: getMonthKey(targetKey),
+          totalPts, leadPts, lagPts, breakdown, categoryPts: catPts, counts: { ...todayCounts },
+          submitted: true, submittedAt: new Date().toISOString()
+        };
+        if (idx >= 0) history[idx] = entry; else history.unshift(entry);
+        history.sort((a,b) => b.dateKey.localeCompare(a.dateKey));
+      }
+      loadTodayScorecard();
+      showScreen('history');
+      document.querySelectorAll('.nav-item').forEach(b=>b.classList.remove('active'));
+      const _hBtn = document.querySelectorAll('.nav-item')[2];
+      if (_hBtn) _hBtn.classList.add('active');
+      showToast(totalPts===0 ? '✅ Day cleared.' : '✅ Day saved! Check Coaching for insights.');
       sessionStorage.setItem('swh_coaching_updated','1');
       updateCoachingBadge();
       return;
@@ -2195,7 +2221,7 @@
         totalPts += bd.pts||0;
       }
     });
-    if(totalPts===0){showToast('⚠️ Log at least one activity first');return;}
+    if(totalPts===0 && !editingDate){ _abortSave('⚠️ Log at least one activity first'); return; }
 
     const entry={
       ...existing,
@@ -2206,18 +2232,19 @@
     };
     await setDoc(doc(db,'users',currentUser.uid,'days',targetKey),entry);
     const idx=history.findIndex(h=>h.dateKey===targetKey);
-    if(idx>=0) history[idx]=entry; else history.unshift(entry);
-    history.sort((a,b)=>b.dateKey.localeCompare(a.dateKey));
+    if(totalPts===0){
+      if(idx>=0) history.splice(idx,1);
+    } else {
+      if(idx>=0) history[idx]=entry; else history.unshift(entry);
+      history.sort((a,b)=>b.dateKey.localeCompare(a.dateKey));
+    }
 
-    editingDate=null;
-    // Reload todayCounts from the saved entry so the home screen keeps
-    // showing what was just logged instead of resetting to 0.
-    todayCounts = { ...entry.counts };
-    document.getElementById('submit-btn-label').textContent='✓ Save';
-    const _eb2 = document.getElementById('edit-day-banner'); if (_eb2) _eb2.style.display = 'none';
-    document.getElementById('home-date-label').textContent=formatDateLabel(getTodayKey());
-    renderActivities(); renderStats('week');
-    showToast('✅ Day saved! Check Coaching for insights.');
+    loadTodayScorecard();
+    showScreen('history');
+    document.querySelectorAll('.nav-item').forEach(b=>b.classList.remove('active'));
+    const _hBtn2 = document.querySelectorAll('.nav-item')[2];
+    if (_hBtn2) _hBtn2.classList.add('active');
+    showToast(totalPts===0 ? '✅ Day cleared.' : '✅ Day saved! Check Coaching for insights.');
     sessionStorage.setItem('swh_coaching_updated','1');
     updateCoachingBadge();
   };
@@ -2225,39 +2252,60 @@
   window.editDay = async (dateKey) => {
     if (!requirePaid('edit')) return;
     editingDate=dateKey;
-    // On native, read from in-memory history (Firestore SDK hangs in WKWebView).
-    // On web, use the Firestore SDK directly.
     if (isNativeEarly) {
       const entry = history.find(h => h.dateKey === dateKey);
       todayCounts = entry && entry.counts ? { ...entry.counts } : {};
     } else {
       const dayDoc = await getDoc(doc(db,'users',currentUser.uid,'days',dateKey));
+      if (editingDate !== dateKey) return; // aborted while Firestore loaded
       todayCounts = dayDoc.exists() ? (dayDoc.data().counts || {}) : {};
     }
     document.getElementById('submit-btn-label').textContent='✓ Save';
     document.getElementById('home-date-label').textContent=formatDateLabel(dateKey);
-    // Persistent banner so the user always knows they're editing a past day
     const banner = document.getElementById('edit-day-banner');
     const bannerDate = document.getElementById('edit-banner-date');
     if (bannerDate) bannerDate.textContent = formatDateLabel(dateKey);
     if (banner) banner.style.display = 'flex';
     renderActivities();
-    showScreen('home',document.querySelectorAll('.nav-item')[0]);
+    // No btn — prevents showScreen from calling loadTodayScorecard and undoing edit state
+    showScreen('home');
+    document.querySelectorAll('.nav-item').forEach(b=>b.classList.remove('active'));
+    const _homeBtn = document.querySelectorAll('.nav-item')[0];
+    if (_homeBtn) _homeBtn.classList.add('active');
   };
 
   window.cancelEditDay = () => {
-    editingDate = null;
-    // Restore today's counts from in-memory history
-    const todayKey = getTodayKey();
-    const todayEntry = history.find(h => h.dateKey === todayKey);
-    todayCounts = todayEntry && todayEntry.counts ? { ...todayEntry.counts } : {};
-    document.getElementById('submit-btn-label').textContent = '✓ Save';
-    document.getElementById('home-date-label').textContent = formatDateLabel(todayKey);
-    const banner = document.getElementById('edit-day-banner');
-    if (banner) banner.style.display = 'none';
-    renderActivities();
+    loadTodayScorecard();
     showToast('Back to today');
   };
+
+  function loadTodayScorecard() {
+    const _ov = document.getElementById('save-overlay');
+    if (_ov) _ov.classList.remove('visible');
+    if (_savingInterval) { clearInterval(_savingInterval); _savingInterval = null; }
+    editingDate = null;
+    const _todayEntry = history.find(h => h.dateKey === getTodayKey());
+    todayCounts = _todayEntry && _todayEntry.counts ? { ..._todayEntry.counts } : {};
+    const tk = getTodayKey();
+    const dl = document.getElementById('home-date-label');
+    if (dl) dl.textContent = formatDateLabel(tk);
+    const eb = document.getElementById('edit-day-banner');
+    if (eb) eb.style.display = 'none';
+    const sl = document.getElementById('submit-btn-label');
+    if (sl) sl.textContent = '✓ Save';
+    const bar = document.getElementById('save-bar');
+    if (bar) bar.classList.remove('visible');
+    document.querySelectorAll('.screen').forEach(s => { s.classList.remove('active'); s.style.display = 'none'; });
+    const homeEl = document.getElementById('screen-home');
+    if (homeEl) { homeEl.classList.add('active'); homeEl.style.display = 'block'; }
+    window.scrollTo({ top: 0, behavior: 'instant' });
+    document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
+    const homeBtn = document.querySelectorAll('.nav-item')[0];
+    if (homeBtn) homeBtn.classList.add('active');
+    renderActivities();
+    renderStats('week');
+  }
+  window.loadTodayScorecard = loadTodayScorecard;
 
   window.changeCount = async (i,delta) => {
     todayCounts[i]=Math.max(0,(todayCounts[i]||0)+delta);
@@ -2755,6 +2803,7 @@
     const pts=filtered.map(d=>d.totalPts);
     const high=pts.length?Math.max(...pts):0;
     const streak=calcStreak();
+    const weeklyStreak=calcWeeklyStreak();
 
     // Consistent weeks (100+ pts in a week)
     const weekMap={};
@@ -2765,7 +2814,8 @@
       <div class="stat-tile gold"><div class="stat-tile-val">${grand}</div><div class="stat-tile-label">Total Points</div></div>
       <div class="stat-tile"><div class="stat-tile-val">${filtered.length}</div><div class="stat-tile-label">Days Logged</div></div>
       <div class="stat-tile"><div class="stat-tile-val">${avg}</div><div class="stat-tile-label">Avg pts/day</div></div>
-      <div class="stat-tile"><div class="stat-tile-val">${consistentWeeks}🗓</div><div class="stat-tile-label">Consistent Wks</div></div>`;
+      <div class="stat-tile"><div class="stat-tile-val">${consistentWeeks}🗓</div><div class="stat-tile-label">Consistent Wks</div></div>
+      <div class="stat-tile${weeklyStreak>0?' gold':''}"><div class="stat-tile-val">${weeklyStreak}🔥</div><div class="stat-tile-label">Weekly Streak</div></div>`;
 
     // Weekly goal + tier — driven by LEAD points (Danny's coaching: lead = future business)
     const ws=getWeekStart(todayKey);
@@ -2960,6 +3010,19 @@
     const sorted=[...history].sort((a,b)=>b.dateKey.localeCompare(a.dateKey));
     let streak=0, expected=getTodayKey();
     for(const d of sorted){ if(d.dateKey===expected){streak++;const p=new Date(expected+'T12:00:00');p.setDate(p.getDate()-1);expected=`${p.getFullYear()}-${String(p.getMonth()+1).padStart(2,'0')}-${String(p.getDate()).padStart(2,'0')}`;}else break; }
+    return streak;
+  }
+
+  function calcWeeklyStreak() {
+    if (!history.length) return 0;
+    const weekDays = {};
+    history.forEach(d => { const wk = getWeekStart(d.dateKey); weekDays[wk] = (weekDays[wk] || 0) + 1; });
+    const prevWeek = wk => { const d = new Date(wk + 'T12:00:00'); d.setDate(d.getDate() - 7); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
+    let wk = getWeekStart(getTodayKey());
+    // If current week isn't active yet, start counting from last week
+    if ((weekDays[wk] || 0) < 3) wk = prevWeek(wk);
+    let streak = 0;
+    while ((weekDays[wk] || 0) >= 3) { streak++; wk = prevWeek(wk); }
     return streak;
   }
 
@@ -3335,6 +3398,28 @@
         <div style="font-size:12px;color:rgba(255,255,255,0.5);">${weekPts>=weeklyGoal?'✅ Goal achieved this week!':pace+' pts/day needed · '+Math.max(0,(nextTier?.min||999)-weekPts)+' pts to '+(nextTier?.name||'top tier')}</div>
         ${nextTier?`<div style="font-size:11px;color:rgba(255,255,255,0.4);margin-top:10px;margin-bottom:4px;">Tier Progress to ${nextTier.emoji} ${nextTier.name}</div><div style="height:4px;background:rgba(255,255,255,0.1);border-radius:2px;overflow:hidden;"><div style="height:100%;width:${tierPct}%;background:${tier.color};border-radius:2px;"></div></div>`:''}
       </div>
+      ${(()=>{
+        const _wStreak = calcWeeklyStreak();
+        const _daysThisWeek = weekDays.length;
+        const _needed = Math.max(0, 3 - _daysThisWeek);
+        const _dots = [1,2,3].map(i=>`<div style="flex:1;height:8px;border-radius:4px;background:${i<=_daysThisWeek?'#E6B83A':'var(--border)'}"></div>`).join('');
+        const _msg = _daysThisWeek>=3
+          ? (_wStreak>0 ? `🎉 Active week confirmed — ${_wStreak} week${_wStreak!==1?'s':''} in a row. Keep the momentum going.` : `🎉 Active week confirmed! Log consistently next week to start a streak.`)
+          : (_wStreak>0 ? `Log ${_needed} more day${_needed!==1?'s':''} this week to keep your ${_wStreak}-week streak alive.` : `Log ${_needed} more day${_needed!==1?'s':''} this week to complete an active week and start a streak.`);
+        return `<div style="background:var(--card);border-radius:var(--radius);padding:20px;margin-bottom:12px;border:1.5px solid ${_daysThisWeek>=3?'#E6B83A':'var(--border)'};">
+          <div style="font-size:11px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:var(--text-muted);margin-bottom:14px;">Weekly Streak</div>
+          <div style="display:flex;align-items:center;gap:16px;margin-bottom:16px;">
+            <div style="font-size:38px;line-height:1;">🔥</div>
+            <div>
+              <div style="font-family:'Playfair Display',serif;font-size:36px;font-weight:900;color:var(--navy);line-height:1;">${_wStreak}</div>
+              <div style="font-size:13px;color:var(--text-muted);margin-top:2px;">week${_wStreak!==1?'s':''} in a row</div>
+            </div>
+          </div>
+          <div style="font-size:11px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;color:var(--text-muted);margin-bottom:8px;">This week — ${_daysThisWeek}/3 days</div>
+          <div style="display:flex;gap:6px;margin-bottom:12px;">${_dots}</div>
+          <div style="font-size:13px;color:var(--text);line-height:1.5;">${_msg}</div>
+        </div>`;
+      })()}
       <div style="background:var(--card);border-radius:var(--radius);padding:18px;margin-bottom:12px;border:1.5px solid var(--border);">
         <div style="font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--text-muted);margin-bottom:12px;">SWH Coaching</div>
         <div style="display:flex;flex-direction:column;gap:8px;">
@@ -3371,6 +3456,16 @@
     else if(introPct<5&&weekDays.length>2) insights.push({label:'Recommendation',icon:'🎯',text:'Look for 2–3 introductions you can make this week. Connecting others is the highest-leverage activity.',color:'#4A7FB5',bg:'#f0f4ff'});
     else if(followPct<15) insights.push({label:'Recommendation',icon:'🎯',text:'Increase follow through activity. Send 3 personalized follow throughs to recent connections today.',color:'#4A7FB5',bg:'#f0f4ff'});
     else insights.push({label:'Recommendation',icon:'🎯',text:`You need ${Math.max(0,weeklyGoal-weekPts)} more pts this week. At ${pace} pts/day you\'ll hit your goal.`,color:'#4A7FB5',bg:'#f0f4ff'});
+
+    // Weekly streak coaching
+    const _wks = calcWeeklyStreak();
+    const _daysLogged = weekDays.length;
+    const _needed = Math.max(0, 3 - _daysLogged);
+    if (_daysLogged >= 3) {
+      insights.push({label:'Streak',icon:'🔥',text:_wks>0?`${_wks}-week streak active — you've hit 3+ days this week. Consistency is your competitive advantage.`:`Active week! Log 3+ days every week to build your streak.`,color:'#E67E22',bg:'#fffbf0'});
+    } else {
+      insights.push({label:_wks>0?'Streak Alert':'Build Your Streak',icon:'🔥',text:_wks>0?`You're on a ${_wks}-week streak — log ${_needed} more day${_needed!==1?'s':''} this week to keep it alive.`:`Log ${_needed} more day${_needed!==1?'s':''} this week to complete an active week. Three days = momentum.`,color:'#E67E22',bg:'#fffbf0'});
+    }
 
     // Identity
     insights.push({label:'This Week\'s Identity',icon:tier.emoji,text:`"${tier.msg}"`,color:tier.color,bg:'rgba(27,46,75,0.04)'});
@@ -3482,8 +3577,8 @@
     activities.forEach((act,i)=>{ pts+=(todayCounts[i]||0)*act.pts; });
     const bar = document.getElementById('save-bar');
     const ptsEl = document.getElementById('save-bar-pts');
-    if(pts>0){
-      ptsEl.textContent = `${pts} pts logged`;
+    if(pts>0 || editingDate){
+      ptsEl.textContent = pts>0 ? `${pts} pts logged` : 'Clear day';
       bar.classList.add('visible');
     } else {
       bar.classList.remove('visible');
@@ -4255,6 +4350,26 @@
       padding-left: 0;
     }
   }
+  #save-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.75);
+    z-index: 9999;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 18px;
+  }
+  #save-overlay.visible { display: flex; }
+  #save-overlay-label {
+    color: rgba(255,255,255,0.7);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
 </style>
 </head>
 <body>
@@ -4508,6 +4623,10 @@
         <div class="settings-row-left"><div class="settings-row-icon">📱</div><div><div class="settings-row-text">SMS Reminders</div><div class="settings-row-sub">Daily reminder if you haven't logged</div></div></div>
         <div class="settings-arrow">›</div>
       </div>
+      <div class="settings-row" onclick="window.location.href='help.html'">
+        <div class="settings-row-left"><div class="settings-row-icon">❓</div><div><div class="settings-row-text">Help &amp; Guides</div><div class="settings-row-sub">How the Scorecard works</div></div></div>
+        <div class="settings-arrow">›</div>
+      </div>
       <div class="settings-row native-only" onclick="togglePushReminder()">
         <div class="settings-row-left"><div class="settings-row-icon">🔔</div><div><div class="settings-row-text">Push Notifications</div><div class="settings-row-sub" id="settings-push-sub">Daily 5PM reminder · off</div></div></div>
         <label style="position:relative;display:inline-flex;align-items:center;cursor:pointer;" onclick="event.stopPropagation()">
@@ -4717,10 +4836,6 @@
     <div class="nav-icon">🧠</div>
     <div class="nav-label">Coaching</div>
     <div class="coaching-nav-badge" id="coaching-nav-badge"></div>
-  </button>
-  <button class="nav-item web-only" id="nav-crm" onclick="window.location.href='/crm.html'">
-    <div class="nav-icon">👥</div>
-    <div class="nav-label">Contacts</div>
   </button>
   <button class="nav-item" data-screen="team" id="nav-team" onclick="showScreen('team',this)" style="display:none;">
     <div class="nav-icon">🤝</div>
@@ -5270,6 +5385,7 @@
 
 <script>
   function showScreen(name, btn) {
+    if (btn && name === 'home') { window.loadTodayScorecard && window.loadTodayScorecard(); return; }
     document.querySelectorAll('.screen').forEach(s=>{s.classList.remove('active');s.style.display='none';});
     const el = document.getElementById('screen-'+name);
     el.classList.add('active');
@@ -6205,5 +6321,11 @@
     }
   })();
 </script>
+<div id="save-overlay">
+  <div class="swh-spin-wrap">
+    <img class="swh-arrows" src="images/swh-arrow-mark-dark.png" alt="" draggable="false">
+  </div>
+  <div id="save-overlay-label">Saving...</div>
+</div>
 </body>
 </html>

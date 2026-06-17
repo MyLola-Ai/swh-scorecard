@@ -449,6 +449,7 @@
   let userPhone = '';
   let userSmsOptIn = false;
   let editingDate = null;
+  let _savingInterval = null;
   let calReminderEnabled = false;
   let calReminderHour = 19; // Default 7:00 PM
   let calReminderEventId = '';
@@ -1660,13 +1661,37 @@
       calReminderEventId = s.calReminderEventId || '';
     }
     const todayDoc = await getDoc(doc(db,'users',uid,'days',getTodayKey()));
-    todayCounts = todayDoc.exists() ? (todayDoc.data().counts||{}) : {};
+    const _rawToday = todayDoc.exists() ? todayDoc.data() : null;
     const hSnap = await getDocs(query(collection(db,'users',uid,'days'),orderBy('dateKey','desc')));
     // Rehydrate days that were saved before the per-tap-save fix landed.
     // Old docs only have {counts, dateKey, updatedAt} — no totalPts, no
     // breakdown, no leadPts/lagPts. Compute them client-side from counts
     // × activity.pts so History, dashboards, and tier math all work.
-    history = hSnap.docs.map(d => _rehydrateDay(d.data())).filter(d => (d.totalPts || 0) > 0);
+    // Exclude today's doc unless explicitly submitted — auto-save-only or
+    // corrupted entries shouldn't appear in History or skew the pts floor.
+    const _todayK = getTodayKey();
+    history = hSnap.docs.map(d => _rehydrateDay(d.data())).filter(d => (d.totalPts || 0) > 0 && (d.submitted || d.dateKey < _todayK));
+    // Self-heal: if today's doc has counts identical to yesterday's (submitted
+    // or not), the editDay() race condition corrupted today's Firestore slot.
+    // Clear it so the home screen starts at 0.
+    let _todayCorrupted = false;
+    if (_rawToday && (_rawToday.totalPts || 0) > 0) {
+      const _yDate = new Date(_todayK+'T12:00:00'); _yDate.setDate(_yDate.getDate()-1);
+      const _yKey = `${_yDate.getFullYear()}-${String(_yDate.getMonth()+1).padStart(2,'0')}-${String(_yDate.getDate()).padStart(2,'0')}`;
+      const _yDoc = hSnap.docs.find(d => d.id === _yKey);
+      if (_yDoc) {
+        const _tCts = JSON.stringify(_rawToday.counts||{});
+        const _yCts = JSON.stringify(_yDoc.data().counts||{});
+        if (_tCts === _yCts && _tCts !== '{}') {
+          _todayCorrupted = true;
+          history = history.filter(h => h.dateKey !== _todayK);
+          console.warn('[init] Self-healed corrupted today doc — submitted='+_rawToday.submitted);
+          try { await setDoc(doc(db,'users',uid,'days',_todayK),
+            {totalPts:0,totalActs:0,leadPts:0,lagPts:0,counts:{},submitted:false,submittedAt:null},{merge:true}); } catch(_e){}
+        }
+      }
+    }
+    todayCounts = _todayCorrupted ? {} : (_rawToday ? (_rawToday.counts||{}) : {});
     const lSnap = await getDocs(query(collection(db,'users',uid,'lag'),orderBy('dateKey','desc')));
     lagHistory = lSnap.docs.map(d=>d.data());
   }
@@ -1799,6 +1824,23 @@
     if (!requirePaid('submit')) return;
     const targetKey=editingDate||getTodayKey();
 
+    // Saving animation — dots cycle until loadTodayScorecard() clears the interval
+    if (_savingInterval) clearInterval(_savingInterval);
+    let _dots = 1;
+    const _saveLabel = document.getElementById('submit-btn-label');
+    if (_saveLabel) _saveLabel.textContent = 'Saving.';
+    _savingInterval = setInterval(() => {
+      _dots = (_dots % 3) + 1;
+      if (_saveLabel) _saveLabel.textContent = 'Saving' + '.'.repeat(_dots);
+    }, 400);
+
+    // Helper to abort the animation on early-return paths
+    const _abortSave = (msg) => {
+      if (_savingInterval) { clearInterval(_savingInterval); _savingInterval = null; }
+      if (_saveLabel) _saveLabel.textContent = '✓ Save';
+      showToast(msg);
+    };
+
     // Native path — single Cloud Function call, server-side merge with existing CRM data
     if (isNativeEarly) {
       let totalPts=0, leadPts=0, lagPts=0;
@@ -1812,7 +1854,7 @@
           totalPts+=c*act.pts;
         }
       });
-      if (totalPts===0) { showToast('⚠️ Log at least one activity first'); return; }
+      if (totalPts===0) { _abortSave('⚠️ Log at least one activity first'); return; }
       try {
         await NativeAPI.call('saveDay', {
           dateKey: targetKey,
@@ -1824,7 +1866,7 @@
         });
       } catch(e) {
         console.error('[submitToday] failed:', e);
-        showToast('⚠️ Could not save: ' + (e.message || 'unknown'));
+        _abortSave('⚠️ Could not save: ' + (e.message || 'unknown'));
         return;
       }
       // Update local state
@@ -1837,11 +1879,7 @@
       const idx = history.findIndex(h => h.dateKey === targetKey);
       if (idx >= 0) history[idx] = entry; else history.unshift(entry);
       history.sort((a,b) => b.dateKey.localeCompare(a.dateKey));
-      editingDate = null;
-      document.getElementById('submit-btn-label').textContent = '✓ Save';
-      const _eb = document.getElementById('edit-day-banner'); if (_eb) _eb.style.display = 'none';
-      document.getElementById('home-date-label').textContent = formatDateLabel(getTodayKey());
-      renderActivities(); renderStats('week');
+      loadTodayScorecard();
       showToast('✅ Day saved! Check Coaching for insights.');
       sessionStorage.setItem('swh_coaching_updated','1');
       updateCoachingBadge();
@@ -1876,7 +1914,7 @@
         totalPts += bd.pts||0;
       }
     });
-    if(totalPts===0){showToast('⚠️ Log at least one activity first');return;}
+    if(totalPts===0){ _abortSave('⚠️ Log at least one activity first'); return; }
 
     const entry={
       ...existing,
@@ -1890,14 +1928,7 @@
     if(idx>=0) history[idx]=entry; else history.unshift(entry);
     history.sort((a,b)=>b.dateKey.localeCompare(a.dateKey));
 
-    editingDate=null;
-    // Reload todayCounts from the saved entry so the home screen keeps
-    // showing what was just logged instead of resetting to 0.
-    todayCounts = { ...entry.counts };
-    document.getElementById('submit-btn-label').textContent='✓ Save';
-    const _eb2 = document.getElementById('edit-day-banner'); if (_eb2) _eb2.style.display = 'none';
-    document.getElementById('home-date-label').textContent=formatDateLabel(getTodayKey());
-    renderActivities(); renderStats('week');
+    loadTodayScorecard();
     showToast('✅ Day saved! Check Coaching for insights.');
     sessionStorage.setItem('swh_coaching_updated','1');
     updateCoachingBadge();
@@ -1913,6 +1944,14 @@
       todayCounts = entry && entry.counts ? { ...entry.counts } : {};
     } else {
       const dayDoc = await getDoc(doc(db,'users',currentUser.uid,'days',dateKey));
+      // If the user navigated away while Firestore was loading, editingDate
+      // will have been cleared. Bail out to prevent loading a past day's
+      // counts into todayCounts with editingDate=null, which causes
+      // saveTodayCounts() to write that data to today's Firestore slot.
+      if (editingDate !== dateKey) {
+        console.log('[editDay] aborted — editingDate changed during load for', dateKey);
+        return;
+      }
       todayCounts = dayDoc.exists() ? (dayDoc.data().counts || {}) : {};
     }
     document.getElementById('submit-btn-label').textContent='✓ Save';
@@ -1923,22 +1962,52 @@
     if (bannerDate) bannerDate.textContent = formatDateLabel(dateKey);
     if (banner) banner.style.display = 'flex';
     renderActivities();
-    showScreen('home',document.querySelectorAll('.nav-item')[0]);
+    // Call without btn so showScreen's stale-clearing block doesn't fire
+    // and undo the edit state we just set up.
+    showScreen('home');
+    // Manually highlight the Home nav item.
+    document.querySelectorAll('.nav-item').forEach(b=>b.classList.remove('active'));
+    const _homeBtn = document.querySelectorAll('.nav-item')[0];
+    if (_homeBtn) _homeBtn.classList.add('active');
   };
 
   window.cancelEditDay = () => {
-    editingDate = null;
-    // Restore today's counts from in-memory history
-    const todayKey = getTodayKey();
-    const todayEntry = history.find(h => h.dateKey === todayKey);
-    todayCounts = todayEntry && todayEntry.counts ? { ...todayEntry.counts } : {};
-    document.getElementById('submit-btn-label').textContent = '✓ Save';
-    document.getElementById('home-date-label').textContent = formatDateLabel(todayKey);
-    const banner = document.getElementById('edit-day-banner');
-    if (banner) banner.style.display = 'none';
-    renderActivities();
+    loadTodayScorecard();
     showToast('Back to today');
   };
+
+  // Single function called by every path that returns to Today's Log.
+  // Self-contained: owns state reset, navigation, and re-render so it works
+  // whether called from module code or via window.loadTodayScorecard.
+  function loadTodayScorecard() {
+    // Stop saving animation
+    if (_savingInterval) { clearInterval(_savingInterval); _savingInterval = null; }
+    editingDate = null;
+    todayCounts = {};
+    const tk = getTodayKey();
+    // Reset home UI labels
+    const dl = document.getElementById('home-date-label');
+    if (dl) dl.textContent = formatDateLabel(tk);
+    const eb = document.getElementById('edit-day-banner');
+    if (eb) eb.style.display = 'none';
+    const sl = document.getElementById('submit-btn-label');
+    if (sl) sl.textContent = '✓ Save';
+    const bar = document.getElementById('save-bar');
+    if (bar) bar.classList.remove('visible');
+    // Navigate to home screen (inline — avoids cross-script-block scope issues)
+    document.querySelectorAll('.screen').forEach(s => { s.classList.remove('active'); s.style.display = 'none'; });
+    const homeEl = document.getElementById('screen-home');
+    if (homeEl) { homeEl.classList.add('active'); homeEl.style.display = 'block'; }
+    window.scrollTo({ top: 0, behavior: 'instant' });
+    // Highlight Home nav button
+    document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
+    const homeBtn = document.querySelectorAll('.nav-item')[0];
+    if (homeBtn) homeBtn.classList.add('active');
+    // Re-render with cleared counts
+    renderActivities();
+    renderStats('week');
+  }
+  window.loadTodayScorecard = loadTodayScorecard;
 
   window.changeCount = async (i,delta) => {
     todayCounts[i]=Math.max(0,(todayCounts[i]||0)+delta);
@@ -2436,6 +2505,7 @@
     const pts=filtered.map(d=>d.totalPts);
     const high=pts.length?Math.max(...pts):0;
     const streak=calcStreak();
+    const weeklyStreak=calcWeeklyStreak();
 
     // Consistent weeks (100+ pts in a week)
     const weekMap={};
@@ -2446,7 +2516,8 @@
       <div class="stat-tile gold"><div class="stat-tile-val">${grand}</div><div class="stat-tile-label">Total Points</div></div>
       <div class="stat-tile"><div class="stat-tile-val">${filtered.length}</div><div class="stat-tile-label">Days Logged</div></div>
       <div class="stat-tile"><div class="stat-tile-val">${avg}</div><div class="stat-tile-label">Avg pts/day</div></div>
-      <div class="stat-tile"><div class="stat-tile-val">${consistentWeeks}🗓</div><div class="stat-tile-label">Consistent Wks</div></div>`;
+      <div class="stat-tile"><div class="stat-tile-val">${consistentWeeks}🗓</div><div class="stat-tile-label">Consistent Wks</div></div>
+      <div class="stat-tile${weeklyStreak>0?' gold':''}"><div class="stat-tile-val">${weeklyStreak}🔥</div><div class="stat-tile-label">Weekly Streak</div></div>`;
 
     // Weekly goal + tier — driven by LEAD points (Danny's coaching: lead = future business)
     const ws=getWeekStart(todayKey);
@@ -2641,6 +2712,18 @@
     const sorted=[...history].sort((a,b)=>b.dateKey.localeCompare(a.dateKey));
     let streak=0, expected=getTodayKey();
     for(const d of sorted){ if(d.dateKey===expected){streak++;const p=new Date(expected+'T12:00:00');p.setDate(p.getDate()-1);expected=`${p.getFullYear()}-${String(p.getMonth()+1).padStart(2,'0')}-${String(p.getDate()).padStart(2,'0')}`;}else break; }
+    return streak;
+  }
+
+  function calcWeeklyStreak() {
+    if (!history.length) return 0;
+    const weekDays = {};
+    history.forEach(d => { const wk = getWeekStart(d.dateKey); weekDays[wk] = (weekDays[wk] || 0) + 1; });
+    const prevWeek = wk => { const d = new Date(wk + 'T12:00:00'); d.setDate(d.getDate() - 7); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
+    let wk = getWeekStart(getTodayKey());
+    if ((weekDays[wk] || 0) < 3) wk = prevWeek(wk);
+    let streak = 0;
+    while ((weekDays[wk] || 0) >= 3) { streak++; wk = prevWeek(wk); }
     return streak;
   }
 
@@ -4086,6 +4169,10 @@
         <div class="settings-row-left"><div class="settings-row-icon">📱</div><div><div class="settings-row-text">SMS Reminders</div><div class="settings-row-sub">Daily reminder if you haven't logged</div></div></div>
         <div class="settings-arrow">›</div>
       </div>
+      <div class="settings-row" onclick="window.location.href='help.html'">
+        <div class="settings-row-left"><div class="settings-row-icon">❓</div><div><div class="settings-row-text">Help &amp; Guides</div><div class="settings-row-sub">How the Scorecard works</div></div></div>
+        <div class="settings-arrow">›</div>
+      </div>
       <div class="settings-row native-only" onclick="togglePushReminder()">
         <div class="settings-row-left"><div class="settings-row-icon">🔔</div><div><div class="settings-row-text">Push Notifications</div><div class="settings-row-sub" id="settings-push-sub">Daily 5PM reminder — off</div></div></div>
         <label style="position:relative;display:inline-flex;align-items:center;cursor:pointer;" onclick="event.stopPropagation()">
@@ -4695,6 +4782,10 @@
 
 <script>
   function showScreen(name, btn) {
+    // If the user taps a nav button while editing a past day, reload today's
+    // scorecard via the module-exposed shared function (clears editingDate,
+    // restores todayCounts from pre-edit backup, re-renders activities).
+    if (btn) window.loadTodayScorecard && window.loadTodayScorecard();
     document.querySelectorAll('.screen').forEach(s=>{s.classList.remove('active');s.style.display='none';});
     const el = document.getElementById('screen-'+name);
     el.classList.add('active');
@@ -4710,6 +4801,8 @@
     if(name==='settings') { try { window.updateTeamNavVisibility && window.updateTeamNavVisibility(); } catch(_){} }
     const bar = document.getElementById('save-bar');
     if(bar) bar.classList.remove('visible');
+    if(name==='home' && typeof updateHomeTotals === 'function') updateHomeTotals();
+    if(name==='home' && typeof renderActivities === 'function') renderActivities();
     if(name==='home' && typeof showSaveBar === 'function') setTimeout(showSaveBar, 50);
   }
   window.openTiersModal=()=>document.getElementById('tiers-modal').classList.add('open');
