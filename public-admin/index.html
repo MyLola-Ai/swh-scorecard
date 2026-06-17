@@ -47,7 +47,7 @@
   .tab:hover{color:#fff;}
   .tab.active{color:#fff;border-bottom-color:var(--gold);}
 
-  .wrap{max-width:1100px;margin:0 auto;padding:28px 24px 60px;}
+  .wrap{max-width:1100px;margin:0 auto;padding:28px 24px 96px;}
   .pane{display:none;}
   .pane.active{display:block;}
   .page-head{display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:12px;margin-bottom:18px;}
@@ -88,8 +88,34 @@
   .err{text-align:center;padding:36px 20px;color:var(--red);background:#fff;border-radius:14px;border:1.5px solid #fecaca;font-size:13px;line-height:1.55;}
   .err small{display:block;color:var(--muted);font-size:12px;margin-top:8px;}
 
-  .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(110%);background:#0f0f0f;color:#fff;padding:12px 20px;border-radius:12px;font-size:13px;font-weight:600;box-shadow:0 8px 24px rgba(0,0,0,0.3);transition:transform 0.3s;z-index:9999;max-width:420px;text-align:center;}
-  .toast.show{transform:translateX(-50%) translateY(0);}
+  /* Toast container: fixed to the viewport, above ALL overlays (300), above modals (300).
+     Positioned here on <body> so no parent overflow / transform can clip it.
+     The container handles the viewport anchor; the inner pill handles the slide animation. */
+  .toast-container{
+    position:fixed;
+    left:50%;
+    bottom:max(24px, env(safe-area-inset-bottom, 24px));
+    transform:translateX(-50%);
+    z-index:99999;
+    pointer-events:none;
+    width:max-content;
+    max-width:calc(100vw - 32px);
+  }
+  .toast{
+    pointer-events:auto;
+    display:inline-block;
+    max-width:calc(100vw - 32px);
+    background:#0f0f0f;color:#fff;
+    padding:12px 20px;border-radius:12px;
+    font-size:13px;font-weight:600;
+    box-shadow:0 8px 24px rgba(0,0,0,0.3);
+    transition:transform 0.3s,opacity 0.3s;
+    transform:translateY(110%);
+    opacity:0;
+    text-align:center;
+    white-space:nowrap;
+  }
+  .toast.show{transform:translateY(0);opacity:1;}
 
   .loader{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:60vh;color:var(--muted);}
   .spinner{width:30px;height:30px;border:3px solid var(--border);border-top-color:var(--navy);border-radius:50%;animation:spin 0.8s linear infinite;margin-bottom:12px;}
@@ -359,7 +385,7 @@
           <div class="user-joined">Joined ${created}</div>
         </div>
         <div>${badge}</div>
-        <select class="plan-select" onchange="setUserPlan('${u.id}', this.value, this)" ${isMe?'disabled title="Use a different admin to change your own plan"':''}>
+        <select class="plan-select" onchange="setUserPlan('${u.id}', this.value, this)">
           <option value="free" ${plan==='free'?'selected':''}>Free (no access)</option>
           <option value="scorecard" ${plan==='scorecard'?'selected':''}>Scorecard · $10</option>
           <option value="pro" ${plan==='pro'?'selected':''}>Scorecard CRM · $25</option>
@@ -909,7 +935,6 @@
 
   window.setUserPlan = async (uid, newPlan, selectEl) => {
     if (!isAdminEmail(currentUser?.email)) { showToast('⚠️ Admin only'); return; }
-    if (uid === currentUser.uid) { showToast('⚠️ Use another admin to change your own plan'); return; }
     const u = USERS.find(x => x.id === uid); if (!u) return;
     const previous = u.plan || 'free';
     if (previous === newPlan) return;
@@ -1426,6 +1451,12 @@
   };
 
   function showToast(msg) {
+    // Portal: ensure the container is always a direct <body> child so no
+    // ancestor overflow / transform / stacking context can clip or reposition it.
+    let container = document.getElementById('toast-container');
+    if (container && container.parentElement !== document.body) {
+      document.body.appendChild(container);
+    }
     const t = document.getElementById('toast');
     if (!t) return;
     t.textContent = msg;
@@ -1770,7 +1801,9 @@
 </div>
 <style>#create-user-modal.open{display:flex !important;}</style>
 
-<div class="toast" id="toast"></div>
+<div class="toast-container" id="toast-container">
+  <div class="toast" id="toast"></div>
+</div>
 
 </body>
 </html>

@@ -1312,7 +1312,7 @@ html,body{height:100%;font-family:'DM Sans',sans-serif;background:var(--bg);colo
                     <div class="ps-row"><div class="ps-k">1:1, no referral</div><div class="ps-v">30 days</div></div>
                     <div class="ps-row"><div class="ps-k">No contact touch</div><div class="ps-v">21 days</div></div>
                     <div class="ps-row"><div class="ps-k">Opp stalled</div><div class="ps-v">30 days</div></div>
-                    <button class="tb-btn" style="width:100%;margin-top:11px;justify-content:center;" >Edit Thresholds</button>
+                    <button class="tb-btn" style="width:100%;margin-top:11px;justify-content:center;" onclick="showToast('⚙️ Custom thresholds coming soon')">Edit Thresholds</button>
                   </div>
                 </div>
               </div>
@@ -1776,6 +1776,7 @@ html,body{height:100%;font-family:'DM Sans',sans-serif;background:var(--bg);colo
                   <div class="settings-row"><div class="sr-left"><div class="sr-icon">👤</div><div><div class="sr-text" id="settings-name">Loading…</div><div class="sr-sub" id="settings-email">Google Account</div></div></div></div>
                   <div class="settings-row" id="settings-billing-row" onclick="onBillingRowClick()"><div class="sr-left"><div class="sr-icon" style="background:linear-gradient(135deg,#3d6b4a,var(--green));">💳</div><div><div class="sr-text" id="settings-billing-text">Subscription</div><div class="sr-sub" id="settings-billing-sub">Loading plan…</div></div></div><div class="sr-arrow">›</div></div>
                   <div class="settings-row" onclick="showToast('🔔 Notifications coming soon')"><div class="sr-left"><div class="sr-icon">🔔</div><div><div class="sr-text">Notifications</div><div class="sr-sub">Coming soon</div></div></div><div class="sr-arrow">›</div></div>
+                  <div class="settings-row" onclick="window.location.href='help.html'"><div class="sr-left"><div class="sr-icon" style="background:linear-gradient(135deg,#fde8ea,#f5c2c6);">❓</div><div><div class="sr-text">Help &amp; Guides</div><div class="sr-sub">How the CRM works</div></div></div><div class="sr-arrow">›</div></div>
                   <div class="settings-row" onclick="doLogout()"><div class="sr-left"><div class="sr-icon" style="background:linear-gradient(135deg,#fdecea,#f5c6c2);">🚪</div><div><div class="sr-text" style="color:var(--red);">Sign Out</div></div></div></div>
 
                 </div>
@@ -2095,7 +2096,7 @@ html,body{height:100%;font-family:'DM Sans',sans-serif;background:var(--bg);colo
       </div>
       <div class="ctx-field">
         <label class="ctx-label">Note (optional)</label>
-        <textarea class="ctx-input" id="la-note" rows="3" placeholder="Anything worth remembering — what was discussed, next step, etc." style="resize:none;"></textarea>
+        <textarea class="ctx-input" id="la-note" rows="3" placeholder="Anything worth remembering: what was discussed, next step, etc." style="resize:none;"></textarea>
       </div>
       <div style="font-size:11px;color:var(--muted);line-height:1.5;padding:8px 10px;background:var(--bg);border-radius:8px;">
         💡 Logging an activity here also adds points to your daily Scorecard. Pick <strong>📝 Note</strong> for a no-points journal entry.
@@ -2260,7 +2261,7 @@ html,body{height:100%;font-family:'DM Sans',sans-serif;background:var(--bg);colo
       <div class="ctx-handle mobile-only"></div>
       <div class="ctx-icon">📷</div>
       <div class="ctx-title">Scan Business Card</div>
-      <div class="ctx-subtitle">Take a photo or upload an image — AI will extract the contact info</div>
+      <div class="ctx-subtitle">Take a photo or upload an image. AI will extract the contact info.</div>
     </div>
     <div class="ctx-body">
       <!-- Upload area -->
@@ -3059,7 +3060,8 @@ import { getAuth, GoogleAuthProvider, OAuthProvider, signInWithPopup, signOut, o
   from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import {
   getFirestore, doc, getDoc, setDoc, addDoc, updateDoc, deleteDoc,
-  collection, getDocs, orderBy, query, where, limit, serverTimestamp, Timestamp, onSnapshot
+  collection, getDocs, orderBy, query, where, limit, serverTimestamp, Timestamp, onSnapshot,
+  writeBatch
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 import { getFunctions, httpsCallable }
   from "https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js";
@@ -3282,14 +3284,14 @@ const STEP_NAMES = [
   'Long-Term Positioning'
 ];
 const STEP_DESCRIPTIONS = [
-  'Send a quick text or email. Acknowledge meeting them, reference something personal, keep it light — no pitch.',
+  'Send a quick text or email. Acknowledge meeting them, reference something personal, keep it light. No pitch.',
   'Connect on LinkedIn / Instagram / Facebook. Like or comment on something meaningful. Now you exist in their world.',
-  'Send something helpful — an article, event, introduction, or resource. "Hey, saw this and thought of you…"',
-  'Invite them to coffee, Zoom, or lunch. "Enjoyed meeting you — would love to learn more about what you\'re working on."',
+  'Send something helpful: an article, event, introduction, or resource. "Hey, saw this and thought of you…"',
+  'Invite them to coffee, Zoom, or lunch. "Enjoyed meeting you. Would love to learn more about what you\'re working on."',
   'Have a real FORM conversation. Family · Occupation · Recreation · Motivation. Don\'t pitch. Diagnose the person.',
-  'Do something intentional based on your 1:1 — make an introduction, send a referral, share a tool, invite them somewhere.',
-  'Reach back out — check in, reference something from your prior conversation, add value again. Consistency = trust.',
-  'Move them into your ecosystem — events, group settings, ongoing conversations, future collaborations.'
+  'Do something intentional based on your 1:1: make an introduction, send a referral, share a tool, invite them somewhere.',
+  'Reach back out. Check in, reference something from your prior conversation, add value again. Consistency = trust.',
+  'Move them into your ecosystem: events, group settings, ongoing conversations, future collaborations.'
 ];
 const STEP_FREQ = ['Day 1','Day 3','Day 6','Day 10','Day 14','Day 21','Day 30','Day 45'];
 const STEP_PTS = [5, 5, 5, 5, 10, 10, 5, 5];
@@ -3320,7 +3322,7 @@ function buildDefaultPlaybookFromLegacy() {
   return {
     id: 'default',
     name: 'Default 8-Step',
-    description: 'The original SWH cadence — works for most networking relationships. Use this as your starting point.',
+    description: 'The original SWH cadence. Works for most networking relationships. Use this as your starting point.',
     icon: '🤝',
     isDefault: true,
     isStarter: true,
@@ -3910,11 +3912,39 @@ async function loadAllData() {
   // doc ensures context-popup logs (Coffee with John, Referral to Sarah,
   // etc.) survive a page reload — they used to live in memory only.
   const todaySnap = await getDoc(doc(db,'users',uid,'days',getTodayKey()));
-  todayCounts = todaySnap.exists() ? (todaySnap.data().counts||{}) : {};
-  ctxEntries = todaySnap.exists() ? (todaySnap.data().ctxEntries||{}) : {};
-  // History
+  const _rawToday = todaySnap.exists() ? todaySnap.data() : null;
+  // History (loaded before setting todayCounts so we can detect corruption below)
   const hSnap = await getDocs(query(collection(db,'users',uid,'days'),orderBy('dateKey','desc')));
-  history = hSnap.docs.map(d=>d.data()).filter(d=>d.totalPts>0);
+  // Exclude today's doc unless it was explicitly submitted (saveLog / Scorecard).
+  // Auto-save-only entries for today may be corrupted (editDay race condition)
+  // or simply in-progress — either way they shouldn't appear in History yet.
+  const _todayK = getTodayKey();
+  history = hSnap.docs.map(d=>d.data()).filter(d=>d.totalPts>0 && (d.submitted || d.dateKey < _todayK));
+  console.log('[loadAllData] rawToday=', _rawToday ? {totalPts:_rawToday.totalPts,submitted:_rawToday.submitted,counts:JSON.stringify(_rawToday.counts)} : null);
+  const todayInHist = history.find(h=>h.dateKey===_todayK);
+  if (todayInHist) console.warn('[loadAllData] TODAY IN INITIAL HISTORY!', {totalPts:todayInHist.totalPts,submitted:todayInHist.submitted,counts:JSON.stringify(todayInHist.counts)});
+  // Self-heal: if today's doc (submitted or not) has counts identical to
+  // yesterday's, the editDay() race condition wrote yesterday's data into
+  // today's Firestore slot (and a subsequent saveLog() call may have
+  // stamped it with submitted:true). Clear the doc so today starts at 0.
+  let _todayCorrupted = false;
+  if (_rawToday && (_rawToday.totalPts||0) > 0) {
+    const yKey = addDays(getTodayKey(), -1);
+    const yDoc = hSnap.docs.find(d => d.id === yKey);
+    if (yDoc) {
+      const tCts = JSON.stringify(_rawToday.counts||{});
+      const yCts = JSON.stringify(yDoc.data().counts||{});
+      if (tCts === yCts && tCts !== '{}') {
+        _todayCorrupted = true;
+        history = history.filter(h => h.dateKey !== getTodayKey());
+        console.warn('[init] Self-healed corrupted today doc (submitted='+_rawToday.submitted+') — counts matched', yKey);
+        try { await setDoc(doc(db,'users',uid,'days',getTodayKey()),
+          {totalPts:0,totalActs:0,leadPts:0,lagPts:0,counts:{},ctxEntries:{},submitted:false,submittedAt:null},{merge:true}); } catch(_e){console.error('[init] self-heal write failed',_e);}
+      }
+    }
+  }
+  todayCounts = _todayCorrupted ? {} : (_rawToday ? (_rawToday.counts||{}) : {});
+  ctxEntries  = _todayCorrupted ? {} : (_rawToday ? (_rawToday.ctxEntries||{}) : {});
   // Week pts — primary number is LEAD points (effort that predicts future business)
   const ws = getWeekStart(getTodayKey());
   const weekDays = history.filter(d=>inWeek(d, ws));
@@ -5215,7 +5245,9 @@ window.showScreen = function(name, btn) {
     // Restore today's counts so the Log screen reflects today's data
     const todayKey = getTodayKey();
     const todayEntry = history.find(h => h.dateKey === todayKey);
+    console.log('[showScreen/stale-clear] todayEntry in history=', todayEntry ? {dateKey:todayEntry.dateKey,totalPts:todayEntry.totalPts,submitted:todayEntry.submitted,counts:JSON.stringify(todayEntry.counts)} : null);
     todayCounts = todayEntry && todayEntry.counts ? { ...todayEntry.counts } : {};
+    console.log('[showScreen/stale-clear] todayCounts set to=', JSON.stringify(todayCounts));
     ctxEntries = {};
   }
   document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
@@ -5237,7 +5269,11 @@ async function _refreshHistoryFromFirestore() {
   const uid = currentUser.uid;
   try {
     const hSnap = await getDocs(query(collection(db,'users',uid,'days'),orderBy('dateKey','desc')));
-    history = hSnap.docs.map(d=>d.data()).filter(d=>d.totalPts>0);
+    const _tk = getTodayKey();
+    history = hSnap.docs.map(d=>d.data()).filter(d=>d.totalPts>0 && (d.submitted || d.dateKey < _tk));
+    console.log('[_refreshHistory] history dateKeys after filter:', history.map(h=>h.dateKey+':'+(h.submitted?'subm':'auto')+':'+h.totalPts+'pts'));
+    const todayInHistory = history.find(h=>h.dateKey===_tk);
+    if (todayInHistory) console.warn('[_refreshHistory] TODAY IS IN HISTORY!', {dateKey:todayInHistory.dateKey,totalPts:todayInHistory.totalPts,submitted:todayInHistory.submitted,counts:JSON.stringify(todayInHistory.counts)});
     const ws = getWeekStart(getTodayKey());
     const weekDays = history.filter(d=>inWeek(d, ws));
     weekPts = weekDays.reduce((s,d)=>s+(d.leadPts||0),0);
@@ -5649,7 +5685,7 @@ function renderActs() {
   const el=document.getElementById('act-list'); if(!el) return;
   el.innerHTML='';
   const cats={};
-  ACTIVITIES.forEach((a,i)=>{ if(!cats[a.cat]) cats[a.cat]=[]; cats[a.cat].push({a,i}); });
+  ACTIVITIES.forEach((a,i)=>{ const key=a.cat||'Other'; if(!cats[key]) cats[key]=[]; cats[key].push({a,i}); });
   Object.entries(cats).forEach(([cat,items])=>{
     const color=CAT_COLORS[cat]||'#1B2E4B';
     const h=document.createElement('div'); h.className='cat-hdr';
@@ -5701,7 +5737,7 @@ function removeEntry(i,ei) {
 window.chg = function(i, d) {
   const a=ACTIVITIES[i];
   if(d>0&&a.ctx) { openCtxPopup(i); return; }
-  if(a.ctx===null) {
+  if(a.ctx == null) {
     todayCounts[i]=Math.max(0,(todayCounts[i]||0)+d);
     const el=document.getElementById('cv-'+i);
     el.textContent=todayCounts[i];
@@ -5759,7 +5795,7 @@ function _computeDayTotals() {
     if (ptsAdded > 0) {
       totalPts += ptsAdded;
       totalActs += count;
-      categoryPts[a.cat] = (categoryPts[a.cat] || 0) + ptsAdded;
+      categoryPts[a.cat||'Other'] = (categoryPts[a.cat||'Other'] || 0) + ptsAdded;
       if (a.lead === false) lagPts += ptsAdded; else leadPts += ptsAdded;
     }
   });
@@ -5867,10 +5903,20 @@ function updateTotals() {
   // Floor the panel display at today's saved history total so it never
   // shows 0 when the user already submitted pts (e.g., via Scorecard).
   const _todayHist = history.find(h => h.dateKey === getTodayKey());
-  const _savedTodayPts  = _todayHist ? (_todayHist.totalPts  || 0) : 0;
-  const _savedTodayActs = _todayHist ? (_todayHist.totalActs || 0) : 0;
+  // Only floor on explicitly-submitted entries (saveLog / Scorecard set submitted:true).
+  // Auto-save-only docs lack submitted:true and may contain stale data from a
+  // past-day editDay() race condition — don't let them inflate the display.
+  const _todaySubmitted = _todayHist && _todayHist.submitted;
+  const _savedTodayPts  = _todaySubmitted ? (_todayHist.totalPts  || 0) : 0;
+  const _savedTodayActs = _todaySubmitted ? (_todayHist.totalActs || 0) : 0;
   const displayPts  = Math.max(pts, _savedTodayPts);
   const displayActs = Math.max(acts, _savedTodayActs);
+  // DIAG: log any time displayPts > 0 on the Log screen (helps trace stale-data bugs)
+  if (displayPts > 0 || pts > 0) {
+    console.log('[updateTotals] editingDate=', editingDate, 'pts=', pts, 'savedPts=', _savedTodayPts,
+      'displayPts=', displayPts, 'todayCounts=', JSON.stringify(todayCounts),
+      'todayHist=', _todayHist ? {dateKey:_todayHist.dateKey,totalPts:_todayHist.totalPts,submitted:_todayHist.submitted} : null);
+  }
   const mp=document.getElementById('mob-pts'); if(mp) mp.textContent=displayPts;
   const ma=document.getElementById('mob-acts'); if(ma) ma.textContent=displayActs;
   const msb=document.getElementById('mob-save-bar'),msp=document.getElementById('mob-save-pts');
@@ -6692,10 +6738,10 @@ async function autoLogActivity(activityName, contactName, contactId, source) {
     const breakdown = existing.breakdown ? JSON.parse(JSON.stringify(existing.breakdown)) : {};
     const catPts = existing.categoryPts ? JSON.parse(JSON.stringify(existing.categoryPts)) : {};
 
-    if(!breakdown[activityName]) breakdown[activityName] = { count: 0, pts: 0, icon: act.icon, category: act.cat, lead: true };
+    if(!breakdown[activityName]) breakdown[activityName] = { count: 0, pts: 0, icon: act.icon, category: act.cat||'Other', lead: true };
     breakdown[activityName].count += 1;
     breakdown[activityName].pts += pts;
-    catPts[act.cat] = (catPts[act.cat] || 0) + pts;
+    catPts[act.cat||'Other'] = (catPts[act.cat||'Other'] || 0) + pts;
 
     let totalPts = 0;
     Object.values(breakdown).forEach(b => totalPts += b.pts);
@@ -7138,7 +7184,63 @@ window.updateColMap=function(key,sel){if(sel.value==='-- Skip this field --'){de
 function checkMapComplete(){const ok=IMPORT_FIELDS.filter(f=>f.required).every(f=>importColumnMap[f.key]);const btn=document.getElementById('import-next-btn');btn.disabled=!ok;btn.textContent=ok?'Preview Import →':'Map required fields first';}
 function buildPreview(){importDupes=[];importToAdd=[];const existingPhones=new Set(CONTACTS.map(c=>normalizePhone(c.phone||'')));importRawRows.forEach(row=>{const phone=normalizePhone(row[importColumnMap['phone']]||'');const firstName=row[importColumnMap['firstName']]||'';const lastName=row[importColumnMap['lastName']]||'';const fullName=`${firstName} ${lastName}`.trim();if(!phone&&!firstName)return;if(phone&&existingPhones.has(phone)){importDupes.push({name:fullName,phone:row[importColumnMap['phone']]||'',reason:'Phone already in your network'});}else{importToAdd.push({name:fullName,phone:row[importColumnMap['phone']]||'',email:row[importColumnMap['email']]||'',company:row[importColumnMap['company']]||'',whereMet:row[importColumnMap['whereMet']]||'',notes:row[importColumnMap['notes']]||'',status:row[importColumnMap['status']]||'new'});if(phone)existingPhones.add(phone);}});document.getElementById('import-summary-bar').innerHTML=`<div class="import-stat"><div class="import-stat-val" style="color:var(--green);">${importToAdd.length}</div><div class="import-stat-lbl">Ready to Import</div></div><div class="import-stat"><div class="import-stat-val" style="color:var(--gold-d);">${importDupes.length}</div><div class="import-stat-lbl">Duplicates Skipped</div></div><div class="import-stat"><div class="import-stat-val">${importRawRows.length}</div><div class="import-stat-lbl">Total Rows</div></div>`;const preview5=importToAdd.slice(0,5);document.getElementById('preview-table').innerHTML=preview5.length?`<div class="preview-head"><div class="preview-hcell">Name</div><div class="preview-hcell">Phone</div><div class="preview-hcell">Company</div></div>${preview5.map(r=>`<div class="preview-row"><div class="preview-cell">${r.name}</div><div class="preview-cell">${r.phone}</div><div class="preview-cell">${r.company||'—'}</div></div>`).join('')}${importToAdd.length>5?`<div style="text-align:center;padding:9px;font-size:12px;color:var(--muted);">+${importToAdd.length-5} more</div>`:''}`:'<div style="padding:20px;text-align:center;color:var(--muted);">All rows were duplicates.</div>';const dupeEl=document.getElementById('duplicate-list');if(importDupes.length){dupeEl.style.display='block';dupeEl.innerHTML=`<div style="font-size:11px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--muted);margin-bottom:8px;">📞 Duplicates — Skipped</div>${importDupes.map(d=>`<div class="dupe-item"><div class="dupe-icon">👤</div><div style="flex:1;"><div class="dupe-name">${d.name}</div><div class="dupe-reason">${d.phone} · ${d.reason}</div></div><div class="dupe-skip">Skip</div></div>`).join('')}`;}else dupeEl.style.display='none';}
 window.importNextStep=function(){if(importStep===2){importStep=3;updateImportDots();document.getElementById('import-step-2').style.display='none';document.getElementById('import-step-3').style.display='block';buildPreview();const btn=document.getElementById('import-next-btn');btn.disabled=importToAdd.length===0;btn.textContent=importToAdd.length>0?`Import ${importToAdd.length} Contact${importToAdd.length>1?'s':''} ✓`:'Nothing to Import';}else if(importStep===3)confirmImport();};
-async function confirmImport(){if(!importToAdd.length){closeImport();return;}let added=0;for(let idx=0;idx<importToAdd.length;idx++){const row=importToAdd[idx];const nameParts=row.name.split(' ');const first=nameParts[0]||'Contact',last=nameParts.slice(1).join(' ')||'';const initials=((first[0]||'')+(last[0]||'')).toUpperCase()||'??';const color=AVATAR_COLORS[idx%AVATAR_COLORS.length];const importedStatus=resolveStatus({status:row.status,grade:row.grade});const data={name:row.name,initials,color,phone:row.phone,email:row.email,company:row.company,event:row.whereMet,notes:row.notes,status:importedStatus,grade:null,steps:0,wasted:false,form:{family:'',occupation:'',recreation:'',motivation:''},addedAt:new Date().toISOString(),lastActivityAt:new Date().toISOString()};const ref=await addDoc(collection(db,'users',currentUser.uid,'contacts'),data);data.id=ref.id;CONTACTS.push(data);added++;}CONTACTS.sort((a,b)=>a.name.localeCompare(b.name));detectWastedHandshakes();closeImport();renderNetwork();renderDashboard();showToast(`✅ ${added} contact${added>1?'s':''} imported!`);}
+let _importInProgress = false;
+async function confirmImport() {
+  // Guard: prevent double-submission if the user clicks the button more than once
+  // while the first write is still in flight (was causing ~4x duplication).
+  if (_importInProgress) return;
+  if (!importToAdd.length) { closeImport(); return; }
+
+  _importInProgress = true;
+  const btn = document.getElementById('import-next-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Importing…'; }
+
+  try {
+    const now = new Date().toISOString();
+    let added = 0;
+    // Firestore batch limit is 500 writes. Process in chunks.
+    const CHUNK = 500;
+    for (let start = 0; start < importToAdd.length; start += CHUNK) {
+      const chunk = importToAdd.slice(start, start + CHUNK);
+      const batch = writeBatch(db);
+      const staged = [];
+      chunk.forEach((row, i) => {
+        const nameParts = row.name.split(' ');
+        const first = nameParts[0] || 'Contact', last = nameParts.slice(1).join(' ') || '';
+        const initials = ((first[0] || '') + (last[0] || '')).toUpperCase() || '??';
+        const color = AVATAR_COLORS[(start + i) % AVATAR_COLORS.length];
+        const data = {
+          name: row.name, initials, color,
+          phone: row.phone, email: row.email, company: row.company,
+          event: row.whereMet, notes: row.notes,
+          status: resolveStatus({ status: row.status, grade: row.grade }),
+          grade: null, steps: 0, wasted: false,
+          form: { family: '', occupation: '', recreation: '', motivation: '' },
+          addedAt: now, lastActivityAt: now,
+        };
+        // Generate a client-side ID so we can add to CONTACTS after commit.
+        const ref = doc(collection(db, 'users', currentUser.uid, 'contacts'));
+        batch.set(ref, data);
+        staged.push({ id: ref.id, ...data });
+      });
+      await batch.commit();
+      staged.forEach(c => CONTACTS.push(c));
+      added += staged.length;
+    }
+    CONTACTS.sort((a, b) => a.name.localeCompare(b.name));
+    detectWastedHandshakes();
+    closeImport();
+    renderNetwork();
+    renderDashboard();
+    showToast(`✅ ${added} contact${added > 1 ? 's' : ''} imported!`);
+  } catch (e) {
+    showToast('⚠️ Import failed — ' + (e.message || 'unknown error'));
+    const btn2 = document.getElementById('import-next-btn');
+    if (btn2) { btn2.disabled = false; btn2.textContent = `Import ${importToAdd.length} Contact${importToAdd.length > 1 ? 's' : ''} ✓`; }
+  } finally {
+    _importInProgress = false;
+  }
+}
 window.downloadTemplate=function(){const csv=['First Name,Last Name,Phone,Email,Company,Where Met,Notes,Status','Marcus,Webb,(512) 555-0142,marcus@lakeway.com,Lakeway Properties,BNI Chapter,Met at weekly meeting,new','Sarah,Johnson,(512) 555-0283,sarah@westlake.com,Westlake Realty,Chamber Mixer,,progress'].join('\n');const blob=new Blob([csv],{type:'text/csv'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='SWH-Contact-Import-Template.csv';document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);showToast('📋 Template downloaded!');};
 
 // ── MANUAL ACTIVITY ──
@@ -7516,6 +7618,14 @@ window.editDay = async function(dateKey) {
   // etc.) when revisiting a past day.
   try {
     const snap = await getDoc(doc(db, 'users', currentUser.uid, 'days', dateKey));
+    // If the user navigated away while the Firestore read was in flight, editingDate
+    // will have been cleared (or changed) by showScreen's stale-clearing block. Bail
+    // out here to avoid loading a past day's counts into todayCounts with editingDate=null,
+    // which would cause saveTodayCounts() to write that data to today's slot.
+    if (editingDate !== dateKey) {
+      console.log('[editDay] aborted — editingDate changed during async load for', dateKey);
+      return;
+    }
     if (snap.exists()) {
       const data = snap.data();
       todayCounts = data.counts || {};
@@ -7560,7 +7670,9 @@ window.cancelEditDay = function() {
   editingDate = null;
   const todayKey = getTodayKey();
   const todayEntry = history.find(h => h.dateKey === todayKey);
+  console.log('[cancelEditDay] todayEntry in history=', todayEntry ? {dateKey:todayEntry.dateKey,totalPts:todayEntry.totalPts,submitted:todayEntry.submitted,counts:JSON.stringify(todayEntry.counts)} : null);
   todayCounts = todayEntry && todayEntry.counts ? { ...todayEntry.counts } : {};
+  console.log('[cancelEditDay] todayCounts set to=', JSON.stringify(todayCounts));
   ctxEntries = {};
   const banner = document.getElementById('crm-edit-day-banner');
   if (banner) banner.style.display = 'none';
@@ -8281,7 +8393,7 @@ window.openEditActivities = function() {
   rows.innerHTML = '';
   ACTIVITIES.forEach((a, i) => {
     if(a.system) return; // Skip system activities
-    rows.innerHTML += renderEditActRow(i, a.icon, a.name, a.cat, a.pts, a.lead);
+    rows.innerHTML += renderEditActRow(i, a.icon, a.name, a.cat||'Other', a.pts, a.lead);
   });
   // Populate catalog opt-in section — only items the user doesn't already have
   const catalogSection = document.getElementById('edit-catalog-section');
