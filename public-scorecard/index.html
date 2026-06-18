@@ -488,6 +488,7 @@
   let userWeeklyEmailDay = 'monday';
   let userWeeklyEmailHour = 9;
   let userWeeklyEmailTimezone = (Intl.DateTimeFormat().resolvedOptions().timeZone) || 'America/Chicago';
+  let userAccountabilityPartners = [];
 
   // Seeded sample data for demo mode (in-memory, never written to Firestore)
   function buildDemoData() {
@@ -640,6 +641,7 @@
       userWeeklyEmailDay = me.settings.weeklyEmailDay || 'monday';
       userWeeklyEmailHour = typeof me.settings.weeklyEmailHour === 'number' ? me.settings.weeklyEmailHour : 9;
       userWeeklyEmailTimezone = me.settings.weeklyEmailTimezone || userWeeklyEmailTimezone;
+      userAccountabilityPartners = Array.isArray(me.settings.accountabilityPartners) ? [...me.settings.accountabilityPartners] : [];
       demoMode = false;
 
       // ── Stage 3: start RC setup in background (non-blocking) ───────────────
@@ -1975,6 +1977,7 @@
       userWeeklyEmailDay = s.weeklyEmailDay || 'monday';
       userWeeklyEmailHour = typeof s.weeklyEmailHour === 'number' ? s.weeklyEmailHour : 9;
       userWeeklyEmailTimezone = s.weeklyEmailTimezone || userWeeklyEmailTimezone;
+      userAccountabilityPartners = Array.isArray(s.accountabilityPartners) ? [...s.accountabilityPartners] : [];
       calReminderEnabled = s.calReminderEnabled || false;
       calReminderHour = typeof s.calReminderHour === 'number' ? s.calReminderHour : 19;
       calReminderEventId = s.calReminderEventId || '';
@@ -2446,6 +2449,8 @@
     }
     hourSel.value = String(userWeeklyEmailHour);
     document.getElementById('we-tz-display').textContent = userWeeklyEmailTimezone;
+    renderPartnerChips('we-partner-chips', userAccountabilityPartners);
+    document.getElementById('we-partner-input').value = '';
     document.getElementById('weekly-email-modal').classList.add('open');
   };
   window.sendMyRecapNow = async () => {
@@ -2484,13 +2489,39 @@
     userWeeklyEmailHour = hour;
     userWeeklyEmailTimezone = tz;
     try {
-      const payload = { weeklyEmailEnabled: enabled, weeklyEmailDay: day, weeklyEmailHour: hour, weeklyEmailTimezone: tz };
+      const payload = { weeklyEmailEnabled: enabled, weeklyEmailDay: day, weeklyEmailHour: hour, weeklyEmailTimezone: tz, accountabilityPartners: [...userAccountabilityPartners] };
       if (isNativeEarly) await NativeAPI.call('saveSettings', payload);
       else await setDoc(doc(db,'users',currentUser.uid,'config','settings'), payload, { merge: true });
     } catch(e) { showToast('⚠️ Could not save: ' + (e.message||'unknown')); return; }
     document.getElementById('weekly-email-modal').classList.remove('open');
     refreshSettingsSubLabels();
     showToast(enabled ? '✅ Weekly email on' : '✅ Weekly email off');
+  };
+
+  function renderPartnerChips(containerId, partners) {
+    const el = document.getElementById(containerId);
+    if (!el) return;
+    if (partners.length === 0) { el.innerHTML = ''; return; }
+    el.innerHTML = partners.map((email, i) =>
+      `<div style="display:inline-flex;align-items:center;gap:6px;background:var(--bg);border:1.5px solid var(--border);border-radius:20px;padding:5px 10px 5px 12px;font-size:13px;margin:3px 3px 3px 0;">
+        <span>${email}</span>
+        <button onclick="removePartnerEmail(${i})" style="background:none;border:none;cursor:pointer;color:var(--text-muted);font-size:15px;line-height:1;padding:0 0 0 2px;">×</button>
+      </div>`
+    ).join('');
+  }
+  window.addPartnerEmail = () => {
+    const input = document.getElementById('we-partner-input');
+    const val = (input.value || '').trim().toLowerCase();
+    if (!val || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val)) { showToast('⚠️ Enter a valid email'); return; }
+    if (userAccountabilityPartners.includes(val)) { showToast('Already added'); input.value = ''; return; }
+    if (userAccountabilityPartners.length >= 5) { showToast('Max 5 partners'); return; }
+    userAccountabilityPartners.push(val);
+    renderPartnerChips('we-partner-chips', userAccountabilityPartners);
+    input.value = '';
+  };
+  window.removePartnerEmail = (i) => {
+    userAccountabilityPartners.splice(i, 1);
+    renderPartnerChips('we-partner-chips', userAccountabilityPartners);
   };
 
   // ===== SMS SETTINGS =====
@@ -4987,6 +5018,15 @@
       </select>
     </div>
     <div style="font-size:12px;color:var(--text-muted);margin-bottom:16px;">Timezone: <span id="we-tz-display">—</span></div>
+    <div class="goal-field" style="margin-bottom:8px;">
+      <label>Accountability Partners</label>
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:8px;">CC up to 5 people on your weekly recap email.</div>
+      <div id="we-partner-chips" style="margin-bottom:8px;"></div>
+      <div style="display:flex;gap:8px;">
+        <input id="we-partner-input" type="email" placeholder="partner@email.com" style="flex:1;padding:11px 14px;border-radius:12px;border:1.5px solid var(--border);background:var(--bg);font-family:inherit;font-size:14px;outline:none;" onkeydown="if(event.key==='Enter'){event.preventDefault();addPartnerEmail();}">
+        <button onclick="addPartnerEmail()" style="padding:11px 16px;border-radius:12px;border:none;background:var(--gold);color:#000;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:700;cursor:pointer;">Add</button>
+      </div>
+    </div>
     <button class="save-modal-btn" onclick="saveWeeklyEmailSettings()">Save</button>
     <button onclick="sendMyRecapNow()" style="width:100%;margin-top:10px;padding:13px;background:transparent;border:1.5px solid var(--gold);border-radius:14px;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:700;color:var(--gold);cursor:pointer;">📨 Send my recap now</button>
     <div style="font-size:11px;color:var(--text-muted);text-align:center;margin-top:8px;line-height:1.5;">Sends last week's recap to your account email immediately. Useful for previewing.</div>

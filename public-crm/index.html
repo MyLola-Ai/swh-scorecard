@@ -490,7 +490,7 @@ html,body{height:100%;font-family:'DM Sans',sans-serif;background:var(--bg);colo
 .settings-row:last-child{border-bottom:none;}
 .settings-row:hover{background:var(--bg);}
 .sr-left{display:flex;align-items:center;gap:11px;}
-.sr-icon{width:34px;height:34px;border-radius:9px;background:linear-gradient(135deg,var(--navy),var(--navy-l));display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0;}
+.sr-icon{width:34px;height:34px;border-radius:9px;background:var(--bg);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;}
 .sr-text{font-size:14px;font-weight:600;}
 .sr-sub{font-size:11px;color:var(--muted);}
 .sr-arrow{color:var(--muted);}
@@ -1592,16 +1592,16 @@ html,body{height:100%;font-family:'DM Sans',sans-serif;background:var(--bg);colo
           <div class="content-pad" style="padding-top:12px;">
             <div class="more-layout">
               <div>
-                <div style="font-size:10px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:var(--muted);margin-bottom:9px;">Goal & Tiers</div>
+                <!-- ===== EMAIL, CALENDAR & CONTACTS (NYLAS) ===== -->
+                <div style="font-size:10px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:var(--muted);margin-bottom:9px;">Email, Calendar &amp; Contacts</div>
+                <div id="nylas-connect-mount" style="margin-bottom:14px;"></div>
                 <div class="settings-card">
-                  <div class="settings-row" onclick="openGoalModal()"><div class="sr-left"><div class="sr-icon">🎯</div><div><div class="sr-text">Weekly Point Goal</div><div class="sr-sub" id="settings-goal-sub">Currently 150 pts/week</div></div></div><div class="sr-arrow">›</div></div>
-                  <div class="settings-row" onclick="showToast('🏆 View tiers in Scoreboard tab')"><div class="sr-left"><div class="sr-icon">🏆</div><div><div class="sr-text">Networker Tiers</div><div class="sr-sub">View all 5 tier levels</div></div></div><div class="sr-arrow">›</div></div>
                   <div class="settings-row" onclick="openCalendarTimeModal()"><div class="sr-left"><div class="sr-icon">⏰</div><div><div class="sr-text">Calendar Event Time</div><div class="sr-sub" id="settings-cal-time-sub">7:00 AM · 5 minutes</div></div></div><div class="sr-arrow">›</div></div>
                   <div class="settings-row" onclick="toggleCalendarAutoAdd()" style="cursor:pointer;">
                     <div class="sr-left">
                       <div class="sr-icon">📆</div>
                       <div>
-                        <div class="sr-text">Auto-add 8-Step to Google Calendar</div>
+                        <div class="sr-text">Auto-add 8-Step to Calendar</div>
                         <div class="sr-sub" id="settings-cal-autoadd-sub">Off — enable to auto-schedule when starting campaigns</div>
                       </div>
                     </div>
@@ -1609,64 +1609,13 @@ html,body{height:100%;font-family:'DM Sans',sans-serif;background:var(--bg);colo
                       <div style="position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,0.2);transition:transform 0.2s;"></div>
                     </div>
                   </div>
-                  <div class="settings-row" onclick="openWeekStartModal()"><div class="sr-left"><div class="sr-icon">📅</div><div><div class="sr-text">Week Starts On</div><div class="sr-sub" id="settings-weekstart-sub">Monday</div></div></div><div class="sr-arrow">›</div></div>
-                  <div class="settings-row" onclick="openWeeklyEmailModal()"><div class="sr-left"><div class="sr-icon">✉️</div><div><div class="sr-text">Weekly Summary Email</div><div class="sr-sub" id="settings-weeklyemail-sub">Off</div></div></div><div class="sr-arrow">›</div></div>
                 </div>
-                <div style="font-size:10px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:var(--muted);margin-bottom:9px;">Data & Import</div>
-                <div class="settings-card">
-                  <div class="settings-row" onclick="openImportModal()">
-                    <div class="sr-left">
-                      <div class="sr-icon" style="background:linear-gradient(135deg,#1e3a5f,var(--navy-l));">📥</div>
-                      <div>
-                        <div class="sr-text">Import Contacts</div>
-                        <div class="sr-sub">Upload CSV or Excel · duplicates detected by phone</div>
-                      </div>
-                    </div>
-                    <div class="sr-arrow">›</div>
-                  </div>
-                  <div class="settings-row" onclick="showToast('📤 Export coming soon')">
-                    <div class="sr-left">
-                      <div class="sr-icon">📤</div>
-                      <div><div class="sr-text">Export Contacts</div><div class="sr-sub">Download your network as CSV</div></div>
-                    </div>
-                    <div class="sr-arrow">›</div>
-                  </div>
-                </div>
-                <div style="font-size:10px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:var(--muted);margin-bottom:9px;">Activities</div>
-                <div class="settings-card">
-                  <div class="settings-row" onclick="openEditActivities()"><div class="sr-left"><div class="sr-icon">✏️</div><div><div class="sr-text">Edit Activities & Points</div><div class="sr-sub">Customize your scoreboard</div></div></div><div class="sr-arrow">›</div></div>
-                  <div class="settings-row" onclick="resetActivitiesToDefault()"><div class="sr-left"><div class="sr-icon">🔄</div><div><div class="sr-text">Reset to Defaults</div><div class="sr-sub">Restore original SWH activities</div></div></div><div class="sr-arrow">›</div></div>
-                </div>
-                <!-- ===== EMAIL INTEGRATIONS ===== -->
-                <div style="font-size:10px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:var(--muted);margin-bottom:9px;">Email Integrations</div>
-                <div class="settings-card">
-                  <div class="settings-row" id="settings-gmail-row" onclick="onGmailRowClick()">
-                    <div class="sr-left">
-                      <div class="sr-icon" id="settings-gmail-icon" style="background:#fff;color:#EA4335;font-size:22px;">G</div>
-                      <div>
-                        <div class="sr-text">Gmail</div>
-                        <div class="sr-sub" id="settings-gmail-sub">Connect to auto-log emails</div>
-                      </div>
-                    </div>
-                    <div class="sr-arrow" id="settings-gmail-arrow">›</div>
-                  </div>
-                  <div class="settings-row" id="settings-outlook-row" onclick="onOutlookRowClick()">
-                    <div class="sr-left">
-                      <div class="sr-icon" id="settings-outlook-icon" style="background:#0078D4;color:#fff;font-size:18px;">✉</div>
-                      <div>
-                        <div class="sr-text">Outlook</div>
-                        <div class="sr-sub" id="settings-outlook-sub">Connect to auto-log emails</div>
-                      </div>
-                    </div>
-                    <div class="sr-arrow">›</div>
-                  </div>
-                </div>
-                <!-- ===== MYAPPOINTMENT.AI ===== -->
+                <!-- ===== SCHEDULING ===== -->
                 <div id="settings-scheduling-header" style="font-size:10px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:var(--muted);margin-bottom:9px;">Scheduling</div>
                 <div class="settings-card">
                   <div class="settings-row" onclick="showScreen('appointments',document.getElementById('nav-appointments'))">
                     <div class="sr-left">
-                      <div class="sr-icon" style="background:linear-gradient(135deg,#0369a1,#0EA5E9);">📅</div>
+                      <div class="sr-icon">📅</div>
                       <div>
                         <div class="sr-text">Appointments</div>
                         <div class="sr-sub" id="settings-appt-sub">View upcoming meetings</div>
@@ -1676,7 +1625,7 @@ html,body{height:100%;font-family:'DM Sans',sans-serif;background:var(--bg);colo
                   </div>
                   <div class="settings-row" id="settings-appt-link-row">
                     <div class="sr-left">
-                      <div class="sr-icon" style="background:linear-gradient(135deg,#0369a1,#0EA5E9);">🔗</div>
+                      <div class="sr-icon">🔗</div>
                       <div>
                         <div class="sr-text">My Booking Link</div>
                         <div class="sr-sub" id="settings-appt-link-sub">Loading…</div>
@@ -1690,7 +1639,7 @@ html,body{height:100%;font-family:'DM Sans',sans-serif;background:var(--bg);colo
                 <div class="settings-card">
                   <div class="settings-row" id="settings-mylola-row">
                     <div class="sr-left">
-                      <div class="sr-icon" style="background:linear-gradient(135deg,#7B61FF,#5B47CC);color:#fff;">🪷</div>
+                      <div class="sr-icon" style="background:transparent;border:none;"><span class="lola-orb" style="width:28px;height:28px;"></span></div>
                       <div>
                         <div class="sr-text">MyLola (mortgage CRM)</div>
                         <div class="sr-sub" id="settings-mylola-sub">Send SWH contacts into your mortgage CRM</div>
@@ -1699,12 +1648,26 @@ html,body{height:100%;font-family:'DM Sans',sans-serif;background:var(--bg);colo
                     <button id="settings-mylola-btn" onclick="onMyLolaSettingsClick()" style="padding:6px 12px;background:var(--bg);border:1px solid var(--border);border-radius:8px;font-family:'DM Sans',sans-serif;font-size:12px;font-weight:600;color:var(--navy);cursor:pointer;flex-shrink:0;">Connect</button>
                   </div>
                 </div>
+                <!-- ===== GOAL & TIERS ===== -->
+                <div style="font-size:10px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:var(--muted);margin-bottom:9px;">Goal & Tiers</div>
+                <div class="settings-card">
+                  <div class="settings-row" onclick="openGoalModal()"><div class="sr-left"><div class="sr-icon">🎯</div><div><div class="sr-text">Weekly Point Goal</div><div class="sr-sub" id="settings-goal-sub">Currently 150 pts/week</div></div></div><div class="sr-arrow">›</div></div>
+                  <div class="settings-row" onclick="showToast('🏆 View tiers in Scoreboard tab')"><div class="sr-left"><div class="sr-icon">🏆</div><div><div class="sr-text">Networker Tiers</div><div class="sr-sub">View all 5 tier levels</div></div></div><div class="sr-arrow">›</div></div>
+                  <div class="settings-row" onclick="openWeekStartModal()"><div class="sr-left"><div class="sr-icon">📅</div><div><div class="sr-text">Week Starts On</div><div class="sr-sub" id="settings-weekstart-sub">Monday</div></div></div><div class="sr-arrow">›</div></div>
+                  <div class="settings-row" onclick="openWeeklyEmailModal()"><div class="sr-left"><div class="sr-icon">✉️</div><div><div class="sr-text">Weekly Summary Email</div><div class="sr-sub" id="settings-weeklyemail-sub">Off</div></div></div><div class="sr-arrow">›</div></div>
+                </div>
+                <!-- ===== ACTIVITIES ===== -->
+                <div style="font-size:10px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:var(--muted);margin-bottom:9px;">Activities</div>
+                <div class="settings-card">
+                  <div class="settings-row" onclick="openEditActivities()"><div class="sr-left"><div class="sr-icon">✏️</div><div><div class="sr-text">Edit Activities & Points</div><div class="sr-sub">Customize your scoreboard</div></div></div><div class="sr-arrow">›</div></div>
+                  <div class="settings-row" onclick="resetActivitiesToDefault()"><div class="sr-left"><div class="sr-icon">🔄</div><div><div class="sr-text">Reset to Defaults</div><div class="sr-sub">Restore original SWH activities</div></div></div><div class="sr-arrow">›</div></div>
+                </div>
                 <!-- ===== FOLLOW-THROUGH PLAYBOOKS ===== -->
                 <div style="font-size:10px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:var(--muted);margin-bottom:9px;">Follow-Through Playbooks</div>
                 <div class="settings-card">
                   <div class="settings-row" onclick="openPlaybookManager()">
                     <div class="sr-left">
-                      <div class="sr-icon" style="background:linear-gradient(135deg,#5B5BD6,#A78BFA);">🤝</div>
+                      <div class="sr-icon">🤝</div>
                       <div>
                         <div class="sr-text">Manage Playbooks</div>
                         <div class="sr-sub" id="settings-playbooks-sub">Loading…</div>
@@ -1714,7 +1677,7 @@ html,body{height:100%;font-family:'DM Sans',sans-serif;background:var(--bg);colo
                   </div>
                   <div class="settings-row" onclick="openPlaybookCreatePicker()">
                     <div class="sr-left">
-                      <div class="sr-icon" style="background:linear-gradient(135deg,#1E3A8A,#5B5BD6);">✨</div>
+                      <div class="sr-icon">✨</div>
                       <div>
                         <div class="sr-text">Create New Playbook</div>
                         <div class="sr-sub">Build from scratch or with Lola</div>
@@ -1723,12 +1686,27 @@ html,body{height:100%;font-family:'DM Sans',sans-serif;background:var(--bg);colo
                     <div class="sr-arrow">›</div>
                   </div>
                 </div>
+                <!-- ===== WASTED HANDSHAKE THRESHOLDS ===== -->
                 <div style="font-size:10px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:var(--muted);margin-bottom:9px;">Wasted Handshake Thresholds</div>
                 <div class="settings-card">
                   <div class="settings-row"><div class="sr-left"><div class="sr-icon">⚠️</div><div><div class="sr-text">Clock Never Started</div><div class="sr-sub">Flag after 48 hours</div></div></div></div>
                   <div class="settings-row"><div class="sr-left"><div class="sr-icon">📌</div><div><div class="sr-text">Stuck on Same Step</div><div class="sr-sub">Flag after 14 days</div></div></div></div>
                   <div class="settings-row"><div class="sr-left"><div class="sr-icon">📋</div><div><div class="sr-text">No Contact Touch</div><div class="sr-sub">Flag after 21 days</div></div></div></div>
                   <div class="settings-row"><div class="sr-left"><div class="sr-icon">💼</div><div><div class="sr-text">Opportunity Stalled</div><div class="sr-sub">Flag after 30 days</div></div></div></div>
+                </div>
+                <!-- ===== DATA & IMPORT ===== -->
+                <div style="font-size:10px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:var(--muted);margin-bottom:9px;">Data & Import</div>
+                <div class="settings-card">
+                  <div class="settings-row" onclick="openImportModal()">
+                    <div class="sr-left">
+                      <div class="sr-icon">📥</div>
+                      <div>
+                        <div class="sr-text">Import Contacts</div>
+                        <div class="sr-sub">Upload CSV or Excel · duplicates detected by phone</div>
+                      </div>
+                    </div>
+                    <div class="sr-arrow">›</div>
+                  </div>
                 </div>
               </div>
               <div>
@@ -1738,7 +1716,7 @@ html,body{height:100%;font-family:'DM Sans',sans-serif;background:var(--bg);colo
                   <!-- Shown when user is NOT on a team — invites them to start one -->
                   <div class="settings-row" id="crm-settings-team-create-row" onclick="openCrmTeamUpgrade()" style="display:flex;">
                     <div class="sr-left">
-                      <div class="sr-icon" style="background:linear-gradient(135deg,#1F4F87,#2A6BB5);">👥</div>
+                      <div class="sr-icon">👥</div>
                       <div><div class="sr-text">Start a Team Plan</div><div class="sr-sub">$20/seat (3-9), $15/seat (10+) · 60-day trial</div></div>
                     </div>
                     <div class="sr-arrow">›</div>
@@ -1746,7 +1724,7 @@ html,body{height:100%;font-family:'DM Sans',sans-serif;background:var(--bg);colo
                   <!-- Shown when user OWNS or BELONGS to a team -->
                   <div class="settings-row" id="crm-settings-team-manage-row" onclick="openCrmTeamDashboard()" style="display:none;">
                     <div class="sr-left">
-                      <div class="sr-icon" style="background:linear-gradient(135deg,#1F4F87,#2A6BB5);">👥</div>
+                      <div class="sr-icon">👥</div>
                       <div><div class="sr-text" id="crm-settings-team-name">My Team</div><div class="sr-sub" id="crm-settings-team-sub">— · — members</div></div>
                     </div>
                     <div class="sr-arrow">›</div>
@@ -1762,7 +1740,7 @@ html,body{height:100%;font-family:'DM Sans',sans-serif;background:var(--bg);colo
                   <!-- Shown for owner/co_lead only -->
                   <div class="settings-row" id="crm-settings-team-sso-row" onclick="openCrmTeamSSO()" style="display:none;">
                     <div class="sr-left">
-                      <div class="sr-icon" style="background:linear-gradient(135deg,#0078D4,#005A9E);">
+                      <div class="sr-icon">
                         <svg width="16" height="16" viewBox="0 0 23 23" style="display:block;"><rect x="1" y="1" width="10" height="10" fill="#F25022"/><rect x="12" y="1" width="10" height="10" fill="#7FBA00"/><rect x="1" y="12" width="10" height="10" fill="#00A4EF"/><rect x="12" y="12" width="10" height="10" fill="#FFB900"/></svg>
                       </div>
                       <div><div class="sr-text">Microsoft / M365 SSO</div><div class="sr-sub" id="crm-sso-sub">Not configured</div></div>
@@ -1773,11 +1751,10 @@ html,body{height:100%;font-family:'DM Sans',sans-serif;background:var(--bg);colo
 
                 <div style="font-size:10px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:var(--muted);margin-bottom:9px;">Account</div>
                 <div class="settings-card">
-                  <div class="settings-row"><div class="sr-left"><div class="sr-icon">👤</div><div><div class="sr-text" id="settings-name">Loading…</div><div class="sr-sub" id="settings-email">Google Account</div></div></div></div>
-                  <div class="settings-row" id="settings-billing-row" onclick="onBillingRowClick()"><div class="sr-left"><div class="sr-icon" style="background:linear-gradient(135deg,#3d6b4a,var(--green));">💳</div><div><div class="sr-text" id="settings-billing-text">Subscription</div><div class="sr-sub" id="settings-billing-sub">Loading plan…</div></div></div><div class="sr-arrow">›</div></div>
-                  <div class="settings-row" onclick="showToast('🔔 Notifications coming soon')"><div class="sr-left"><div class="sr-icon">🔔</div><div><div class="sr-text">Notifications</div><div class="sr-sub">Coming soon</div></div></div><div class="sr-arrow">›</div></div>
-                  <div class="settings-row" onclick="window.location.href='help.html'"><div class="sr-left"><div class="sr-icon" style="background:linear-gradient(135deg,#fde8ea,#f5c2c6);">❓</div><div><div class="sr-text">Help &amp; Guides</div><div class="sr-sub">How the CRM works</div></div></div><div class="sr-arrow">›</div></div>
-                  <div class="settings-row" onclick="doLogout()"><div class="sr-left"><div class="sr-icon" style="background:linear-gradient(135deg,#fdecea,#f5c6c2);">🚪</div><div><div class="sr-text" style="color:var(--red);">Sign Out</div></div></div></div>
+                  <div class="settings-row"><div class="sr-left"><div class="sr-icon">👤</div><div><div class="sr-text" id="settings-name">Loading…</div><div class="sr-sub" id="settings-email">Account</div></div></div></div>
+                  <div class="settings-row" id="settings-billing-row" onclick="onBillingRowClick()"><div class="sr-left"><div class="sr-icon">💳</div><div><div class="sr-text" id="settings-billing-text">Subscription</div><div class="sr-sub" id="settings-billing-sub">Loading plan…</div></div></div><div class="sr-arrow">›</div></div>
+                  <div class="settings-row" onclick="window.location.href='help.html'"><div class="sr-left"><div class="sr-icon">❓</div><div><div class="sr-text">Help &amp; Guides</div><div class="sr-sub">How the CRM works</div></div></div><div class="sr-arrow">›</div></div>
+                  <div class="settings-row" onclick="doLogout()"><div class="sr-left"><div class="sr-icon">🚪</div><div><div class="sr-text" style="color:var(--red);">Sign Out</div></div></div></div>
 
                 </div>
 
@@ -2738,7 +2715,16 @@ html,body{height:100%;font-family:'DM Sans',sans-serif;background:var(--bg);colo
         <label class="ctx-label">Time</label>
         <select id="we-hour-select" style="width:100%;padding:12px 14px;border:1.5px solid var(--border);border-radius:10px;font-family:inherit;font-size:15px;background:var(--bg);"></select>
       </div>
-      <div style="font-size:12px;color:var(--muted);">Timezone: <span id="we-tz-display">—</span></div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:14px;">Timezone: <span id="we-tz-display">—</span></div>
+      <div style="margin-bottom:14px;">
+        <div style="font-size:13px;font-weight:600;color:var(--navy);margin-bottom:4px;">Accountability Partners</div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:8px;">CC up to 5 people on your weekly recap email.</div>
+        <div id="we-partner-chips" style="margin-bottom:8px;"></div>
+        <div style="display:flex;gap:8px;">
+          <input id="we-partner-input" type="email" placeholder="partner@email.com" style="flex:1;padding:10px 13px;border-radius:10px;border:1.5px solid var(--border);background:var(--bg);font-family:inherit;font-size:13px;outline:none;" onkeydown="if(event.key==='Enter'){event.preventDefault();addPartnerEmail();}">
+          <button onclick="addPartnerEmail()" style="padding:10px 14px;border-radius:10px;border:none;background:var(--gold);color:#000;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;">Add</button>
+        </div>
+      </div>
       <button onclick="sendMyRecapNow()" style="width:100%;margin-top:14px;padding:12px;background:transparent;border:1.5px solid var(--gold);border-radius:10px;font-family:inherit;font-size:13px;font-weight:700;color:var(--gold);cursor:pointer;">📨 Send my recap now</button>
       <div style="font-size:11px;color:var(--muted);text-align:center;margin-top:8px;line-height:1.5;">Sends last week's recap to your account email immediately.</div>
     </div>
@@ -3481,6 +3467,7 @@ let userWeeklyEmailEnabled = false;
 let userWeeklyEmailDay = 'monday';
 let userWeeklyEmailHour = 9;
 let userWeeklyEmailTimezone = (Intl.DateTimeFormat().resolvedOptions().timeZone) || 'America/Chicago';
+let userAccountabilityPartners = [];
 let ctxEntries = {}, ctxActIndex = null, ctxChipSelections = {};
 let expandedContactId = null;
 let editingContactId = null;
@@ -3562,6 +3549,15 @@ onAuthStateChanged(auth, async user => {
     showLoader(false);
     showApp();
     if (typeof refreshSettingsSubLabelsCRM === 'function') refreshSettingsSubLabelsCRM();
+    // Nylas: provide the token getter and mount the connect UI (idempotent,
+    // no-op until nylas-email.js + the container are present). Lives in the
+    // always-rendered settings panel, so mounting here (not on screen-show)
+    // is safe regardless of the active screen.
+    if (window.SWHNylasEmail) {
+      SWHNylasEmail.config.getToken = () => auth.currentUser.getIdToken();
+      const nylasEl = document.getElementById('nylas-connect-mount');
+      if (nylasEl) SWHNylasEmail.mountConnect(nylasEl);
+    }
     // Record when this user was last active in the CRM (used by team leads to see "last in CRM").
     // Fire-and-forget — non-blocking, non-fatal.
     setDoc(doc(db, 'users', user.uid), { lastSeenAt: new Date().toISOString() }, { merge: true }).catch(() => {});
@@ -3899,6 +3895,7 @@ async function initUser() {
       userWeeklyEmailDay = s.weeklyEmailDay || 'monday';
       userWeeklyEmailHour = typeof s.weeklyEmailHour === 'number' ? s.weeklyEmailHour : 9;
       userWeeklyEmailTimezone = s.weeklyEmailTimezone || userWeeklyEmailTimezone;
+      userAccountabilityPartners = Array.isArray(s.accountabilityPartners) ? [...s.accountabilityPartners] : [];
       calendarAutoAdd = s.calendarAutoAdd === true;
       updateCalAutoAddToggle();
     }
@@ -6257,7 +6254,12 @@ function buildExpandDetail(c) {
       <button class="ne-action-btn" onclick="openAddOpp('${c.id}','${c.name}')"><span class="ne-action-icon">💼</span><span class="ne-action-lbl">Add Opp</span></button>
       <button class="ne-action-btn" onclick="openSyncContactModal('${c.id}')"><span class="ne-action-icon">📇</span><span class="ne-action-lbl">Save</span></button>
       ${apptUserSlug && apptBookingPages.length ? `<button class="ne-action-btn" onclick="openBookContactModal('${c.id}')"><span class="ne-action-icon">📅</span><span class="ne-action-lbl">Book</span></button>` : ''}
-      <button class="ne-action-btn" onclick="onSendToMyLolaClick('${c.id}')" title="${c.myLolaSyncStatus === 'synced' ? 'In MyLola — view or re-sync' : 'Send to MyLola (mortgage CRM)'}"><span class="ne-action-icon">🪷</span><span class="ne-action-lbl">${c.myLolaSyncStatus === 'synced' ? 'In MyLola' : 'MyLola'}</span></button>
+      <button class="ne-action-btn" onclick="onSendToMyLolaClick('${c.id}')" title="${c.myLolaSyncStatus === 'synced' ? 'In MyLola. View or re-sync' : 'Send to MyLola (mortgage CRM)'}"><span class="ne-action-icon">🪷</span><span class="ne-action-lbl">${c.myLolaSyncStatus === 'synced' ? 'In MyLola' : 'MyLola'}</span></button>
+    </div>
+    <div style="padding:0 2px 8px;">
+      ${c.myLolaSyncStatus === 'synced'
+        ? `<span style="display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;background:rgba(123,97,255,0.10);border:1px solid rgba(123,97,255,0.30);font-size:11px;font-weight:600;color:#7B61FF;"><span class="lola-orb" aria-hidden="true" style="width:12px;height:12px;"></span>Linked to MyLola</span>`
+        : `<span style="display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;background:var(--bg);border:1px solid var(--border);font-size:11px;font-weight:600;color:var(--muted);">Not Yet Synced</span>`}
     </div>
     <div class="ne-tabs">
       <button class="ne-tab active" onclick="setNeTab('${c.id}','profile',this)">Profile</button>
@@ -8097,6 +8099,8 @@ window.openWeeklyEmailModal = function() {
   }
   hourSel.value = String(userWeeklyEmailHour);
   document.getElementById('we-tz-display').textContent = userWeeklyEmailTimezone;
+  renderPartnerChips('we-partner-chips', userAccountabilityPartners);
+  document.getElementById('we-partner-input').value = '';
   document.getElementById('weekly-email-overlay').classList.add('open');
 };
 window.sendMyRecapNow = async function() {
@@ -8118,6 +8122,32 @@ window.sendMyRecapNow = async function() {
   }
 };
 
+function renderPartnerChips(containerId, partners) {
+  const el = document.getElementById(containerId);
+  if (!el) return;
+  if (partners.length === 0) { el.innerHTML = ''; return; }
+  el.innerHTML = partners.map((email, i) =>
+    `<div style="display:inline-flex;align-items:center;gap:6px;background:var(--bg);border:1.5px solid var(--border);border-radius:20px;padding:5px 10px 5px 12px;font-size:13px;margin:3px 3px 3px 0;">
+      <span>${email}</span>
+      <button onclick="removePartnerEmail(${i})" style="background:none;border:none;cursor:pointer;color:var(--muted);font-size:15px;line-height:1;padding:0 0 0 2px;">×</button>
+    </div>`
+  ).join('');
+}
+window.addPartnerEmail = () => {
+  const input = document.getElementById('we-partner-input');
+  const val = (input.value || '').trim().toLowerCase();
+  if (!val || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val)) { showToast('⚠️ Enter a valid email'); return; }
+  if (userAccountabilityPartners.includes(val)) { showToast('Already added'); input.value = ''; return; }
+  if (userAccountabilityPartners.length >= 5) { showToast('Max 5 partners'); return; }
+  userAccountabilityPartners.push(val);
+  renderPartnerChips('we-partner-chips', userAccountabilityPartners);
+  input.value = '';
+};
+window.removePartnerEmail = (i) => {
+  userAccountabilityPartners.splice(i, 1);
+  renderPartnerChips('we-partner-chips', userAccountabilityPartners);
+};
+
 window.saveWeeklyEmailSettings = async function() {
   const enabled = document.getElementById('we-optin-toggle').checked;
   const day = document.getElementById('we-day-select').value;
@@ -8128,7 +8158,7 @@ window.saveWeeklyEmailSettings = async function() {
   userWeeklyEmailHour = hour;
   userWeeklyEmailTimezone = tz;
   await setDoc(doc(db,'users',currentUser.uid,'config','settings'),
-    { weeklyEmailEnabled: enabled, weeklyEmailDay: day, weeklyEmailHour: hour, weeklyEmailTimezone: tz },
+    { weeklyEmailEnabled: enabled, weeklyEmailDay: day, weeklyEmailHour: hour, weeklyEmailTimezone: tz, accountabilityPartners: [...userAccountabilityPartners] },
     { merge: true });
   document.getElementById('weekly-email-overlay').classList.remove('open');
   refreshSettingsSubLabelsCRM();
@@ -9190,13 +9220,13 @@ window.loadEmailsPanel = async function(contactId) {
 function renderEmailsPanel(panel, contactId, emails) {
   const contact = CONTACTS.find(c => c.id === contactId);
   const contactEmail = contact?.email || '';
-  const hasGmail = _gmailStatus?.connected;
+  const hasGmail = _gmailStatus?.connected || window.__nylasConnected;
   let header = '';
   if (!hasGmail) {
     header = `<div style="background:rgba(91,91,214,0.06);border:1px solid rgba(91,91,214,0.18);border-radius:10px;padding:12px;margin-bottom:12px;font-size:12px;line-height:1.55;color:var(--navy);">
-      <strong style="display:block;margin-bottom:4px;color:#5B5BD6;">Connect Gmail to auto-log emails</strong>
+      <strong style="display:block;margin-bottom:4px;color:#5B5BD6;">Connect your email to auto-log</strong>
       Sent and received emails between you and this contact will appear here automatically.
-      <button onclick="showScreen('settings');setTimeout(()=>document.getElementById('settings-gmail-row')?.scrollIntoView({behavior:'smooth',block:'center'}),300);" style="display:block;margin-top:8px;background:#EA4335;border:none;border-radius:8px;padding:8px 14px;font-family:'DM Sans',sans-serif;font-size:12px;font-weight:700;color:#fff;cursor:pointer;">Connect Gmail →</button>
+      <button onclick="showScreen('settings');setTimeout(()=>document.getElementById('nylas-connect-mount')?.scrollIntoView({behavior:'smooth',block:'center'}),300);" style="display:block;margin-top:8px;background:#5B5BD6;border:none;border-radius:8px;padding:8px 14px;font-family:'DM Sans',sans-serif;font-size:12px;font-weight:700;color:#fff;cursor:pointer;">Connect email →</button>
     </div>`;
   } else if (!contactEmail) {
     header = `<div style="background:#fff7e6;border:1px solid #fde68a;border-radius:10px;padding:12px;margin-bottom:12px;font-size:12px;color:#92400e;">⚠️ No email address on this contact. Add one so the Gmail sync can match messages.</div>`;
@@ -9865,20 +9895,22 @@ const myLolaIntegrationService = (() => {
   }
 
   /**
-   * TODO(mylola-api): replace the stub with an OAuth-style handshake to
-   * MyLola. The real flow will probably be: SWH redirects to MyLola, user
-   * approves, MyLola redirects back with a code, SWH exchanges for an
-   * access token via a Cloud Function. For now we write a stub doc so the
-   * UI can transition to the "connected" state.
+   * Connect = confirm a MyLola account exists for this user's email. The two
+   * products share no Auth pool, so "connected" simply means MyLola found an
+   * account at the SWH user's email (verifyMyLolaConnection on the loaniq
+   * side). No OAuth token to manage — the push is server-to-server with a
+   * shared secret that never reaches the browser.
    */
   async function connectMyLola() {
-    // TODO(mylola-api): real OAuth handshake.
-    const mockMyLolaUserId = `mock-mylola-${Date.now()}`;
+    const verifyFn = httpsCallable(functions, 'verifyMyLolaConnection');
+    const { data: r } = await verifyFn({});
+    if (!r || !r.connected) {
+      throw new Error((r && r.message) || 'No MyLola account found for your email. Create one at mylola.ai first.');
+    }
     await setDoc(integrationDocRef(), {
       connectionStatus: 'connected',
-      myLolaUserId: mockMyLolaUserId,
+      myLolaUserId: r.myLolaUserId || null,
       connectedAt: serverTimestamp(),
-      lastSyncAt: null,
       lastSyncError: null,
     }, { merge: true });
     cachedStatus = null;  // bust cache
@@ -9901,19 +9933,37 @@ const myLolaIntegrationService = (() => {
   }
 
   /**
-   * Sanity-check the connection by pinging MyLola. TODO(mylola-api): call
-   * a /ping endpoint that echoes the connected user back. For now resolves
-   * `true` when the cached/persisted status is 'connected'.
+   * Sanity-check the connection by re-confirming the MyLola account exists
+   * (verifyMyLolaConnection). A real round-trip, no mock latency.
    * @returns {Promise<{ok: boolean, message: string}>}
    */
   async function testConnection() {
-    const status = await getMyLolaConnectionStatus({ forceRefresh: true });
-    if (status.status !== 'connected') {
-      return { ok: false, message: 'Not connected to MyLola yet.' };
+    try {
+      const verifyFn = httpsCallable(functions, 'verifyMyLolaConnection');
+      const { data: r } = await verifyFn({});
+      if (r && r.connected) return { ok: true, message: `Connected to MyLola (${r.email}).` };
+      return { ok: false, message: (r && r.message) || 'No MyLola account found for your email.' };
+    } catch (err) {
+      return { ok: false, message: err?.message || 'Could not reach MyLola.' };
     }
-    // TODO(mylola-api): real ping. Mock latency to feel like a network hop.
-    await new Promise((r) => setTimeout(r, 350));
-    return { ok: true, message: 'Connected to MyLola.' };
+  }
+
+  /**
+   * Pre-flight duplicate check: ask MyLola for any existing household /
+   * partner matching this contact's email or phone, so the UI can offer
+   * "use existing" before creating a duplicate. Non-fatal on failure.
+   * @param {string} contactId
+   * @returns {Promise<{ok: boolean, matches: Array<object>, noAccount?: boolean, error?: string}>}
+   */
+  async function findMyLolaMatches(contactId) {
+    try {
+      const fn = httpsCallable(functions, 'findMyLolaMatches');
+      const { data: r } = await fn({ contactId });
+      return { ok: true, matches: (r && r.matches) || [], noAccount: !!(r && r.noAccount) };
+    } catch (err) {
+      console.warn('[myLolaIntegrationService] findMyLolaMatches failed', err);
+      return { ok: false, matches: [], error: err?.message || 'unknown' };
+    }
   }
 
   /**
@@ -10036,12 +10086,32 @@ const myLolaIntegrationService = (() => {
     sendContactToMyLola,
     resyncContactToMyLola,
     getMyLolaConnectionStatus,
+    findMyLolaMatches,
   };
 })();
 
 // Expose on window so inline onclick handlers and dev-console can reach in.
 window.myLolaIntegrationService = myLolaIntegrationService;
 window.mapSwhContactToMyLolaPayload = mapSwhContactToMyLolaPayload;
+
+/**
+ * ContactSyncService — provider-agnostic facade over the per-CRM connector.
+ * Only MyLola exists today, so it delegates to myLolaIntegrationService, but
+ * this is the seam a future "send to <other CRM>" integration plugs into.
+ *   pushToMyLola()       → push a contact (with the opportunity-type options)
+ *   findExistingContact()→ pre-flight duplicate match
+ *   createMortgageLead() → alias of push (the lead is created server-side)
+ *   linkRecords()        → records are linked by acceptSwhContact + the SWH
+ *                          write-back; exposed for future provider parity
+ *   verifyConnection()   → confirm the destination account exists
+ */
+window.ContactSyncService = {
+  pushToMyLola: (contactId, options) => myLolaIntegrationService.sendContactToMyLola(contactId, options),
+  findExistingContact: (contactId) => myLolaIntegrationService.findMyLolaMatches(contactId),
+  createMortgageLead: (contactId, options) => myLolaIntegrationService.sendContactToMyLola(contactId, options),
+  linkRecords: () => Promise.resolve({ ok: true, note: 'links written by acceptSwhContact + the SWH write-back' }),
+  verifyConnection: () => myLolaIntegrationService.testConnection(),
+};
 
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -10215,11 +10285,12 @@ window.openSendToMyLolaModal = function(contact) {
   document.getElementById('send-mylola-form').textContent    = contact.form ? 'FORM notes will be included' : 'No FORM notes';
 
   // Reset selections.
-  document.querySelectorAll('#send-mylola-overlay [data-mylola-createas]').forEach((b) => {
+  document.querySelectorAll('#send-mylola-overlay [data-mylola-opp]').forEach((b) => {
     b.classList.remove('selected');
     b.style.background = 'var(--bg)';
     b.style.color = 'var(--text)';
   });
+  overlay.dataset.opportunityType = '';
   document.getElementById('send-mylola-include-notes').checked = true;
   document.getElementById('send-mylola-include-score').checked = true;
 
@@ -10233,8 +10304,39 @@ window.closeSendToMyLolaModal = function() {
   document.getElementById('send-mylola-overlay')?.classList.remove('open');
 };
 
-window.onSendToMyLolaCreateAsClick = function(btn, value) {
-  document.querySelectorAll('#send-mylola-overlay [data-mylola-createas]').forEach((b) => {
+// ── Duplicate-match modal. Promise-based: resolves 'existing' | 'create' |
+//    'cancel'. On 'existing' it opens the MyLola record in a new tab. ──
+let _myLolaDupResolver = null;
+window.showMyLolaDupModal = function(match) {
+  return new Promise((resolve) => {
+    _myLolaDupResolver = resolve;
+    document.getElementById('mylola-dup-name').textContent = match.displayName || 'Unknown';
+    const detail = [match.email, match.phone].filter(Boolean).join('  ·  ');
+    document.getElementById('mylola-dup-detail').textContent = detail || '(no email or phone on file)';
+    document.getElementById('mylola-dup-matchedon').textContent =
+      `Matched on ${match.matchedOn}${match.alreadyFromSwh ? ' · already synced from SWH' : ''}`;
+    const ov = document.getElementById('mylola-dup-overlay');
+    ov.dataset.match = JSON.stringify({ id: match.id, kind: match.kind });
+    ov.classList.add('open');
+  });
+};
+window.resolveMyLolaDup = function(choice) {
+  const ov = document.getElementById('mylola-dup-overlay');
+  if (ov) ov.classList.remove('open');
+  if (choice === 'existing' && ov) {
+    try {
+      const m = JSON.parse(ov.dataset.match || '{}');
+      const path = m.kind === 'household'
+        ? `https://mylola.ai/crm/households/${encodeURIComponent(m.id)}`
+        : `https://mylola.ai/crm/partners/${encodeURIComponent(m.id)}`;
+      window.open(path, '_blank');
+    } catch (_) { /* ignore */ }
+  }
+  if (_myLolaDupResolver) { _myLolaDupResolver(choice); _myLolaDupResolver = null; }
+};
+
+window.onSendToMyLolaOppClick = function(btn, value) {
+  document.querySelectorAll('#send-mylola-overlay [data-mylola-opp]').forEach((b) => {
     b.classList.remove('selected');
     b.style.background = 'var(--bg)';
     b.style.color = 'var(--text)';
@@ -10244,23 +10346,42 @@ window.onSendToMyLolaCreateAsClick = function(btn, value) {
   btn.style.color = '#fff';
   btn.dataset.selected = '1';
   const overlay = document.getElementById('send-mylola-overlay');
-  if (overlay) overlay.dataset.createAs = value;
+  if (overlay) overlay.dataset.opportunityType = value;
 };
 
 window.onSendToMyLolaSubmit = async function() {
   const overlay = document.getElementById('send-mylola-overlay');
   if (!overlay) return;
   const contactId = overlay.dataset.contactId || '';
-  const createAs = overlay.dataset.createAs || 'contact';
+  const opportunityType = overlay.dataset.opportunityType || '';
   if (!contactId) { alert('Missing contact id.'); return; }
+  if (!opportunityType) { alert('Pick an opportunity type first.'); return; }
 
   const includeNotes = !!document.getElementById('send-mylola-include-notes').checked;
   const includeRelationshipScore = !!document.getElementById('send-mylola-include-score').checked;
   /** @type {SendToMyLolaOptions} */
-  const options = { createAs, includeNotes, includeRelationshipScore };
+  const options = { opportunityType, includeNotes, includeRelationshipScore };
 
   const primary = document.getElementById('send-mylola-submit-btn');
-  if (primary) { primary.disabled = true; primary.textContent = 'Sending…'; }
+  if (primary) { primary.disabled = true; primary.textContent = 'Checking…'; }
+
+  // Duplicate pre-flight: if MyLola already has a matching contact, offer to
+  // open it instead of creating a duplicate. We never auto-merge.
+  try {
+    const dup = await myLolaIntegrationService.findMyLolaMatches(contactId);
+    if (dup.ok && Array.isArray(dup.matches) && dup.matches.length) {
+      const choice = await showMyLolaDupModal(dup.matches[0]);
+      if (choice !== 'create') {
+        // 'existing' (opened in a new tab inside the modal) or 'cancel' —
+        // either way, do not create a duplicate.
+        if (primary) { primary.disabled = false; primary.textContent = 'Create in MyLola'; }
+        return;
+      }
+      // 'create' falls through to the push below.
+    }
+  } catch (_dupErr) { /* non-fatal — fall through and create */ }
+
+  if (primary) { primary.textContent = 'Sending…'; }
 
   try {
     const r = await myLolaIntegrationService.sendContactToMyLola(contactId, options);
@@ -10300,7 +10421,7 @@ window.onSendToMyLolaSubmit = async function() {
   <div class="ctx-box" style="max-width:420px;">
     <div class="ctx-header">
       <div class="ctx-handle mobile-only"></div>
-      <div class="ctx-icon" style="background:linear-gradient(135deg,#7B61FF,#5B47CC);color:#fff;">🪷</div>
+      <div class="ctx-icon" style="line-height:0;"><span class="lola-orb" style="width:42px;height:42px;"></span></div>
       <div class="ctx-title">MyLola integration</div>
       <div class="ctx-subtitle">Send SWH contacts into MyLola, the mortgage CRM</div>
     </div>
@@ -10342,7 +10463,7 @@ window.onSendToMyLolaSubmit = async function() {
   <div class="ctx-box" style="max-width:440px;">
     <div class="ctx-header">
       <div class="ctx-handle mobile-only"></div>
-      <div class="ctx-icon" style="background:linear-gradient(135deg,#7B61FF,#5B47CC);color:#fff;">🪷</div>
+      <div class="ctx-icon" style="line-height:0;"><span class="lola-orb" style="width:42px;height:42px;"></span></div>
       <div class="ctx-title">Send to MyLola</div>
       <div class="ctx-subtitle">Create as a contact or opportunity in your mortgage CRM</div>
     </div>
@@ -10358,15 +10479,18 @@ window.onSendToMyLolaSubmit = async function() {
         <div style="display:flex;justify-content:space-between;gap:14px;font-size:12px;"><span style="color:var(--muted);">FORM</span><span id="send-mylola-form" style="font-weight:500;color:var(--text);text-align:right;">—</span></div>
       </div>
 
-      <!-- Create-as picker — 5 options, single-select, dataset-driven. -->
+      <!-- Opportunity-type picker — 8 options, single-select, REQUIRED. -->
       <div>
-        <div style="font-size:10px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:var(--muted);margin-bottom:7px;">Create as</div>
+        <div style="font-size:10px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:var(--muted);margin-bottom:7px;">What type of opportunity is this?</div>
         <div style="display:flex;flex-wrap:wrap;gap:6px;">
-          <button type="button" data-mylola-createas="contact"           onclick="onSendToMyLolaCreateAsClick(this,'contact')"           style="padding:8px 12px;border:1.5px solid var(--border);border-radius:999px;background:var(--bg);font-family:'DM Sans',sans-serif;font-size:12.5px;font-weight:600;color:var(--text);cursor:pointer;">Contact only</button>
-          <button type="button" data-mylola-createas="referral_partner"  onclick="onSendToMyLolaCreateAsClick(this,'referral_partner')"  style="padding:8px 12px;border:1.5px solid var(--border);border-radius:999px;background:var(--bg);font-family:'DM Sans',sans-serif;font-size:12.5px;font-weight:600;color:var(--text);cursor:pointer;">Referral Partner</button>
-          <button type="button" data-mylola-createas="mortgage_prospect" onclick="onSendToMyLolaCreateAsClick(this,'mortgage_prospect')" style="padding:8px 12px;border:1.5px solid var(--border);border-radius:999px;background:var(--bg);font-family:'DM Sans',sans-serif;font-size:12.5px;font-weight:600;color:var(--text);cursor:pointer;">Mortgage Prospect</button>
-          <button type="button" data-mylola-createas="realtor_partner"   onclick="onSendToMyLolaCreateAsClick(this,'realtor_partner')"   style="padding:8px 12px;border:1.5px solid var(--border);border-radius:999px;background:var(--bg);font-family:'DM Sans',sans-serif;font-size:12.5px;font-weight:600;color:var(--text);cursor:pointer;">Realtor Partner</button>
-          <button type="button" data-mylola-createas="past_client"       onclick="onSendToMyLolaCreateAsClick(this,'past_client')"       style="padding:8px 12px;border:1.5px solid var(--border);border-radius:999px;background:var(--bg);font-family:'DM Sans',sans-serif;font-size:12.5px;font-weight:600;color:var(--text);cursor:pointer;">Past Client</button>
+          <button type="button" data-mylola-opp="purchase"          onclick="onSendToMyLolaOppClick(this,'purchase')"          style="padding:8px 12px;border:1.5px solid var(--border);border-radius:999px;background:var(--bg);font-family:'DM Sans',sans-serif;font-size:12.5px;font-weight:600;color:var(--text);cursor:pointer;">Purchase</button>
+          <button type="button" data-mylola-opp="refinance"         onclick="onSendToMyLolaOppClick(this,'refinance')"         style="padding:8px 12px;border:1.5px solid var(--border);border-radius:999px;background:var(--bg);font-family:'DM Sans',sans-serif;font-size:12.5px;font-weight:600;color:var(--text);cursor:pointer;">Refinance</button>
+          <button type="button" data-mylola-opp="reverse"           onclick="onSendToMyLolaOppClick(this,'reverse')"           style="padding:8px 12px;border:1.5px solid var(--border);border-radius:999px;background:var(--bg);font-family:'DM Sans',sans-serif;font-size:12.5px;font-weight:600;color:var(--text);cursor:pointer;">Reverse Mortgage</button>
+          <button type="button" data-mylola-opp="heloc"             onclick="onSendToMyLolaOppClick(this,'heloc')"             style="padding:8px 12px;border:1.5px solid var(--border);border-radius:999px;background:var(--bg);font-family:'DM Sans',sans-serif;font-size:12.5px;font-weight:600;color:var(--text);cursor:pointer;">HELOC</button>
+          <button type="button" data-mylola-opp="realtor_partner"   onclick="onSendToMyLolaOppClick(this,'realtor_partner')"   style="padding:8px 12px;border:1.5px solid var(--border);border-radius:999px;background:var(--bg);font-family:'DM Sans',sans-serif;font-size:12.5px;font-weight:600;color:var(--text);cursor:pointer;">Realtor Partner</button>
+          <button type="button" data-mylola-opp="builder_partner"   onclick="onSendToMyLolaOppClick(this,'builder_partner')"   style="padding:8px 12px;border:1.5px solid var(--border);border-radius:999px;background:var(--bg);font-family:'DM Sans',sans-serif;font-size:12.5px;font-weight:600;color:var(--text);cursor:pointer;">Builder Partner</button>
+          <button type="button" data-mylola-opp="financial_planner" onclick="onSendToMyLolaOppClick(this,'financial_planner')" style="padding:8px 12px;border:1.5px solid var(--border);border-radius:999px;background:var(--bg);font-family:'DM Sans',sans-serif;font-size:12.5px;font-weight:600;color:var(--text);cursor:pointer;">Financial Planner</button>
+          <button type="button" data-mylola-opp="other"             onclick="onSendToMyLolaOppClick(this,'other')"             style="padding:8px 12px;border:1.5px solid var(--border);border-radius:999px;background:var(--bg);font-family:'DM Sans',sans-serif;font-size:12.5px;font-weight:600;color:var(--text);cursor:pointer;">Other</button>
         </div>
       </div>
 
@@ -10385,6 +10509,34 @@ window.onSendToMyLolaSubmit = async function() {
     <div class="ctx-footer">
       <button class="ctx-cancel" style="flex:1;" onclick="closeSendToMyLolaModal()">Cancel</button>
       <button id="send-mylola-submit-btn" onclick="onSendToMyLolaSubmit()" style="flex:1.4;padding:11px 14px;border:none;border-radius:10px;background:linear-gradient(135deg,#7B61FF,#5B47CC);color:#fff;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:700;cursor:pointer;">Create in MyLola</button>
+    </div>
+  </div>
+</div>
+
+<!-- ════ MYLOLA DUPLICATE-MATCH MODAL ════
+     Shown when findMyLolaMatches returns a likely existing MyLola contact.
+     Three outcomes: open the existing record, create a new one anyway, or
+     cancel. We never merge automatically. -->
+<div class="ctx-overlay" id="mylola-dup-overlay" onclick="if(event.target===this)resolveMyLolaDup('cancel')">
+  <div class="ctx-box" style="max-width:420px;">
+    <div class="ctx-header">
+      <div class="ctx-handle mobile-only"></div>
+      <div class="ctx-icon">⚠️</div>
+      <div class="ctx-title">Possible match found</div>
+      <div class="ctx-subtitle">This person may already be in MyLola</div>
+    </div>
+    <div class="ctx-body">
+      <div style="display:flex;flex-direction:column;gap:5px;padding:12px 14px;border:1.5px solid var(--border);border-radius:10px;background:var(--bg);">
+        <div style="font-weight:700;font-size:14px;color:var(--text);" id="mylola-dup-name">—</div>
+        <div style="font-size:12px;color:var(--muted);" id="mylola-dup-detail">—</div>
+        <div style="font-size:11px;color:var(--muted);" id="mylola-dup-matchedon">—</div>
+      </div>
+      <div style="font-size:11px;color:var(--muted);line-height:1.5;margin-top:10px;">Nothing is merged automatically. Open the existing record, or create a new one if this is a different person.</div>
+    </div>
+    <div class="ctx-footer" style="display:flex;flex-direction:column;gap:8px;">
+      <button onclick="resolveMyLolaDup('existing')" style="padding:11px 14px;border:none;border-radius:10px;background:linear-gradient(135deg,#7B61FF,#5B47CC);color:#fff;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:700;cursor:pointer;">Open the existing contact</button>
+      <button onclick="resolveMyLolaDup('create')" style="padding:10px 14px;border:1.5px solid var(--border);border-radius:10px;background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;">Create a new contact anyway</button>
+      <button class="ctx-cancel" onclick="resolveMyLolaDup('cancel')">Cancel</button>
     </div>
   </div>
 </div>
@@ -10559,5 +10711,8 @@ window.onSendToMyLolaSubmit = async function() {
   </div>
 </div>
 
+<!-- Nylas unified email + calendar UI (classic script; sets window.SWHNylasEmail
+     before the deferred module's auth handler runs). -->
+<script src="nylas-email.js"></script>
 </body>
 </html>

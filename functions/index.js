@@ -347,7 +347,8 @@ exports.saveSettings = onRequest({ cors: true }, async (req, res) => {
     const decoded = await requireAuth(req);
     const uid = decoded.uid;
     const { phone, smsOptIn, weeklyGoal, displayName,
-            weekStartDay, weeklyEmailEnabled, weeklyEmailDay, weeklyEmailHour, weeklyEmailTimezone } = req.body || {};
+            weekStartDay, weeklyEmailEnabled, weeklyEmailDay, weeklyEmailHour, weeklyEmailTimezone,
+            accountabilityPartners } = req.body || {};
     const update = {};
     if (typeof phone === 'string') update.phone = phone;
     if (typeof smsOptIn === 'boolean') update.smsOptIn = smsOptIn;
@@ -365,6 +366,12 @@ exports.saveSettings = onRequest({ cors: true }, async (req, res) => {
     }
     if (typeof weeklyEmailTimezone === 'string' && weeklyEmailTimezone.length < 50) {
       update.weeklyEmailTimezone = weeklyEmailTimezone;
+    }
+    if (Array.isArray(accountabilityPartners)) {
+      update.accountabilityPartners = accountabilityPartners
+        .filter(e => typeof e === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e.trim()))
+        .slice(0, 5)
+        .map(e => e.toLowerCase().trim());
     }
     await db.collection('users').doc(uid).collection('config').doc('settings').set(update, { merge: true });
     res.json({ ok: true });
@@ -1111,9 +1118,11 @@ exports.weeklyActivityEmail = onSchedule({
     if (!stats) return;
 
     try {
+      const ccPartners = Array.isArray(settings.accountabilityPartners) ? settings.accountabilityPartners : [];
       await db.collection('mail').add({
         from: MAIL_FROM,
         to: [userData.email],
+        ...(ccPartners.length ? { cc: ccPartners } : {}),
         message: { subject: renderRecapSubject(stats), html: renderRecapHTML(stats), text: renderRecapText(stats) },
       });
       // Mark sent so a retry of this scheduler invocation doesn't double-send.
@@ -1201,9 +1210,13 @@ exports.sendMyRecap = onRequest({ cors: true }, async (req, res) => {
     const stats = await computeUserWeeklyStats(uid);
     if (!stats) { res.status(400).json({ error: 'No activity logged in the past week — log a few entries first.' }); return; }
 
+    const settingsSnap = await db.doc(`users/${uid}/config/settings`).get();
+    const settings = settingsSnap.data() || {};
+    const ccPartners = Array.isArray(settings.accountabilityPartners) ? settings.accountabilityPartners : [];
     await db.collection('mail').add({
       from: MAIL_FROM,
       to: [email],
+      ...(ccPartners.length ? { cc: ccPartners } : {}),
       message: { subject: renderRecapSubject(stats), html: renderRecapHTML(stats), text: renderRecapText(stats) },
     });
     res.json({ ok: true, email, totalPts: stats.totalPts });
@@ -4495,6 +4508,17 @@ async function runGmailIncrementalSync(uid) {
   const intSnap = await db.doc(`users/${uid}/integrations/gmail`).get();
   if (!intSnap.exists) return;
   const integration = intSnap.data();
+  // Migration guard: once a user is on the unified Nylas integration, stop the
+  // legacy Gmail sync so inbound email is not double-logged onto contacts.
+  // Marking the doc 'migrated' also drops it from the scheduled query above.
+  const nylasSnap = await db.doc(`users/${uid}/integrations/nylas`).get();
+  if (nylasSnap.exists && nylasSnap.data().status === 'active') {
+    if (integration.status !== 'migrated') {
+      await intSnap.ref.set({ status: 'migrated', migratedAt: new Date().toISOString() }, { merge: true });
+      console.log(`[gmail-sync] uid=${uid} migrated to Nylas — pausing legacy sync`);
+    }
+    return;
+  }
   if (!integration.lastHistoryId) {
     // No baseline yet — full backfill must finish first
     return;
@@ -5405,28 +5429,47 @@ exports.mintApptCustomToken = onCall({
 const MYLOLA_INTEGRATION_SECRET = defineSecret('MYLOLA_INTEGRATION_SECRET');
 const MYLOLA_ACCEPT_SWH_CONTACT_URL =
   'https://us-central1-loaniq-75a20.cloudfunctions.net/acceptSwhContact';
+const MYLOLA_FIND_MATCHES_URL =
+  'https://us-central1-loaniq-75a20.cloudfunctions.net/findMyLolaMatches';
+const MYLOLA_VERIFY_ACCOUNT_URL =
+  'https://us-central1-loaniq-75a20.cloudfunctions.net/verifyMyLolaAccount';
 
 /** Mirror of public-crm/index.html\'s mapSwhContactToMyLolaPayload —
  *  kept in lockstep so the payload shape matches what acceptSwhContact
  *  validates. The browser-side mapper exists so a fast "dry-run preview"
  *  is possible without a CF round-trip; this server-side version is
  *  authoritative because the SWH user can\'t tamper with it. */
+const SWH_STATUS_LABELS = { new: 'New', aplus: 'A+ Partner', a: 'A Partner', b: 'B Partner', d: 'D' };
+
 function mapSwhContactToMyLolaPayloadCF(contactId, swhContact, options) {
   const fullName = (swhContact.name || '').trim();
   let firstName, lastName;
   if (fullName) {
     const parts = fullName.split(/\s+/);
-    if (parts.length === 1) {
-      firstName = parts[0];
-    } else {
-      firstName = parts[0];
-      lastName = parts.slice(1).join(' ');
-    }
+    firstName = parts[0];
+    if (parts.length > 1) lastName = parts.slice(1).join(' ');
   }
 
+  // SWH partner grade -> readable relationship label (networking context only).
+  const relationshipType = swhContact.relationshipType
+    || (swhContact.status ? SWH_STATUS_LABELS[swhContact.status] : undefined);
+
+  // lastActivityAt is a Firestore Timestamp -> ISO date string.
+  let lastConversationDate;
+  const la = swhContact.lastActivityAt;
+  if (la && typeof la.toDate === 'function') {
+    lastConversationDate = la.toDate().toISOString().slice(0, 10);
+  } else if (typeof la === 'string') {
+    lastConversationDate = la;
+  }
+
+  // New 8-type taxonomy is preferred; legacy createAs kept for back-compat.
+  const opportunityType = options.opportunityType || undefined;
+
   const tags = ['SWH'];
-  if (swhContact.relationshipType) tags.push(swhContact.relationshipType);
-  if (options.createAs && options.createAs !== 'contact') tags.push(options.createAs);
+  if (relationshipType) tags.push(relationshipType);
+  if (opportunityType) tags.push(opportunityType);
+  else if (options.createAs && options.createAs !== 'contact') tags.push(options.createAs);
 
   const payload = {
     firstName,
@@ -5435,18 +5478,27 @@ function mapSwhContactToMyLolaPayloadCF(contactId, swhContact, options) {
     email: swhContact.email || undefined,
     phone: swhContact.phone || undefined,
     company: swhContact.company || undefined,
-    relationshipType: swhContact.relationshipType || undefined,
+    // Networking context — MyLola stores these read-only under swhContext.
+    occupation: (swhContact.form && swhContact.form.occupation) || undefined,
+    introductionSource: swhContact.event || undefined,
+    referralSource: swhContact.event || undefined,
+    relationshipType: relationshipType || undefined,
+    relationshipScore: typeof swhContact.steps === 'number' ? swhContact.steps : undefined,
+    lastConversationDate,
     source: 'SWH',
     sourceContactId: contactId,
     tags,
-    createAs: options.createAs,
+    opportunityType,
+    createAs: options.createAs || undefined,
   };
 
-  if (options.includeNotes) {
+  // Notes + FORM included by default (the import wants the relationship
+  // context); the modal checkbox can still opt out by passing false.
+  if (options.includeNotes !== false) {
     if (swhContact.notes) payload.notes = swhContact.notes;
     if (swhContact.form) payload.formNotes = swhContact.form;
   }
-  if (options.includeRelationshipScore) {
+  if (options.includeRelationshipScore !== false) {
     payload.activitySummary = {
       stepsCompleted: typeof swhContact.steps === 'number' ? swhContact.steps : null,
       stepsTotal: 8,
@@ -5471,8 +5523,8 @@ exports.sendContactToMyLola = onCall(
     if (!contactId || typeof contactId !== 'string') {
       throw new HttpsError('invalid-argument', 'contactId required');
     }
-    if (!options || !options.createAs) {
-      throw new HttpsError('invalid-argument', 'options.createAs required');
+    if (!options || (!options.opportunityType && !options.createAs)) {
+      throw new HttpsError('invalid-argument', 'options.opportunityType (or legacy createAs) required');
     }
 
     // Read the caller\'s email — used to route the contact to the right
@@ -5542,6 +5594,80 @@ exports.sendContactToMyLola = onCall(
       kind: parsed.kind,
       upserted: !!parsed.upserted,
     };
+  },
+);
+
+// ── findMyLolaMatches: pre-flight duplicate check before a push. ──
+// Resolves the SWH user's email + the contact's email/phone, asks MyLola for
+// any existing household/partner match, so the UI can offer use-existing.
+exports.findMyLolaMatches = onCall(
+  { secrets: [MYLOLA_INTEGRATION_SECRET], timeoutSeconds: 20, memory: '256MiB', cors: true },
+  async (req) => {
+    const uid = req.auth?.uid;
+    if (!uid) throw new HttpsError('unauthenticated', 'Sign in required');
+
+    const { contactId, email, phone } = req.data || {};
+    const userRecord = await admin.auth().getUser(uid);
+    const swhUserEmail = userRecord.email;
+    if (!swhUserEmail) throw new HttpsError('failed-precondition', 'SWH user has no email');
+
+    let matchEmail = email;
+    let matchPhone = phone;
+    if (contactId && !matchEmail && !matchPhone) {
+      const snap = await admin.firestore().doc(`users/${uid}/contacts/${contactId}`).get();
+      if (snap.exists) { const c = snap.data(); matchEmail = c.email; matchPhone = c.phone; }
+    }
+    if (!matchEmail && !matchPhone) return { ok: true, matches: [] };
+
+    let res;
+    try {
+      res = await fetch(MYLOLA_FIND_MATCHES_URL, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${MYLOLA_INTEGRATION_SECRET.value().trim()}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ swhUserEmail, email: matchEmail, phone: matchPhone }),
+      });
+    } catch (err) {
+      console.error('[findMyLolaMatches] network error', err);
+      throw new HttpsError('unavailable', 'Could not reach MyLola. Try again in a moment.');
+    }
+    const text = await res.text();
+    if (!res.ok) {
+      if (res.status === 404) return { ok: true, noAccount: true, matches: [] };
+      console.warn(`[findMyLolaMatches] ${res.status}: ${text}`);
+      throw new HttpsError('internal', `MyLola match check failed (${res.status})`);
+    }
+    let parsed;
+    try { parsed = JSON.parse(text); } catch { throw new HttpsError('internal', 'MyLola returned an unparseable response.'); }
+    return { ok: true, matches: Array.isArray(parsed.matches) ? parsed.matches : [] };
+  },
+);
+
+// ── verifyMyLolaConnection: a real connect check (account exists by email), ──
+// replacing the SWH-side mock handshake.
+exports.verifyMyLolaConnection = onCall(
+  { secrets: [MYLOLA_INTEGRATION_SECRET], timeoutSeconds: 15, memory: '256MiB', cors: true },
+  async (req) => {
+    const uid = req.auth?.uid;
+    if (!uid) throw new HttpsError('unauthenticated', 'Sign in required');
+    const userRecord = await admin.auth().getUser(uid);
+    const swhUserEmail = userRecord.email;
+    if (!swhUserEmail) throw new HttpsError('failed-precondition', 'SWH user has no email');
+
+    let res;
+    try {
+      res = await fetch(MYLOLA_VERIFY_ACCOUNT_URL, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${MYLOLA_INTEGRATION_SECRET.value().trim()}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: swhUserEmail }),
+      });
+    } catch (err) {
+      console.error('[verifyMyLolaConnection] network error', err);
+      throw new HttpsError('unavailable', 'Could not reach MyLola. Try again in a moment.');
+    }
+    const text = await res.text();
+    let parsed;
+    try { parsed = JSON.parse(text); } catch { parsed = {}; }
+    return { ok: true, connected: !!parsed.connected, myLolaUserId: parsed.myLolaUserId || null, email: swhUserEmail };
   },
 );
 
@@ -5737,3 +5863,10 @@ exports.getApptData = onCall({
 });
 
 // migrateProUsersToAppt — completed 2026-05-28, removed.
+
+// ===== Nylas v3 unified integration (calendar / email / contacts) =====
+// Serves both SWH surfaces (Scorecard + CRM) from this one backend.
+// Functions: getNylasAuthUrl, nylasCallback, getUpcomingEvents,
+// getContactThreads, getContacts, nylasWebhook, nylasFollowThroughSweep,
+// nylasStatus, nylasDisconnect. See nylas.js + NYLAS_MIGRATION.md.
+Object.assign(exports, require('./nylas'));
