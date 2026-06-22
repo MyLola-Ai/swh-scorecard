@@ -6310,6 +6310,7 @@ function buildExpandDetail(c) {
       <button class="ne-action-btn" onclick="openSyncContactModal('${c.id}')"><span class="ne-action-icon">📇</span><span class="ne-action-lbl">Save</span></button>
       ${apptUserSlug && apptBookingPages.length ? `<button class="ne-action-btn" onclick="openBookContactModal('${c.id}')"><span class="ne-action-icon">📅</span><span class="ne-action-lbl">Book</span></button>` : ''}
       <button class="ne-action-btn" onclick="onSendToMyLolaClick('${c.id}')" title="${c.myLolaSyncStatus === 'synced' ? 'In MyLola. View or re-sync' : 'Send to MyLola (mortgage CRM)'}"><span class="ne-action-icon">🪷</span><span class="ne-action-lbl">${c.myLolaSyncStatus === 'synced' ? 'In MyLola' : 'MyLola'}</span></button>
+      <button class="ne-action-btn" onclick="goGradeContact('${c.id}')"><span class="ne-action-icon">⭐</span><span class="ne-action-lbl">Grade</span></button>
     </div>
     <div style="padding:0 2px 8px;">
       ${c.myLolaSyncStatus === 'synced'
@@ -7937,6 +7938,16 @@ window.confirmExistingGrade = function() {
 window.closeGradeModal = function() {
   document.getElementById('grade-modal-overlay').classList.remove('open');
   _gradeModalContactId = null;
+};
+
+// Entry point for the Grade button on any contact card (including existing contacts
+// who never went through the 8-step campaign). Looks up the current grade from
+// CONTACTS so the modal can show the "confirm or update" variant when appropriate.
+window.goGradeContact = function(contactId) {
+  const c = CONTACTS.find(x => x.id === contactId);
+  if (!c) return;
+  const grade = resolveStatus(c);
+  openGradeModal(contactId, c.name, grade !== 'new' ? grade : null);
 };
 
 window.assignGrade = async function(contactId, grade) {
