@@ -489,8 +489,6 @@
   let userWeeklyEmailHour = 9;
   let userWeeklyEmailTimezone = (Intl.DateTimeFormat().resolvedOptions().timeZone) || 'America/Chicago';
   let userAccountabilityPartners = [];
-  let nylasConnected = false;
-  let calendarAutoLog = true;
 
   // Seeded sample data for demo mode (in-memory, never written to Firestore)
   function buildDemoData() {
@@ -644,12 +642,7 @@
       userWeeklyEmailHour = typeof me.settings.weeklyEmailHour === 'number' ? me.settings.weeklyEmailHour : 9;
       userWeeklyEmailTimezone = me.settings.weeklyEmailTimezone || userWeeklyEmailTimezone;
       userAccountabilityPartners = Array.isArray(me.settings.accountabilityPartners) ? [...me.settings.accountabilityPartners] : [];
-      calendarAutoLog = me.settings.calendarAutoLog !== false;
       demoMode = false;
-      getDoc(doc(db,'users',uid,'integrations','nylas')).then(ns=>{
-        nylasConnected = ns.exists() && ns.data().status==='active';
-        updateCalendarSettingsRow();
-      }).catch(()=>{});
 
       // ── Stage 3: start RC setup in background (non-blocking) ───────────────
       // RC is started here so it has time to configure while we do routing below.
@@ -1985,7 +1978,6 @@
       userWeeklyEmailHour = typeof s.weeklyEmailHour === 'number' ? s.weeklyEmailHour : 9;
       userWeeklyEmailTimezone = s.weeklyEmailTimezone || userWeeklyEmailTimezone;
       userAccountabilityPartners = Array.isArray(s.accountabilityPartners) ? [...s.accountabilityPartners] : [];
-      calendarAutoLog = s.calendarAutoLog !== false;
       calReminderEnabled = s.calReminderEnabled || false;
       calReminderHour = typeof s.calReminderHour === 'number' ? s.calReminderHour : 19;
       calReminderEventId = s.calReminderEventId || '';
@@ -2201,7 +2193,6 @@
       showToast(totalPts===0 ? '✅ Day cleared.' : '✅ Day saved! Check Coaching for insights.');
       sessionStorage.setItem('swh_coaching_updated','1');
       updateCoachingBadge();
-      autoLogActivitiesToCalendar(breakdown, targetKey);
       return;
     }
 
@@ -2259,7 +2250,6 @@
     showToast(totalPts===0 ? '✅ Day cleared.' : '✅ Day saved! Check Coaching for insights.');
     sessionStorage.setItem('swh_coaching_updated','1');
     updateCoachingBadge();
-    autoLogActivitiesToCalendar(breakdown, targetKey);
   };
 
   window.editDay = async (dateKey) => {
@@ -2532,100 +2522,6 @@
   window.removePartnerEmail = (i) => {
     userAccountabilityPartners.splice(i, 1);
     renderPartnerChips('we-partner-chips', userAccountabilityPartners);
-  };
-
-  // ===== CALENDAR AUTO-LOG =====
-  // Activities that warrant a calendar event and their default duration (minutes).
-  const CAL_ACTIVITY_DURATIONS = {
-    'Attend Networking Meeting': 60,
-    'Have a FORMing Conversation': 30,
-    'Call Someone from CRM': 30,
-    'Attend 1:1, Coffee, Lunch, etc.': 60,
-    'Host Event': 120,
-  };
-
-  // Called after submitToday saves. Silently creates calendar events for
-  // meeting-type activities. Never blocks the UI — fires and forgets.
-  function autoLogActivitiesToCalendar(breakdown, dateKey) {
-    if (!calendarAutoLog || !nylasConnected) return;
-    if (dateKey !== getTodayKey()) return; // skip backdated edits
-    const u = auth.currentUser;
-    if (!u) return;
-
-    const nowSec = Math.floor(Date.now() / 1000);
-    const events = [];
-    for (const [name, bd] of Object.entries(breakdown || {})) {
-      const dur = CAL_ACTIVITY_DURATIONS[name];
-      if (!dur || !(bd.count > 0)) continue;
-      const title = name + (bd.count > 1 ? ` (\xd7${bd.count})` : '');
-      events.push({ title, startTime: nowSec - dur * 60, endTime: nowSec });
-    }
-    if (!events.length) return;
-
-    u.getIdToken().then(token => {
-      const FN = 'https://us-central1-swh-scoreboard.cloudfunctions.net/createNylasEvent';
-      events.forEach(ev => {
-        fetch(FN, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-          body: JSON.stringify(ev),
-        }).catch(e => console.warn('[calAutoLog]', e));
-      });
-    }).catch(e => console.warn('[calAutoLog] token:', e));
-  }
-
-  function updateCalendarSettingsRow() {
-    const row = document.getElementById('settings-cal-connect-row');
-    if (!row) return;
-    if (nylasConnected) {
-      row.querySelector('.settings-row-text').textContent = 'Google Calendar';
-      row.querySelector('.settings-row-sub').textContent = 'Connected — tap to disconnect';
-    } else {
-      row.querySelector('.settings-row-text').textContent = 'Connect Google Calendar';
-      row.querySelector('.settings-row-sub').textContent = 'Auto-log meetings to your calendar';
-    }
-    const autoRow = document.getElementById('settings-cal-autolog-row');
-    if (autoRow) autoRow.style.display = nylasConnected ? 'flex' : 'none';
-  }
-
-  window.handleCalendarConnectTap = async () => {
-    if (nylasConnected) {
-      if (!confirm('Disconnect Google Calendar?')) return;
-      try {
-        const token = await auth.currentUser.getIdToken();
-        await fetch('https://us-central1-swh-scoreboard.cloudfunctions.net/nylasDisconnect', {
-          method: 'POST', headers: { 'Authorization': 'Bearer ' + token },
-        });
-        nylasConnected = false;
-        updateCalendarSettingsRow();
-        showToast('✅ Calendar disconnected');
-      } catch(e) { showToast('⚠️ ' + (e.message || 'Disconnect failed')); }
-    } else {
-      try {
-        const token = await auth.currentUser.getIdToken();
-        const r = await fetch('https://us-central1-swh-scoreboard.cloudfunctions.net/getNylasAuthUrl', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-          body: JSON.stringify({ product: 'scorecard', provider: 'google' }),
-        });
-        const data = await r.json();
-        if (data.authUrl) window.location.href = data.authUrl;
-      } catch(e) { showToast('⚠️ ' + (e.message || 'Could not connect')); }
-    }
-  };
-
-  window.toggleCalendarAutoLog = async () => {
-    calendarAutoLog = !calendarAutoLog;
-    const tog = document.getElementById('cal-autolog-toggle-ui');
-    const knob = document.getElementById('cal-autolog-toggle-knob');
-    const sub = document.getElementById('settings-cal-autolog-sub');
-    if (tog) tog.style.background = calendarAutoLog ? 'var(--gold)' : 'var(--text-muted)';
-    if (knob) knob.style.transform = calendarAutoLog ? 'translateX(20px)' : 'translateX(0)';
-    if (sub) sub.textContent = calendarAutoLog ? 'Meetings logged automatically' : 'Off';
-    try {
-      if (isNativeEarly) await NativeAPI.call('saveSettings', { calendarAutoLog });
-      else await setDoc(doc(db,'users',currentUser.uid,'config','settings'), { calendarAutoLog }, { merge: true });
-    } catch(e) { console.warn('[calAutoLog toggle]', e); }
   };
 
   // ===== SMS SETTINGS =====
@@ -4781,22 +4677,6 @@
       <div class="settings-row web-only" onclick="openCalReminderModal()">
         <div class="settings-row-left"><div class="settings-row-icon">🗓️</div><div><div class="settings-row-text">Calendar Reminder</div><div class="settings-row-sub" id="settings-cal-reminder-sub">Off</div></div></div>
         <div class="settings-arrow">›</div>
-      </div>
-    </div>
-    <!-- ===== CALENDAR SECTION ===== -->
-    <div style="font-size:12px;font-weight:600;letter-spacing:0.1em;color:var(--text-muted);text-transform:uppercase;margin-bottom:8px;">Google Calendar</div>
-    <div class="settings-card">
-      <div class="settings-row" id="settings-cal-connect-row" onclick="handleCalendarConnectTap()">
-        <div class="settings-row-left"><div class="settings-row-icon">📆</div><div><div class="settings-row-text">Connect Google Calendar</div><div class="settings-row-sub">Auto-log meetings to your calendar</div></div></div>
-        <div class="settings-arrow">›</div>
-      </div>
-      <div class="settings-row" id="settings-cal-autolog-row" onclick="toggleCalendarAutoLog()" style="display:none;">
-        <div class="settings-row-left"><div class="settings-row-icon">✅</div><div><div class="settings-row-text">Auto-log to Calendar</div><div class="settings-row-sub" id="settings-cal-autolog-sub">Meetings logged automatically</div></div></div>
-        <label style="position:relative;display:inline-flex;align-items:center;cursor:pointer;" onclick="event.stopPropagation()">
-          <input type="checkbox" id="cal-autolog-toggle" onchange="toggleCalendarAutoLog()" style="opacity:0;width:0;height:0;position:absolute;">
-          <span id="cal-autolog-toggle-ui" style="width:44px;height:24px;background:var(--gold);border-radius:12px;transition:background 0.2s;flex-shrink:0;display:block;"></span>
-          <span id="cal-autolog-toggle-knob" style="position:absolute;left:2px;width:20px;height:20px;background:#fff;border-radius:50%;transition:transform 0.2s;transform:translateX(20px);box-shadow:0 1px 4px rgba(0,0,0,0.2);display:block;"></span>
-        </label>
       </div>
     </div>
     <!-- ===== TEAM SECTION ===== -->

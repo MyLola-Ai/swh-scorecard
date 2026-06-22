@@ -718,14 +718,13 @@ exports.nylasSyncContacts = onRequest(
 );
 
 // ============================================================
-// 9 — Calendar: create an event on the user's primary calendar
+// 9 — Calendar: create / delete events on the user's primary calendar
 // ============================================================
-// Used by the scorecard auto-log feature: when the user saves their
-// daily activity log, calendar-worthy activities (meetings, calls,
-// 1:1s, events) are automatically added to their connected calendar.
+// Used by the CRM's 8-step follow-through system to schedule step reminders
+// when starting a campaign, and to remove them when stopping sync.
 // Only the user's own calendar is written — no invites are sent.
 exports.createNylasEvent = onRequest(
-  { cors: true, secrets: [NYLAS_API_KEY] },
+  { cors: true, secrets: [NYLAS_API_KEY], invoker: 'public' },
   async (req, res) => {
     try {
       const decoded = await requireAuth(req);
@@ -748,6 +747,32 @@ exports.createNylasEvent = onRequest(
       res.json({ ok: true, eventId: (r.data || r).id });
     } catch (e) {
       console.error('[createNylasEvent]', e);
+      await maybeFlagExpired(req, e);
+      sendErr(res, e);
+    }
+  }
+);
+
+exports.deleteNylasEvent = onRequest(
+  { cors: true, secrets: [NYLAS_API_KEY], invoker: 'public' },
+  async (req, res) => {
+    try {
+      const decoded = await requireAuth(req);
+      const { eventId } = req.body || {};
+      if (!eventId) throw new Error('Missing eventId');
+
+      const integration = await loadActiveGrant(decoded.uid, res);
+      if (!integration) return;
+
+      const nylas = nylasClient();
+      await nylas.events.destroy({
+        identifier: integration.grantId,
+        eventId: String(eventId),
+        queryParams: { calendarId: 'primary', notifyParticipants: false },
+      });
+      res.json({ ok: true });
+    } catch (e) {
+      console.error('[deleteNylasEvent]', e);
       await maybeFlagExpired(req, e);
       sendErr(res, e);
     }

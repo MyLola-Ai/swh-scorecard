@@ -3900,6 +3900,11 @@ async function initUser() {
       updateCalAutoAddToggle();
     }
   } catch(e) { console.log('[crm] config/settings load failed:', e.message); }
+  // Load Nylas connection status for calendar (non-blocking)
+  try {
+    const ns = await getDoc(doc(db,'users',currentUser.uid,'integrations','nylas'));
+    crmNylasConnected = ns.exists() && ns.data().status === 'active';
+  } catch(_) {}
 }
 
 // ── LOAD ALL DATA ──
@@ -7823,10 +7828,18 @@ window.syncToOutlookContacts = async function() {
   }
 };
 
-// ── GOOGLE CALENDAR SYNC ──
+// ── CALENDAR SYNC ──
 let gcalToken = null;
 let calendarHour = 7; // Default 7:00 AM
 let calendarAutoAdd = false; // Loaded from config/settings — controls auto-add on campaign start
+let crmNylasConnected = false; // Loaded at boot from users/{uid}/integrations/nylas
+
+const NYLAS_FN = 'https://us-central1-swh-scoreboard.cloudfunctions.net';
+
+// Convert a YYYY-MM-DD date + hour (0-23) to a Unix timestamp (seconds).
+function dateHourToUnix(dateStr, hour) {
+  return Math.floor(new Date(`${dateStr}T${String(hour).padStart(2,'0')}:00:00`).getTime() / 1000);
+}
 
 function updateCalAutoAddToggle() {
   const tog = document.getElementById('settings-cal-autoadd-toggle');
@@ -7895,31 +7908,26 @@ function initTokenClient(resolve) {
 async function addStepsToCalendar(contact) {
   const clockStart = contact.clockStarted;
   if(!clockStart) { showToast('⚠️ Start the clock first'); return; }
-  if(!gcalToken) {
-    gcalToken = await requestCalendarAccess();
-    if(!gcalToken) { showToast('⚠️ Calendar access needed'); return; }
+  if(!crmNylasConnected) {
+    showToast('⚠️ Connect Google Calendar in Settings to auto-schedule steps');
+    return;
   }
   showToast('📅 Adding 8 steps to Google Calendar…');
+  let token;
+  try { token = await auth.currentUser.getIdToken(); } catch(e) { showToast('⚠️ Sign-in required'); return; }
   let added = 0;
   for(let i = 0; i < STEP_NAMES.length; i++) {
     const dueDate = addDays(clockStart, STEP_SCHEDULE[i]);
-    const event = {
-      summary: `SWH ${STEP_FREQ[i]}: ${STEP_NAMES[i]} — ${contact.name}`,
-      description: `${STEP_DESCRIPTIONS[i]}\n\nContact: ${contact.name}\nCompany: ${contact.company||'—'}\nPhone: ${contact.phone||'—'}\nEmail: ${contact.email||'—'}\n\n—\nSWH 8-Step Follow-Through System\n"From handshake → to relationship → to referral partner"`,
-      start: { date: dueDate },
-      end: { date: dueDate },
-      reminders: { useDefault: false, overrides: [{ method: 'popup', minutes: 480 }] },
-      colorId: i < 3 ? '5' : i < 6 ? '6' : '1',
-    };
+    const startTime = dateHourToUnix(dueDate, calendarHour);
+    const title = `Step ${i+1}: ${STEP_NAMES[i]} — ${contact.name}`;
     try {
-      const res = await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events', {
+      const res = await fetch(`${NYLAS_FN}/createNylasEvent`, {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${gcalToken}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify(event)
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ title, startTime, endTime: startTime + 1800 }),
       });
       if(res.ok) added++;
-      else if(res.status === 401) { gcalToken = null; break; }
-    } catch(e) { console.error('Calendar event error:', e); }
+    } catch(e) { console.error('[addStepsToCalendar]', e); }
   }
   if(added > 0) showToast(`✅ ${added} steps added to Google Calendar`);
   else showToast('⚠️ Could not sync to calendar — try again');
@@ -8168,65 +8176,50 @@ window.saveWeeklyEmailSettings = async function() {
 window.toggleCalendarSync = async function(contactId) {
   const c = CONTACTS.find(x=>x.id===contactId);
   if(!c) return;
+  if(!crmNylasConnected) { showToast('⚠️ Connect Google Calendar in Settings first'); return; }
   const btn = document.getElementById(`gcal-btn-${contactId}`);
+  let token;
+  try { token = await auth.currentUser.getIdToken(); } catch(e) { showToast('⚠️ Sign-in required'); return; }
 
   if(c.calendarSynced && c.calendarEventIds?.length) {
-    // STOP SYNC — delete calendar events
-    if(!gcalToken) {
-      gcalToken = await requestCalendarAccess();
-      if(!gcalToken) { showToast('⚠️ Calendar access needed'); return; }
-    }
+    // STOP SYNC — delete via Nylas
     if(btn) { btn.textContent = '⏳ Stopping…'; btn.disabled = true; }
     let deleted = 0;
     for(const eventId of c.calendarEventIds) {
       try {
-        const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${eventId}`, {
-          method: 'DELETE',
-          headers: { 'Authorization': `Bearer ${gcalToken}` }
+        const res = await fetch(`${NYLAS_FN}/deleteNylasEvent`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify({ eventId }),
         });
-        if(res.ok || res.status === 404) deleted++;
-        else if(res.status === 401) { gcalToken = null; break; }
+        if(res.ok) deleted++;
       } catch(e) {}
     }
-    // Update contact
     c.calendarSynced = false;
     c.calendarEventIds = [];
     await updateDoc(doc(db,'users',currentUser.uid,'contacts',contactId), { calendarSynced: false, calendarEventIds: [] });
     if(btn) { btn.textContent = '📅 Run'; btn.style.background = '#4285F4'; btn.style.color = '#fff'; btn.disabled = false; }
-    showToast(`✅ Removed ${deleted} events from Google Calendar`);
+    showToast(`✅ Removed ${deleted} steps from Google Calendar`);
 
   } else {
-    // RUN SYNC — add calendar events
+    // RUN SYNC — add via Nylas, skip completed steps
     if(!c.clockStarted) { showToast('⚠️ Start the clock first'); return; }
-    if(!gcalToken) {
-      gcalToken = await requestCalendarAccess();
-      if(!gcalToken) { showToast('⚠️ Calendar access needed'); return; }
-    }
     if(btn) { btn.textContent = '⏳ Syncing…'; btn.disabled = true; }
     const eventIds = [];
     let added = 0;
     for(let i = 0; i < STEP_NAMES.length; i++) {
       const {done} = getStepStatus(c, i);
-      if(done) continue; // Skip completed steps
+      if(done) continue;
       const dueDate = addDays(c.clockStarted, STEP_SCHEDULE[i]);
-      const startTime = `${dueDate}T${String(calendarHour).padStart(2,'0')}:00:00`;
-      const endTime = `${dueDate}T${String(calendarHour).padStart(2,'0')}:05:00`;
-      const event = {
-        summary: `SWH ${STEP_FREQ[i]}: ${STEP_NAMES[i]} — ${c.name}`,
-        description: `${STEP_DESCRIPTIONS[i]}\n\nContact: ${c.name}\nCompany: ${c.company||'—'}\nPhone: ${c.phone||'—'}\nEmail: ${c.email||'—'}\n\n—\nSWH 8-Step Follow-Through System\n"From handshake → to relationship → to referral partner"`,
-        start: { dateTime: startTime, timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone },
-        end: { dateTime: endTime, timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone },
-        reminders: { useDefault: false, overrides: [{ method: 'popup', minutes: 0 }] },
-        colorId: i < 3 ? '5' : i < 6 ? '6' : '1',
-      };
+      const startTime = dateHourToUnix(dueDate, calendarHour);
+      const title = `Step ${i+1}: ${STEP_NAMES[i]} — ${c.name}`;
       try {
-        const res = await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events', {
+        const res = await fetch(`${NYLAS_FN}/createNylasEvent`, {
           method: 'POST',
-          headers: { 'Authorization': `Bearer ${gcalToken}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify(event)
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify({ title, startTime, endTime: startTime + 1800 }),
         });
-        if(res.ok) { const data = await res.json(); eventIds.push(data.id); added++; }
-        else if(res.status === 401) { gcalToken = null; break; }
+        if(res.ok) { const data = await res.json(); eventIds.push(data.eventId); added++; }
       } catch(e) {}
     }
     if(added > 0) {
@@ -8237,7 +8230,7 @@ window.toggleCalendarSync = async function(contactId) {
       showToast(`✅ ${added} steps added to Google Calendar`);
     } else {
       if(btn) { btn.textContent = '📅 Run'; btn.disabled = false; }
-      showToast('⚠️ Could not sync — try again');
+      showToast('⚠️ Could not sync — connect Google Calendar in Settings');
     }
   }
 };
