@@ -348,7 +348,7 @@ exports.saveSettings = onRequest({ cors: true }, async (req, res) => {
     const uid = decoded.uid;
     const { phone, smsOptIn, weeklyGoal, displayName,
             weekStartDay, weeklyEmailEnabled, weeklyEmailDay, weeklyEmailHour, weeklyEmailTimezone,
-            accountabilityPartners } = req.body || {};
+            accountabilityPartners, calendarAutoLog } = req.body || {};
     const update = {};
     if (typeof phone === 'string') update.phone = phone;
     if (typeof smsOptIn === 'boolean') update.smsOptIn = smsOptIn;
@@ -373,6 +373,7 @@ exports.saveSettings = onRequest({ cors: true }, async (req, res) => {
         .slice(0, 5)
         .map(e => e.toLowerCase().trim());
     }
+    if (typeof calendarAutoLog === 'boolean') update.calendarAutoLog = calendarAutoLog;
     await db.collection('users').doc(uid).collection('config').doc('settings').set(update, { merge: true });
     res.json({ ok: true });
   } catch (e) { sendErr(res, e); }
