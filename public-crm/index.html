@@ -3233,9 +3233,9 @@ const STATUS_META = {
 const GRADE_CONFIG = {
   aplus: { label:'A+', tier:'Inner Circle',         definition:'This is someone in my inner circle.',                                          reconnectDays:30,  color:'#D4A847' },
   a:     { label:'A',  tier:'Active Relationship',   definition:'This is an active relationship that I want to maintain long-term.',             reconnectDays:45,  color:'#5A8A6A' },
-  b:     { label:'B',  tier:'Growth Relationship',   definition:'This relationship has meaningful future potential.',                            reconnectDays:60,  color:'#4A7FB5' },
-  c:     { label:'C',  tier:'Community Relationship',definition:'This person is part of my network, but not currently an active relationship.', reconnectDays:90,  color:'#8B5CF6' },
-  d:     { label:'D',  tier:'Dormant Relationship',  definition:'There is little to no active relationship today.',                              reconnectDays:180, color:'#6B7280' },
+  b:     { label:'B',  tier:'Growth Relationship',   definition:'This relationship has meaningful future potential.',                            reconnectDays:90,  color:'#4A7FB5' },
+  c:     { label:'C',  tier:'Community Relationship',definition:'This person is part of my network, but not currently an active relationship.', reconnectDays:120, color:'#8B5CF6' },
+  d:     { label:'D',  tier:'Dormant Relationship',  definition:'There is little to no active relationship today.',                              reconnectDays:null,color:'#6B7280' },
 };
 
 // Relationship reminder tasks loaded from Firestore users/{uid}/tasks.
@@ -7921,37 +7921,87 @@ window.assignGrade = async function(contactId, grade) {
     gradeAssignedAt: c.gradeAssignedAt,
   });
 
-  // Create a relationship_reminder task due in reconnectDays
-  const dueDate = addDays(getTodayKey(), gradeConf.reconnectDays);
-  const taskId = `reconnect_${contactId}_${Date.now()}`;
-  const taskData = {
-    type: 'relationship_reminder',
-    contactId,
-    contactName: c.name,
-    grade,
-    label: `Reconnect with ${c.name}`,
-    dueDate,
-    status: 'open',
-    createdAt: new Date().toISOString(),
-  };
-  await setDoc(doc(db,'users',currentUser.uid,'tasks',taskId), taskData);
-  RELATIONSHIP_TASKS.push({ id: taskId, ...taskData });
+  // D grade = archived/inactive — no reconnect task
+  let toastSuffix = '';
+  if (gradeConf.reconnectDays && ['aplus','a','b','c'].includes(grade)) {
+    // Prevent duplicate: cancel any existing open reconnect task for this contact first
+    const existing = RELATIONSHIP_TASKS.filter(t =>
+      t.contactId === contactId && t.type === 'relationship_reminder' && t.status === 'open'
+    );
+    for (const t of existing) {
+      t.status = 'cancelled';
+      await updateDoc(doc(db,'users',currentUser.uid,'tasks',t.id), { status: 'cancelled' });
+    }
+    const dueDate = addDays(getTodayKey(), gradeConf.reconnectDays);
+    const taskId = `reconnect_${contactId}_${Date.now()}`;
+    const taskData = {
+      type: 'relationship_reminder',
+      contactId,
+      contactName: c.name,
+      grade,
+      label: `Reconnect with ${c.name}`,
+      dueDate,
+      status: 'open',
+      createdAt: new Date().toISOString(),
+    };
+    await setDoc(doc(db,'users',currentUser.uid,'tasks',taskId), taskData);
+    RELATIONSHIP_TASKS.push({ id: taskId, ...taskData });
+    toastSuffix = ` Reconnect reminder in ${gradeConf.reconnectDays} days.`;
+  }
 
   closeGradeModal();
   detectWastedHandshakes();
   renderNetwork();
   renderTasks();
-  showToast(`✅ ${c.name} — ${gradeConf.tier}. Reconnect reminder set for ${gradeConf.reconnectDays} days.`);
+  showToast(`✅ ${c.name} — ${gradeConf.tier}.${toastSuffix}`);
 };
 
 window.completeReconnectTask = async function(taskId) {
   const task = RELATIONSHIP_TASKS.find(t => t.id === taskId);
   if (!task || !currentUser) return;
+
+  // Mark done
   task.status = 'done';
   await updateDoc(doc(db,'users',currentUser.uid,'tasks',taskId), { status: 'done', completedAt: new Date().toISOString() });
+
+  // Log the activity touch
   if (task.contactId) {
     await logContactActivity(task.contactId, { type: 'Reconnect', source: 'crm', note: '', points: 0 });
   }
+
+  // Schedule next reconnect based on contact's CURRENT grade (not the task's grade —
+  // the grade may have changed since the task was created).
+  const contact = CONTACTS.find(c => c.id === task.contactId);
+  if (contact) {
+    const currentGrade = resolveStatus(contact);
+    const gradeConf = GRADE_CONFIG[currentGrade];
+    const active = ['aplus','a','b','c'];
+    if (gradeConf && gradeConf.reconnectDays && active.includes(currentGrade)) {
+      // Prevent duplicate: no new task if one is already open for this contact
+      const hasDuplicate = RELATIONSHIP_TASKS.some(t =>
+        t.contactId === task.contactId &&
+        t.type === 'relationship_reminder' &&
+        t.status === 'open'
+      );
+      if (!hasDuplicate) {
+        const dueDate = addDays(getTodayKey(), gradeConf.reconnectDays);
+        const nextId = `reconnect_${task.contactId}_${Date.now()}`;
+        const nextData = {
+          type: 'relationship_reminder',
+          contactId: task.contactId,
+          contactName: contact.name,
+          grade: currentGrade,
+          label: `Reconnect with ${contact.name}`,
+          dueDate,
+          status: 'open',
+          createdAt: new Date().toISOString(),
+        };
+        await setDoc(doc(db,'users',currentUser.uid,'tasks',nextId), nextData);
+        RELATIONSHIP_TASKS.push({ id: nextId, ...nextData });
+      }
+    }
+  }
+
   renderTasks();
   showToast('✅ Reconnect logged');
 };
