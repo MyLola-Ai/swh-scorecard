@@ -496,14 +496,13 @@ exports.nylasFollowThroughSweep = onSchedule(
       .get();
     for (const g of grants.docs) {
       const uid = g.ref.parent.parent.id;
-      const contacts = await db().collection(`users/${uid}/contacts`)
-        .where('lastOutboundAt', '<', new Date(cutoff).toISOString())
-        .get();
+      const contacts = await db().collection(`users/${uid}/contacts`).get();
       for (const c of contacts.docs) {
         const data = c.data();
-        const lastReply = data.lastReplyAt ? Date.parse(data.lastReplyAt) : 0;
-        const lastOut = data.lastOutboundAt ? Date.parse(data.lastOutboundAt) : 0;
-        if (lastReply >= lastOut) continue;        // they already replied
+        // Use lastMeaningfulInteractionAt if available, fall back to lastActivityAt
+        const lastTouch = data.lastMeaningfulInteractionAt || data.lastActivityAt;
+        if (!lastTouch) continue; // never touched — skip
+        if (Date.parse(lastTouch) >= cutoff) continue; // touched recently
         if (data.followThroughNeeded) continue;    // task already open
         await db().doc(`users/${uid}/tasks/${c.id}`).set({
           type: 'follow_through',

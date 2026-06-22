@@ -1411,6 +1411,7 @@ html,body{height:100%;font-family:'DM Sans',sans-serif;background:var(--bg);colo
               <button class="filter-chip" onclick="setFilter('aplus',this)" style="font-family:'Playfair Display',serif;font-weight:900;">🏆 A+ Partner</button>
               <button class="filter-chip" onclick="setFilter('a',this)" style="font-family:'Playfair Display',serif;font-weight:900;">🥇 A Partner</button>
               <button class="filter-chip" onclick="setFilter('b',this)" style="font-family:'Playfair Display',serif;font-weight:900;">🔵 B Partner</button>
+              <button class="filter-chip" onclick="setFilter('c',this)" style="font-family:'Playfair Display',serif;font-weight:900;">🟡 C</button>
               <button class="filter-chip" onclick="setFilter('d',this)" style="font-family:'Playfair Display',serif;font-weight:900;">⚪ D</button>
               <button class="filter-chip" onclick="setFilter('new',this)">🆕 New</button>
               <button class="filter-chip" onclick="setFilter('stalled',this)">⚠️ Wasted</button>
@@ -3217,14 +3218,30 @@ const DEFAULT_ACTS = [
 // ── UNIFIED STATUS (merged grade + status, May 2026) ──
 // One field replaces the old (status: new/progress/nurture/partner/stalled) + (grade: A+/A/B/D/null) pair.
 // Stalled is now derived (c.wasted) — not a status value.
-const STATUS_VALUES = ['new','aplus','a','b','d'];
+const STATUS_VALUES = ['new','aplus','a','b','c','d'];
 const STATUS_META = {
-  'new':   { label:'New',         emoji:'🆕', color:'#2563EB', bg:'#E5EEF8', border:'#B6CFE6', text:'#1F4F87', rank:4, accent:'' },
-  'aplus': { label:'A+ Partner',  emoji:'🏆', color:'#D4A847', bg:'#FFF8E6', border:'#F0D578', text:'#7A5C0F', rank:0, accent:'box-shadow:inset 4px 0 0 #D4A847;' },
-  'a':     { label:'A Partner',   emoji:'🥇', color:'#5A8A6A', bg:'#E8F5EC', border:'#B6E0C4', text:'#2F6B3F', rank:1, accent:'' },
-  'b':     { label:'B Partner',   emoji:'🔵', color:'#4A7FB5', bg:'#E5EEF8', border:'#B6CFE6', text:'#1F4F87', rank:2, accent:'' },
-  'd':     { label:'D',           emoji:'⚪', color:'#6B7280', bg:'#F4F4F5', border:'#D1D5DB', text:'#4B5563', rank:3, accent:'' },
+  'new':   { label:'New',                  emoji:'🆕', color:'#2563EB', bg:'#E5EEF8', border:'#B6CFE6', text:'#1F4F87', rank:5, accent:'' },
+  'aplus': { label:'A+ — Inner Circle',    emoji:'🏆', color:'#D4A847', bg:'#FFF8E6', border:'#F0D578', text:'#7A5C0F', rank:0, accent:'box-shadow:inset 4px 0 0 #D4A847;' },
+  'a':     { label:'A — Active',           emoji:'🥇', color:'#5A8A6A', bg:'#E8F5EC', border:'#B6E0C4', text:'#2F6B3F', rank:1, accent:'' },
+  'b':     { label:'B — Growth',           emoji:'🔵', color:'#4A7FB5', bg:'#E5EEF8', border:'#B6CFE6', text:'#1F4F87', rank:2, accent:'' },
+  'c':     { label:'C — Community',        emoji:'🟡', color:'#8B5CF6', bg:'#F5F3FF', border:'#DDD6FE', text:'#5B21B6', rank:3, accent:'' },
+  'd':     { label:'D — Dormant',          emoji:'⚪', color:'#6B7280', bg:'#F4F4F5', border:'#D1D5DB', text:'#4B5563', rank:4, accent:'' },
 };
+
+// Relationship grade config (browser-side mirror of functions/relationship-config.js cadences).
+// Used for: grade modal definitions, reconnect task due-date calculation.
+const GRADE_CONFIG = {
+  aplus: { label:'A+', tier:'Inner Circle',         definition:'This is someone in my inner circle.',                                          reconnectDays:30,  color:'#D4A847' },
+  a:     { label:'A',  tier:'Active Relationship',   definition:'This is an active relationship that I want to maintain long-term.',             reconnectDays:45,  color:'#5A8A6A' },
+  b:     { label:'B',  tier:'Growth Relationship',   definition:'This relationship has meaningful future potential.',                            reconnectDays:60,  color:'#4A7FB5' },
+  c:     { label:'C',  tier:'Community Relationship',definition:'This person is part of my network, but not currently an active relationship.', reconnectDays:90,  color:'#8B5CF6' },
+  d:     { label:'D',  tier:'Dormant Relationship',  definition:'There is little to no active relationship today.',                              reconnectDays:180, color:'#6B7280' },
+};
+
+// Relationship reminder tasks loaded from Firestore users/{uid}/tasks.
+// Populated at boot, kept in sync by assignGrade() and completeReconnectTask().
+let RELATIONSHIP_TASKS = [];
+
 function statusMeta(s) { return STATUS_META[s] || STATUS_META.new; }
 function statusRank(s) { return statusMeta(s).rank; }
 // Read a contact's effective status — handles both new (c.status in STATUS_VALUES)
@@ -3233,15 +3250,15 @@ function resolveStatus(c) {
   if (!c) return 'new';
   if (STATUS_META[c.status]) return c.status;
   if (c.grade) {
-    const m = {'A+':'aplus','A':'a','B':'b','D':'d'};
+    const m = {'A+':'aplus','A':'a','B':'b','C':'c','D':'d'};
     if (m[c.grade]) return m[c.grade];
   }
   if (c.status === 'partner') return 'a'; // legacy "Partner" w/o grade defaults to A
   return 'new';
 }
 // Legacy SL/SC kept as fallbacks for any path that still reads c.status directly.
-const SL = {new:'🆕 New',progress:'🆕 New',nurture:'🆕 New',partner:'🥇 A Partner',stalled:'🆕 New','aplus':'🏆 A+ Partner','a':'🥇 A Partner','b':'🔵 B Partner','d':'⚪ D'};
-const SC = {new:'#2563EB',progress:'#2563EB',nurture:'#2563EB',partner:'#5A8A6A',stalled:'#2563EB','aplus':'#D4A847','a':'#5A8A6A','b':'#4A7FB5','d':'#6B7280'};
+const SL = {new:'🆕 New',progress:'🆕 New',nurture:'🆕 New',partner:'🥇 A Partner',stalled:'🆕 New','aplus':'🏆 A+ Partner','a':'🥇 A Partner','b':'🔵 B Partner','c':'🟡 C — Community','d':'⚪ D — Dormant'};
+const SC = {new:'#2563EB',progress:'#2563EB',nurture:'#2563EB',partner:'#5A8A6A',stalled:'#2563EB','aplus':'#D4A847','a':'#5A8A6A','b':'#4A7FB5','c':'#8B5CF6','d':'#6B7280'};
 const AVATAR_COLORS = ['#4A7FB5','#5A8A6A','#9B6B9B','#E63946','#C0392B','#E67E22','#2563EB','#16A34A'];
 const OPP_STAGES = ['Referral Received','Contacted','Proposal','Won','Lost'];
 const STAGE_COLORS = {'Referral Received':'#2563EB','Contacted':'#E63946','Proposal':'#9CA3AF','Won':'#5A8A6A','Lost':'#C0392B'};
@@ -3955,6 +3972,11 @@ async function loadAllData() {
   // Contacts
   const cSnap = await getDocs(query(collection(db,'users',uid,'contacts'),orderBy('name','asc')));
   CONTACTS = cSnap.docs.map(d=>({id:d.id,...d.data()}));
+  // Load relationship reminder tasks
+  try {
+    const tSnap = await getDocs(query(collection(db,'users',uid,'tasks'), where('status','==','open')));
+    RELATIONSHIP_TASKS = tSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+  } catch(e) { console.warn('[tasks load]', e); }
   // Auto-detect wasted handshakes
   detectWastedHandshakes();
   // Opportunities
@@ -5667,6 +5689,34 @@ function renderTasks() {
   html+=`<div class="task-row" onclick="showScreen('log',document.querySelectorAll('.nav-btn')[2])"><div class="task-dot" style="background:${Object.values(todayCounts).some(v=>v>0)?'var(--green)':'var(--gold)'}"></div><div style="flex:1;"><div class="task-name">Log Today's Activities</div><div class="task-meta">${Object.values(todayCounts).some(v=>v>0)?'In progress — save when done':'Not started yet'}</div></div><div class="task-chip" style="background:#fef3cd;color:#c0392b;">Daily</div></div>`;
   html+=`<div class="task-row" onclick="showScreen('log',document.querySelectorAll('.nav-btn')[2])"><div class="task-dot" style="background:${wkPts>=weeklyGoal?'var(--green)':'var(--gold)'}"></div><div style="flex:1;"><div class="task-name">Weekly Goal: ${weeklyGoal} lead pts</div><div class="task-meta">${wkPts} of ${weeklyGoal} lead pts · ${wkPts>=weeklyGoal?'✅ Done!':Math.max(0,weeklyGoal-wkPts)+' pts remaining'}${wkLagPts>0?` · ${wkLagPts} lag (current results)`:''}</div></div><div class="task-chip" style="background:${wkPts>=weeklyGoal?'#e8f5ec':'var(--bg)'};color:${wkPts>=weeklyGoal?'var(--green)':'var(--muted)'};">${wkPts>=weeklyGoal?'✅ Done':'In Progress'}</div></div>`;
 
+  // Relationship reminders (reconnect tasks from Firestore)
+  const remindersOverdue=[];
+  const remindersToday=[];
+  const remindersUpcoming=[];
+  RELATIONSHIP_TASKS.filter(t=>t.status==='open').forEach(t=>{
+    const contact=CONTACTS.find(c=>c.id===t.contactId);
+    if(!contact) return;
+    if(t.dueDate<todayKey) remindersOverdue.push({task:t,contact});
+    else if(t.dueDate===todayKey) remindersToday.push({task:t,contact});
+    else { const d=new Date(t.dueDate+'T12:00:00'); if(d<=weekHorizon) remindersUpcoming.push({task:t,contact}); }
+  });
+  remindersOverdue.sort((a,b)=>sortByStatusThen(a,b,(x,y)=>x.task.dueDate.localeCompare(y.task.dueDate)));
+  remindersToday.sort((a,b)=>sortByStatusThen(a,b,(x,y)=>a.contact.name.localeCompare(b.contact.name)));
+  remindersUpcoming.sort((a,b)=>sortByStatusThen(a,b,(x,y)=>x.task.dueDate.localeCompare(y.task.dueDate)));
+
+  if(remindersOverdue.length>0||remindersToday.length>0||remindersUpcoming.length>0) {
+    const totalR=remindersOverdue.length+remindersToday.length+remindersUpcoming.length;
+    html+=`<div class="task-grp-lbl">💛 Relationship Reminders <span class="cnt-badge">${totalR}</span></div>`;
+    [...remindersOverdue,...remindersToday,...remindersUpcoming].forEach(({task,contact})=>{
+      const g=GRADE_CONFIG[task.grade]||{};
+      const isLate=task.dueDate<todayKey;
+      const isToday=task.dueDate===todayKey;
+      const chipStyle=isLate?'background:#fdecea;color:var(--red);':isToday?'background:#fef3cd;color:#c0392b;':'background:var(--bg);color:var(--muted);';
+      const dateLabel=isLate?`overdue (${formatDateShort(task.dueDate)})`:isToday?'today':formatDateShort(task.dueDate);
+      html+=`<div class="task-row${isLate?' overdue':''}" style="${rowAccent(contact)}" onclick="goContact('${contact.id}')"><div class="task-dot" style="background:${g.color||'var(--gold)'};"></div><div style="flex:1;"><div class="task-name">${contact.name}${sPill(contact)}</div><div class="task-meta">${task.label} · ${dateLabel}</div></div><div style="display:flex;gap:5px;align-items:center;"><div class="task-chip" style="${chipStyle}">${g.tier||'Reconnect'}</div><button onclick="event.stopPropagation();completeReconnectTask('${task.id}')" style="padding:4px 8px;border-radius:7px;border:1px solid var(--border);background:var(--card);color:var(--navy);font-size:11px;font-weight:700;cursor:pointer;">Done</button></div></div>`;
+    });
+  }
+
   // Wasted handshakes
   if(wasted.length>0) {
     html+=`<div class="task-grp-lbl" style="color:var(--red);">🔴 Wasted Handshakes <span class="cnt-badge">${wasted.length}</span></div>`;
@@ -6558,6 +6608,11 @@ window.toggleNeStep=async function(el,contactId,stepIndex){
   } else {
     showToast(`↩️ Step ${newSteps}/8 unmarked`);
   }
+
+  // Campaign complete — prompt for relationship grade (only when marking done, not undoing)
+  if (!wasCompleted && newSteps === 8) {
+    setTimeout(() => openGradeModal(c.id, c.name), 400);
+  }
 };
 
 window.updateContactStatus=async function(contactId,status){
@@ -6691,7 +6746,7 @@ async function logContactActivity(contactId, opts) {
         renderActivityTimeline(contactId, c._activities);
       }
     }
-    await updateDoc(doc(db, 'users', currentUser.uid, 'contacts', contactId), { lastActivityAt: data.timestamp });
+    await updateDoc(doc(db, 'users', currentUser.uid, 'contacts', contactId), { lastActivityAt: data.timestamp, lastMeaningfulInteractionAt: data.timestamp });
     return entry;
   } catch (e) {
     console.error('[logContactActivity] error:', e);
@@ -7826,6 +7881,79 @@ window.syncToOutlookContacts = async function() {
     console.error('[syncToOutlookContacts]', e);
     showToast('⚠️ ' + e.message);
   }
+};
+
+// ===== RELATIONSHIP GRADE MODAL =====
+let _gradeModalContactId = null;
+
+window.openGradeModal = function(contactId, contactName) {
+  _gradeModalContactId = contactId;
+  const sub = document.getElementById('grade-modal-subtitle');
+  if (sub) sub.textContent = contactName || '';
+  const list = document.getElementById('grade-options-list');
+  if (list) {
+    list.innerHTML = Object.entries(GRADE_CONFIG).map(([key, g]) => `
+      <div onclick="assignGrade('${contactId}','${key}')" style="display:flex;align-items:flex-start;gap:14px;padding:14px 16px;border-radius:12px;border:2px solid var(--border);cursor:pointer;transition:all 0.15s;" onmouseover="this.style.borderColor='${g.color}';this.style.background='#fafafa'" onmouseout="this.style.borderColor='var(--border)';this.style.background=''">
+        <div style="width:38px;height:38px;border-radius:50%;background:${g.color};display:flex;align-items:center;justify-content:center;color:#fff;font-family:'Playfair Display',serif;font-size:16px;font-weight:900;flex-shrink:0;">${g.label}</div>
+        <div style="flex:1;">
+          <div style="font-weight:700;font-size:14px;color:var(--navy);">${g.tier}</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:2px;">${g.definition}</div>
+        </div>
+      </div>`).join('');
+  }
+  document.getElementById('grade-modal-overlay').classList.add('open');
+};
+
+window.closeGradeModal = function() {
+  document.getElementById('grade-modal-overlay').classList.remove('open');
+  _gradeModalContactId = null;
+};
+
+window.assignGrade = async function(contactId, grade) {
+  const c = CONTACTS.find(x => x.id === contactId);
+  const gradeConf = GRADE_CONFIG[grade];
+  if (!c || !gradeConf || !currentUser) return;
+
+  c.status = grade;
+  c.gradeAssignedAt = new Date().toISOString();
+  await updateDoc(doc(db,'users',currentUser.uid,'contacts',contactId), {
+    status: grade,
+    gradeAssignedAt: c.gradeAssignedAt,
+  });
+
+  // Create a relationship_reminder task due in reconnectDays
+  const dueDate = addDays(getTodayKey(), gradeConf.reconnectDays);
+  const taskId = `reconnect_${contactId}_${Date.now()}`;
+  const taskData = {
+    type: 'relationship_reminder',
+    contactId,
+    contactName: c.name,
+    grade,
+    label: `Reconnect with ${c.name}`,
+    dueDate,
+    status: 'open',
+    createdAt: new Date().toISOString(),
+  };
+  await setDoc(doc(db,'users',currentUser.uid,'tasks',taskId), taskData);
+  RELATIONSHIP_TASKS.push({ id: taskId, ...taskData });
+
+  closeGradeModal();
+  detectWastedHandshakes();
+  renderNetwork();
+  renderTasks();
+  showToast(`✅ ${c.name} — ${gradeConf.tier}. Reconnect reminder set for ${gradeConf.reconnectDays} days.`);
+};
+
+window.completeReconnectTask = async function(taskId) {
+  const task = RELATIONSHIP_TASKS.find(t => t.id === taskId);
+  if (!task || !currentUser) return;
+  task.status = 'done';
+  await updateDoc(doc(db,'users',currentUser.uid,'tasks',taskId), { status: 'done', completedAt: new Date().toISOString() });
+  if (task.contactId) {
+    await logContactActivity(task.contactId, { type: 'Reconnect', source: 'crm', note: '', points: 0 });
+  }
+  renderTasks();
+  showToast('✅ Reconnect logged');
 };
 
 // ── CALENDAR SYNC ──
@@ -10707,5 +10835,23 @@ window.onSendToMyLolaSubmit = async function() {
 <!-- Nylas unified email + calendar UI (classic script; sets window.SWHNylasEmail
      before the deferred module's auth handler runs). -->
 <script src="nylas-email.js"></script>
+
+<!-- ===== RELATIONSHIP GRADE MODAL ===== -->
+<div class="ctx-overlay" id="grade-modal-overlay" onclick="if(event.target===this)closeGradeModal()">
+  <div class="ctx-box" style="max-width:480px;">
+    <div class="ctx-header">
+      <div class="ctx-handle mobile-only"></div>
+      <div class="ctx-icon">⭐</div>
+      <div class="ctx-title">How would you describe this relationship today?</div>
+      <div class="ctx-subtitle" id="grade-modal-subtitle"></div>
+    </div>
+    <div class="ctx-body">
+      <div id="grade-options-list" style="display:flex;flex-direction:column;gap:10px;"></div>
+    </div>
+    <div style="padding:12px 20px 16px;border-top:1px solid var(--border);text-align:right;">
+      <button class="tb-btn" onclick="closeGradeModal()">Not now</button>
+    </div>
+  </div>
+</div>
 </body>
 </html>

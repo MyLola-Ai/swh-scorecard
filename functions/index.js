@@ -1,5 +1,7 @@
 const {onCall, onRequest, HttpsError} = require('firebase-functions/v2/https');
 const {onSchedule} = require('firebase-functions/v2/scheduler');
+const {onDocumentWritten} = require('firebase-functions/v2/firestore');
+const { RELATIONSHIP_GRADES, DEMOTION_RULES } = require('./relationship-config');
 const {defineSecret} = require('firebase-functions/params');
 const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
 const admin = require('firebase-admin');
@@ -3746,7 +3748,7 @@ async function loadLolaCrmContext(uid) {
 
   // Build top-N summaries to keep the prompt bounded even for large CRMs.
   // Sort each by "most relevant for that bucket."
-  const STATUS_PRIORITY = { aplus: 0, a: 1, b: 2, new: 3, d: 4 };
+  const STATUS_PRIORITY = { aplus: 0, a: 1, b: 2, c: 3, d: 4, new: 5 };
   const byStatus = (a, b) => (STATUS_PRIORITY[a.status] ?? 9) - (STATUS_PRIORITY[b.status] ?? 9);
   const stalled = contacts.filter(c => c.isStalled).sort(byStatus).slice(0, 25);
   const wasted  = contacts.filter(c => c.isWasted).sort(byStatus).slice(0, 25);
@@ -5440,7 +5442,7 @@ const MYLOLA_VERIFY_ACCOUNT_URL =
  *  validates. The browser-side mapper exists so a fast "dry-run preview"
  *  is possible without a CF round-trip; this server-side version is
  *  authoritative because the SWH user can\'t tamper with it. */
-const SWH_STATUS_LABELS = { new: 'New', aplus: 'A+ Partner', a: 'A Partner', b: 'B Partner', d: 'D' };
+const SWH_STATUS_LABELS = { new: 'New', aplus: 'A+ — Inner Circle', a: 'A — Active Relationship', b: 'B — Growth Relationship', c: 'C — Community Relationship', d: 'D — Dormant Relationship' };
 
 function mapSwhContactToMyLolaPayloadCF(contactId, swhContact, options) {
   const fullName = (swhContact.name || '').trim();
@@ -5871,3 +5873,71 @@ exports.getApptData = onCall({
 // getContactThreads, getContacts, nylasWebhook, nylasFollowThroughSweep,
 // nylasStatus, nylasDisconnect. See nylas.js + NYLAS_MIGRATION.md.
 Object.assign(exports, require('./nylas'));
+
+// ============================================================
+// Relationship grading — server-side foundation
+// ============================================================
+
+// Trigger: keep lastMeaningfulInteractionAt on the contact in sync whenever
+// an activity or email subcollection document is written. Uses MAX so it
+// can never regress. Fires on both create and update.
+exports.onActivityWrite = onDocumentWritten(
+  'users/{uid}/contacts/{contactId}/activities/{actId}',
+  async (event) => {
+    const after = event.data?.after?.data();
+    if (!after) return; // deletion — ignore
+    const ts = after.timestamp || after.at || after.createdAt;
+    if (!ts) return;
+    const ref = admin.firestore().doc(`users/${event.params.uid}/contacts/${event.params.contactId}`);
+    const snap = await ref.get();
+    if (!snap.exists) return;
+    const current = snap.data().lastMeaningfulInteractionAt || '';
+    if (ts > current) await ref.update({ lastMeaningfulInteractionAt: ts });
+  }
+);
+
+exports.onEmailWrite = onDocumentWritten(
+  'users/{uid}/contacts/{contactId}/emails/{msgId}',
+  async (event) => {
+    const after = event.data?.after?.data();
+    if (!after) return;
+    const ts = after.receivedAt || after.timestamp || after.at;
+    if (!ts) return;
+    const ref = admin.firestore().doc(`users/${event.params.uid}/contacts/${event.params.contactId}`);
+    const snap = await ref.get();
+    if (!snap.exists) return;
+    const current = snap.data().lastMeaningfulInteractionAt || '';
+    if (ts > current) await ref.update({ lastMeaningfulInteractionAt: ts });
+  }
+);
+
+// Dry-run backfill: returns proposed status per contact, writes NOTHING.
+// Call via Firebase console or: firebase functions:call backfillRelationshipGrades
+exports.backfillRelationshipGrades = onCall(async (req) => {
+  if (!req.auth) throw new HttpsError('unauthenticated', 'Sign in required');
+  const uid = req.auth.uid;
+  const now = Date.now();
+  const snap = await admin.firestore().collection(`users/${uid}/contacts`).get();
+  const proposals = [];
+  for (const d of snap.docs) {
+    const c = d.data();
+    const existing = c.status;
+    // If already a graded status, keep it
+    if (['aplus','a','b','c','d'].includes(existing)) {
+      proposals.push({ id: d.id, name: c.name, current: existing, proposed: existing, reason: 'already graded' });
+      continue;
+    }
+    // Derive from recency of lastMeaningfulInteractionAt or lastActivityAt
+    const lastTouch = c.lastMeaningfulInteractionAt || c.lastActivityAt || c.addedAt;
+    const daysSince = lastTouch ? Math.floor((now - Date.parse(lastTouch)) / 86400000) : 9999;
+    let proposed = 'b'; // default for new contacts with activity
+    if (daysSince <= 30) proposed = 'a';
+    else if (daysSince <= 90) proposed = 'b';
+    else if (daysSince <= 365) proposed = 'c';
+    else proposed = 'd';
+    // No activity at all → default to new/ungraded, leave as 'new'
+    if (!lastTouch) proposed = 'new';
+    proposals.push({ id: d.id, name: c.name, current: existing || 'new', proposed, daysSince, reason: `${daysSince}d since last touch` });
+  }
+  return { dryRun: true, count: proposals.length, proposals };
+});
