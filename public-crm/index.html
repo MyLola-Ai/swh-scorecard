@@ -8139,7 +8139,7 @@ async function addStepsToCalendar(contact) {
   for(let i = 0; i < STEP_NAMES.length; i++) {
     const dueDate = addDays(clockStart, STEP_SCHEDULE[i]);
     const startTime = dateHourToUnix(dueDate, calendarHour);
-    const title = `Step ${i+1}: ${STEP_NAMES[i]} — ${contact.name}`;
+    const title = `SWH Step ${i+1}: ${STEP_NAMES[i]} — ${contact.name}`;
     try {
       const res = await fetch(`${NYLAS_FN}/createNylasEvent`, {
         method: 'POST',
@@ -8432,7 +8432,7 @@ window.toggleCalendarSync = async function(contactId) {
       if(done) continue;
       const dueDate = addDays(c.clockStarted, STEP_SCHEDULE[i]);
       const startTime = dateHourToUnix(dueDate, calendarHour);
-      const title = `Step ${i+1}: ${STEP_NAMES[i]} — ${c.name}`;
+      const title = `SWH Step ${i+1}: ${STEP_NAMES[i]} — ${c.name}`;
       try {
         const res = await fetch(`${NYLAS_FN}/createNylasEvent`, {
           method: 'POST',
