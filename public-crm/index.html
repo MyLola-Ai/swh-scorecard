@@ -6310,7 +6310,7 @@ function buildExpandDetail(c) {
       <button class="ne-action-btn" onclick="openAddOpp('${c.id}','${c.name}')"><span class="ne-action-icon">💼</span><span class="ne-action-lbl">Add Opp</span></button>
       <button class="ne-action-btn" onclick="openSyncContactModal('${c.id}')"><span class="ne-action-icon">📇</span><span class="ne-action-lbl">Save</span></button>
       ${apptUserSlug && apptBookingPages.length ? `<button class="ne-action-btn" onclick="openBookContactModal('${c.id}')"><span class="ne-action-icon">📅</span><span class="ne-action-lbl">Book</span></button>` : ''}
-      <button class="ne-action-btn" onclick="onSendToMyLolaClick('${c.id}')" title="${c.myLolaSyncStatus === 'synced' ? 'In MyLola. View or re-sync' : 'Send to MyLola (mortgage CRM)'}"><span class="ne-action-icon">🪷</span><span class="ne-action-lbl">${c.myLolaSyncStatus === 'synced' ? 'In MyLola' : 'MyLola'}</span></button>
+      <button class="ne-action-btn" onclick="onSendToMyLolaClick('${c.id}')" title="${c.myLolaSyncStatus === 'synced' ? 'In MyLola. View or re-sync' : 'Send to MyLola (mortgage CRM)'}"><span class="ne-action-icon" style="display:flex;align-items:center;justify-content:center;height:22px;"><span class="lola-orb" style="width:20px;height:20px;flex-shrink:0;"></span></span><span class="ne-action-lbl">${c.myLolaSyncStatus === 'synced' ? 'In MyLola' : 'MyLola'}</span></button>
       <button class="ne-action-btn" onclick="goGradeContact('${c.id}')"><span class="ne-action-icon">⭐</span><span class="ne-action-lbl">Grade</span></button>
     </div>
     <div style="padding:0 2px 8px;">
