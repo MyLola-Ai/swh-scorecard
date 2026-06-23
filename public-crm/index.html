@@ -2527,7 +2527,7 @@ html,body{height:100%;font-family:'DM Sans',sans-serif;background:var(--bg);colo
   .lola-thinking span:nth-child(3) { animation-delay: 0.3s; }
   @keyframes lola-bounce { 0%, 80%, 100% { opacity: 0.3; transform: scale(0.85); } 40% { opacity: 1; transform: scale(1); } }
   .lola-input-wrap { padding: 12px; border-top: 1px solid rgba(255,255,255,0.08); background: #0f1117; display: flex; gap: 8px; }
-  .lola-input { flex: 1; padding: 12px 14px; border: 1px solid rgba(255,255,255,0.12); background: rgba(255,255,255,0.04); color: #fff; border-radius: 12px; font-family: 'DM Sans', sans-serif; font-size: 14px; outline: none; }
+  .lola-input { flex: 1; padding: 12px 14px; border: 1px solid rgba(255,255,255,0.12); background: rgba(255,255,255,0.04); color: #fff; border-radius: 12px; font-family: 'DM Sans', sans-serif; font-size: 14px; outline: none; resize: none; min-height: 44px; max-height: 120px; line-height: 1.4; overflow-y: auto; }
   .lola-input:focus { border-color: rgba(167,139,250,0.5); }
   .lola-send { background: linear-gradient(135deg, #5B5BD6, #A78BFA); border: none; color: #fff; padding: 0 18px; border-radius: 12px; font-family: 'DM Sans', sans-serif; font-weight: 700; cursor: pointer; }
   .lola-send:disabled { opacity: 0.4; cursor: not-allowed; }
@@ -2570,7 +2570,7 @@ html,body{height:100%;font-family:'DM Sans',sans-serif;background:var(--bg);colo
   </div>
   <div class="lola-body" id="lola-body"></div>
   <div class="lola-input-wrap">
-    <input id="lola-input" class="lola-input" type="text" placeholder="Ask Lola anything…" onkeydown="if(event.key==='Enter'){event.preventDefault();lolaSend();}">
+    <textarea id="lola-input" class="lola-input" placeholder="Ask Lola anything…" rows="1" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();lolaSend();}else if(event.key==='Enter'&&event.shiftKey){}" oninput="this.style.height='auto';this.style.height=Math.min(this.scrollHeight,120)+'px'"></textarea>
     <button id="lola-send" class="lola-send" onclick="lolaSend()">Send</button>
   </div>
 </div>
@@ -9156,6 +9156,9 @@ window.lolaSend = function() {
   } else {
     runLolaCall({ mode: 'freeform', prompt: text });
   }
+  // Reset textarea height after send
+  const inputEl = document.getElementById('lola-input');
+  if (inputEl) { inputEl.style.height = 'auto'; }
 };
 async function runLolaCall(payload) {
   if (_lolaBusy) return;

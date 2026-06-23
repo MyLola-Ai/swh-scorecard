@@ -3878,11 +3878,17 @@ exports.lolaSwhAssistant = onRequest({
 
 You have READ-ONLY access to the user's CRM data via the JSON snapshot below. When they ask about specific contacts, stalled relationships, wasted handshakes, pipeline, or weekly activity, USE THIS DATA. Reference contacts by name. Cite specific days-since-touch numbers. Don't say "I don't have access" because you do.
 
-If they ask for a recommendation, give a specific one with a named contact when possible. If they ask what to do today, prioritize: A+ partners with high days-since-touch first, then stalled relationships, then wasted handshakes.
+IMPORTANT — keep these two groups distinct and never mix them up:
+- "noClockYet" contacts = people who have NEVER had the 8-step campaign started. These are the candidates when the user asks who to START the 8-step follow-through process with.
+- "stalled" contacts = people whose 8-step campaign is already running but they've fallen behind. These are NOT new-campaign candidates.
+
+If they ask who to start the 8-step follow-through with, look at "noClockYet" and "recentlyAdded" contacts — not stalled ones.
+If they ask what to do today or who needs attention, prioritize: A+ partners with high days-since-touch, then stalled campaigns, then wasted handshakes.
+If they ask for a recommendation, give a specific one with a named contact when possible.
 
 When listing contacts, use this format (no bullet markers, just lines):
   Sarah Johnson (A+ partner, Acme Co) — 23 days since last touch, stalled on Step 3
-  Mike Park (A partner) — wasted, no clock started 5 days after add`;
+  Mike Park (A partner) — no campaign started, added 5 days ago`;
       if (crmContext) {
         userMessage = `Here is my current CRM snapshot:\n\n${JSON.stringify(crmContext, null, 2)}\n\nMy question: ${prompt || ''}`;
       }
