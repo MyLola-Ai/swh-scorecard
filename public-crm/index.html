@@ -798,7 +798,7 @@ html,body{height:100%;font-family:'DM Sans',sans-serif;background:var(--bg);colo
   overflow:hidden;
   transition:max-height 0.32s cubic-bezier(0.4,0,0.2,1);
 }
-.net-expand.open{max-height:900px;}
+.net-expand.open{max-height:2800px;}
 .net-expand-inner{
   border-top:1px solid var(--border);
   padding:0;
@@ -1486,102 +1486,13 @@ html,body{height:100%;font-family:'DM Sans',sans-serif;background:var(--bg);colo
           </div>
         </div>
         <div class="main-content" style="flex:1;overflow-y:auto;padding-bottom:100px;-webkit-overflow-scrolling:touch;">
-          <!-- Stats toggle -->
-          <div style="display:flex;gap:8px;padding:16px 20px 8px;overflow-x:auto;">
+          <div style="display:flex;gap:8px;padding:16px 16px 8px;overflow-x:auto;">
             <button class="hist-toggle active" onclick="setHistView('week',this)">This Week</button>
             <button class="hist-toggle" onclick="setHistView('month',this)">This Month</button>
             <button class="hist-toggle" onclick="setHistView('6m',this)">6 Months</button>
             <button class="hist-toggle" onclick="setHistView('life',this)">Lifetime</button>
           </div>
-          <!-- Last Week Report — shown every Monday or always accessible -->
-          <div id="hist-last-week-report" style="padding:0 20px 14px;display:none;">
-            <div class="card" style="background:var(--navy);border:none;">
-              <div style="font-size:11px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:rgba(255,255,255,0.4);margin-bottom:6px;">Last Week</div>
-              <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;">
-                <div>
-                  <div style="font-family:'Playfair Display',serif;font-size:52px;font-weight:900;color:#fff;line-height:1;" id="lwr-pts">0</div>
-                  <div style="font-size:13px;color:rgba(255,255,255,0.5);margin-top:4px;" id="lwr-days"></div>
-                </div>
-                <div id="lwr-badge" style="padding:8px 14px;border-radius:30px;font-size:13px;font-weight:700;margin-top:8px;"></div>
-              </div>
-              <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;padding-top:16px;border-top:1px solid rgba(255,255,255,0.1);">
-                <div style="text-align:center;"><div style="font-family:'Playfair Display',serif;font-size:22px;font-weight:900;color:#fff;" id="lwr-avg">0</div><div style="font-size:10px;color:rgba(255,255,255,0.4);margin-top:2px;">Avg/Day</div></div>
-                <div style="text-align:center;"><div style="font-family:'Playfair Display',serif;font-size:22px;font-weight:900;color:#fff;" id="lwr-lead">0</div><div style="font-size:10px;color:rgba(255,255,255,0.4);margin-top:2px;">Lead Pts</div></div>
-                <div style="text-align:center;"><div style="font-family:'Playfair Display',serif;font-size:22px;font-weight:900;color:#fff;" id="lwr-lag">0</div><div style="font-size:10px;color:rgba(255,255,255,0.4);margin-top:2px;">Lag Pts</div></div>
-              </div>
-            </div>
-            <!-- Category Breakdown -->
-            <div class="card" style="margin-top:10px;">
-              <div style="font-size:11px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:var(--muted);margin-bottom:12px;">Activity Mix</div>
-              <div id="lwr-cat-breakdown"></div>
-            </div>
-            <!-- Coaching -->
-            <div class="card" style="margin-top:10px;">
-              <div style="font-size:11px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:var(--muted);margin-bottom:14px;">SWH Coaching</div>
-              <div id="lwr-coaching" style="display:flex;flex-direction:column;gap:8px;"></div>
-            </div>
-            <div style="background:var(--bg);border-radius:14px;padding:16px;margin-top:10px;text-align:center;">
-              <div style="font-family:'Playfair Display',serif;font-size:14px;font-style:italic;color:var(--muted);line-height:1.6;">"Results tell you what happened.<br>Activity tells you what will happen."</div>
-            </div>
-          </div>
-          <!-- Summary tiles -->
-          <div class="kpi-row" id="hist-kpis" style="padding:0 20px 14px;"></div>
-          <!-- Lead vs Lag -->
-          <div style="padding:0 20px 14px;">
-            <div class="card">
-              <div class="card-hdr"><div class="card-title">Lead vs Lag Indicators</div></div>
-              <div class="card-body" id="hist-lead-lag"></div>
-            </div>
-          </div>
-          <!-- Last Week Report -->
-          <div id="hist-last-week" style="padding:0 20px 14px;display:none;">
-            <div class="card">
-              <div class="card-hdr">
-                <div class="card-title">Last Week</div>
-                <div id="hist-lw-dates" style="font-size:12px;color:var(--muted);"></div>
-              </div>
-              <div class="card-body">
-                <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px;">
-                  <div>
-                    <div style="font-family:'Playfair Display',serif;font-size:48px;font-weight:900;color:var(--navy);line-height:1;" id="hist-lw-pts">0</div>
-                    <div style="font-size:13px;color:var(--muted);margin-top:4px;" id="hist-lw-days"></div>
-                  </div>
-                  <div id="hist-lw-badge" style="padding:8px 14px;border-radius:30px;font-size:13px;font-weight:700;"></div>
-                </div>
-                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;padding-top:14px;border-top:1px solid var(--border);">
-                  <div style="text-align:center;"><div style="font-family:'Playfair Display',serif;font-size:20px;font-weight:900;" id="hist-lw-avg">0</div><div style="font-size:10px;color:var(--muted);margin-top:2px;">Avg/Day</div></div>
-                  <div style="text-align:center;"><div style="font-family:'Playfair Display',serif;font-size:20px;font-weight:900;" id="hist-lw-lead">0</div><div style="font-size:10px;color:var(--muted);margin-top:2px;">Lead Pts</div></div>
-                  <div style="text-align:center;"><div style="font-family:'Playfair Display',serif;font-size:20px;font-weight:900;" id="hist-lw-lag">0</div><div style="font-size:10px;color:var(--muted);margin-top:2px;">Lag Pts</div></div>
-                </div>
-              </div>
-            </div>
-          </div>
-          <!-- Activity Mix -->
-          <div style="padding:0 20px 14px;">
-            <div class="card">
-              <div class="card-hdr"><div class="card-title">Activity Mix</div></div>
-              <div class="card-body" id="hist-cat-breakdown"></div>
-            </div>
-          </div>
-          <!-- Chart -->
-          <div style="padding:0 20px 14px;">
-            <div class="card">
-              <div class="card-hdr"><div class="card-title">Daily Points Trend</div></div>
-              <div class="card-body">
-                <div style="display:flex;align-items:flex-end;gap:5px;height:100px;" id="hist-chart"></div>
-              </div>
-            </div>
-          </div>
-          <!-- Past days list -->
-          <div style="padding:0 20px 14px;">
-            <div class="card-hdr" style="padding:0 0 10px;"><div class="card-title">Past Days</div></div>
-            <div id="hist-list" style="display:flex;flex-direction:column;gap:10px;"></div>
-            <div id="hist-empty" style="display:none;text-align:center;padding:48px 20px;color:var(--muted);">
-              <div style="font-size:40px;margin-bottom:12px;">📋</div>
-              <div style="font-family:'Playfair Display',serif;font-size:18px;font-weight:700;margin-bottom:8px;">No history yet</div>
-              <div style="font-size:13px;">Save your first day to see it here.</div>
-            </div>
-          </div>
+          <div id="hist-panel"></div>
         </div>
       </div>
 
@@ -2073,6 +1984,14 @@ html,body{height:100%;font-family:'DM Sans',sans-serif;background:var(--bg);colo
         <label class="ctx-label">Activity Type</label>
         <select class="ctx-select" id="la-type"></select>
       </div>
+      <div class="ctx-field" id="la-intro-field" style="display:none;">
+        <label class="ctx-label">Introduced to</label>
+        <div id="la-intro-chips" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;"></div>
+        <div style="position:relative;">
+          <input type="text" class="ctx-input" id="la-intro-search" placeholder="Search contacts to link..." autocomplete="off" oninput="laIntroSearch(this.value)" style="margin-bottom:0;">
+          <div id="la-intro-suggestions" style="position:absolute;top:100%;left:0;right:0;background:var(--card);border:1px solid var(--border);border-radius:8px;max-height:160px;overflow-y:auto;z-index:200;display:none;"></div>
+        </div>
+      </div>
       <div class="ctx-field">
         <label class="ctx-label">Note (optional)</label>
         <textarea class="ctx-input" id="la-note" rows="3" placeholder="Anything worth remembering: what was discussed, next step, etc." style="resize:none;"></textarea>
@@ -2084,6 +2003,54 @@ html,body{height:100%;font-family:'DM Sans',sans-serif;background:var(--bg);colo
     <div class="ctx-footer">
       <button class="ctx-cancel" onclick="closeLogActivityModal()">Cancel</button>
       <button class="ctx-confirm" onclick="saveLogActivity()">Save ✓</button>
+    </div>
+  </div>
+</div>
+
+<!-- ════ SCHEDULE ACTIVITY MODAL ════ -->
+<div class="ctx-overlay" id="schedule-activity-overlay" onclick="if(event.target===this)closeScheduleActivityModal()">
+  <div class="ctx-box" style="max-width:440px;">
+    <div class="ctx-header">
+      <div class="ctx-handle mobile-only"></div>
+      <div class="ctx-icon">📅</div>
+      <div class="ctx-title">Schedule Activity</div>
+      <div class="ctx-subtitle" id="sa-subtitle">With —</div>
+    </div>
+    <div class="ctx-body">
+      <div class="ctx-field">
+        <label class="ctx-label">Activity Type</label>
+        <select class="ctx-select" id="sa-type"></select>
+      </div>
+      <div style="display:flex;gap:10px;">
+        <div class="ctx-field" style="flex:1;">
+          <label class="ctx-label">Date</label>
+          <input type="date" class="ctx-input" id="sa-date" />
+        </div>
+        <div class="ctx-field" style="flex:1;">
+          <label class="ctx-label">Time</label>
+          <input type="time" class="ctx-input" id="sa-time" value="09:00" />
+        </div>
+      </div>
+      <div class="ctx-field">
+        <label class="ctx-label">Duration</label>
+        <select class="ctx-select" id="sa-duration">
+          <option value="30">30 minutes</option>
+          <option value="60" selected>1 hour</option>
+          <option value="90">1.5 hours</option>
+          <option value="120">2 hours</option>
+        </select>
+      </div>
+      <div class="ctx-field">
+        <label class="ctx-label">Note (optional)</label>
+        <textarea class="ctx-input" id="sa-note" rows="2" placeholder="Goal or context for this activity" style="resize:none;"></textarea>
+      </div>
+      <div id="sa-calendar-hint" style="display:none;font-size:11px;color:var(--muted);line-height:1.5;padding:8px 10px;background:var(--bg);border-radius:8px;">
+        📆 Will also create a calendar event in your connected account.
+      </div>
+    </div>
+    <div class="ctx-footer">
+      <button class="ctx-cancel" onclick="closeScheduleActivityModal()">Cancel</button>
+      <button class="ctx-confirm" id="sa-confirm-btn" onclick="saveScheduleActivity()">Schedule</button>
     </div>
   </div>
 </div>
@@ -2294,23 +2261,25 @@ html,body{height:100%;font-family:'DM Sans',sans-serif;background:var(--bg);colo
   </div>
 </div>
 
+<!-- ════ ICON PICKER POPOVER ════ -->
+<div id="icon-picker-popover" style="display:none;position:fixed;z-index:9999;background:#fff;border:1.5px solid var(--border);border-radius:14px;box-shadow:0 8px 32px rgba(0,0,0,0.18);padding:12px;width:280px;" onclick="event.stopPropagation()">
+  <div style="font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--muted);margin-bottom:8px;">Pick an Icon</div>
+  <div id="icon-picker-grid" style="display:grid;grid-template-columns:repeat(8,1fr);gap:3px;max-height:260px;overflow-y:auto;"></div>
+</div>
+
 <!-- ════ EDIT ACTIVITIES MODAL ════ -->
 <div class="ctx-overlay" id="edit-acts-overlay" onclick="if(event.target===this)closeEditActivities()">
-  <div class="ctx-box" style="max-width:560px;">
+  <div class="ctx-box" style="max-width:560px;max-height:90vh;display:flex;flex-direction:column;">
     <div class="ctx-header">
       <div class="ctx-handle mobile-only"></div>
       <div class="ctx-icon">✏️</div>
       <div class="ctx-title">Edit Activities & Points</div>
       <div class="ctx-subtitle">Customize activity names, icons, categories, and point values</div>
     </div>
-    <div class="ctx-body">
+    <div class="ctx-body" style="overflow-y:auto;flex:1;">
       <div style="background:var(--bg);border-radius:10px;padding:12px;margin-bottom:16px;font-size:12px;color:var(--muted);line-height:1.6;">
         ⚠️ Editing applies to new logs only. Existing history is not affected. Context popups are fixed to the SWH system.
       </div>
-      <!-- 8-Step Activities -->
-      <div style="font-size:10px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:var(--muted);margin-bottom:8px;">8-Step Follow-Through Points</div>
-      <div id="edit-steps-rows" style="margin-bottom:16px;"></div>
-      <div style="height:1px;background:var(--border);margin-bottom:16px;"></div>
       <!-- Regular Activities -->
       <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:8px;">
         <div style="font-size:10px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:var(--muted);">Daily Activities</div>
@@ -2397,14 +2366,14 @@ html,body{height:100%;font-family:'DM Sans',sans-serif;background:var(--bg);colo
 
 <!-- Editor: full 8-step playbook editor -->
 <div class="ctx-overlay" id="playbook-editor-overlay" onclick="if(event.target===this)closePlaybookEditor()">
-  <div class="ctx-box" style="max-width:680px;">
+  <div class="ctx-box" style="max-width:680px;max-height:90vh;display:flex;flex-direction:column;">
     <div class="ctx-header">
       <div class="ctx-handle mobile-only"></div>
       <div class="ctx-icon" id="pbe-icon" style="background:linear-gradient(135deg,#5B5BD6,#A78BFA);color:#fff;">🤝</div>
       <div class="ctx-title" id="pbe-title">Edit Playbook</div>
       <div class="ctx-subtitle">Tune the 8-step cadence for this relationship type</div>
     </div>
-    <div class="ctx-body">
+    <div class="ctx-body" style="overflow-y:auto;flex:1;">
       <!-- Name + icon + description -->
       <div style="display:grid;grid-template-columns:60px 1fr;gap:10px;margin-bottom:10px;">
         <input type="text" id="pbe-icon-input" maxlength="2" placeholder="🤝" style="width:60px;height:46px;text-align:center;font-size:22px;border:1.5px solid var(--border);border-radius:10px;background:var(--bg);">
@@ -3068,6 +3037,7 @@ const auth = getAuth(firebaseApp);
 const db = getFirestore(firebaseApp);
 const functions = getFunctions(firebaseApp);
 const provider = new GoogleAuthProvider();
+window._getToken = () => auth.currentUser?.getIdToken();
 
 // ── MyAppointment.AI state ──
 // Populated by loadApptData() via getApptData Cloud Function.
@@ -3242,6 +3212,7 @@ const GRADE_CONFIG = {
 // Relationship reminder tasks loaded from Firestore users/{uid}/tasks.
 // Populated at boot, kept in sync by assignGrade() and completeReconnectTask().
 let RELATIONSHIP_TASKS = [];
+let FOLLOW_THROUGH_QUEUE = [];
 
 function statusMeta(s) { return STATUS_META[s] || STATUS_META.new; }
 function statusRank(s) { return statusMeta(s).rank; }
@@ -3579,6 +3550,10 @@ onAuthStateChanged(auth, async user => {
     // Record when this user was last active in the CRM (used by team leads to see "last in CRM").
     // Fire-and-forget — non-blocking, non-fatal.
     setDoc(doc(db, 'users', user.uid), { lastSeenAt: new Date().toISOString() }, { merge: true }).catch(() => {});
+    // Enroll in onboarding drip (idempotent — no-ops if already enrolled or no CRM plan).
+    if (userPlan === 'pro') {
+      httpsCallable(functions, 'enrollOnboardingDrip')({}).catch(() => {});
+    }
   } else {
     // If a cross-product token exchange is still in flight, hold the
     // loader instead of flashing the login screen. The listener will
@@ -3977,6 +3952,8 @@ async function loadAllData() {
   try {
     const tSnap = await getDocs(query(collection(db,'users',uid,'tasks'), where('status','==','open')));
     RELATIONSHIP_TASKS = tSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+    const qSnap = await getDocs(query(collection(db,'users',uid,'followThroughQueue'), where('status','==','pending')));
+    FOLLOW_THROUGH_QUEUE = qSnap.docs.map(d => ({ id: d.id, ...d.data() }));
   } catch(e) { console.warn('[tasks load]', e); }
   // Auto-detect wasted handshakes
   detectWastedHandshakes();
@@ -4160,7 +4137,26 @@ function showApp() {
   document.getElementById('app-shell').style.display = 'flex';
   renderTopbar();
   renderBetaBanner();
-  showScreen('dashboard', document.querySelector('.nav-btn'));
+  (function(){
+    const want = window._initialScreen;
+    window._initialScreen = null; // honor once
+    let btn = document.querySelector('.nav-btn');
+    if (want && want !== 'dashboard') {
+      const needle = "showScreen('" + want + "'";
+      btn = Array.from(document.querySelectorAll('.nav-btn,.mob-nav-btn'))
+        .find(b => (b.getAttribute('onclick') || '').indexOf(needle) > -1) || btn;
+      showScreen(want, btn);
+    } else {
+      showScreen('dashboard', btn);
+    }
+    try {
+      const url = new URL(window.location.href);
+      if (url.searchParams.has('screen')) {
+        url.searchParams.delete('screen');
+        window.history.replaceState({}, '', url.toString());
+      }
+    } catch (_) {}
+  })();
   renderActs();
   renderDashboard();
 }
@@ -4270,6 +4266,17 @@ window.startUpgrade = async function(plan) {
       clearInterval(tries);
     }
   }, 500);
+})();
+
+// Deep-link capture: ?screen=<name> (e.g. the Follow-Through digest email's
+// "Review & send in my queue" button → ?screen=tasks). Stored here and honored
+// by showApp() instead of its default 'dashboard', so there is no race.
+window._initialScreen = (function() {
+  const ALLOWED = ['tasks','dashboard','network','pipeline','log','history','appointments','settings'];
+  try {
+    const w = new URLSearchParams(window.location.search).get('screen');
+    return (w && ALLOWED.indexOf(w) > -1) ? w : null;
+  } catch (_) { return null; }
 })();
 
 // ── BILLING ROW (Settings) ──
@@ -5656,6 +5663,45 @@ function renderTasks() {
     });
   }
 
+  // Morning queue
+  const pendingQueue = FOLLOW_THROUGH_QUEUE.filter(q => q.status === 'pending');
+  if (pendingQueue.length > 0) {
+    html += `<div class="task-grp-lbl" style="color:#5B5BD6;">✨ Morning Queue <span class="cnt-badge">${pendingQueue.length}</span></div>`;
+    pendingQueue.forEach(q => {
+      const contactObj = CONTACTS.find(c => c.id === q.contactId);
+      const accent = contactObj ? rowAccent(contactObj) : '';
+      html += `<div class="task-row" id="ftq-row-${q.id}" style="${accent}"><div class="task-dot" style="background:#5B5BD6;"></div><div style="flex:1;min-width:0;"><div class="task-name">${escapeHtmlCRM(q.contactName)}${contactObj ? sPill(contactObj) : ''}</div><div class="task-meta">${escapeHtmlCRM(q.stepName)} · Step ${(q.stepIndex||0)+1}${q.contactEmail ? '' : ' · <span style="color:var(--red);">no email on file</span>'}</div><div id="ftq-body-${q.id}" style="margin-top:6px;font-size:12px;color:var(--text);background:var(--bg);border-radius:8px;padding:8px 10px;border:1px solid var(--border);white-space:pre-wrap;line-height:1.5;">${escapeHtmlCRM(q.draftBody||'')}</div><div id="ftq-edit-${q.id}" style="display:none;margin-top:6px;"><input id="ftq-subj-${q.id}" type="text" value="${escapeHtmlCRM(q.draftSubject||'')}" placeholder="Subject" style="width:100%;padding:6px 9px;border:1.5px solid var(--border);border-radius:7px;font-size:12px;font-family:'DM Sans',sans-serif;margin-bottom:6px;box-sizing:border-box;background:var(--bg);color:var(--navy);"><textarea id="ftq-ta-${q.id}" rows="5" style="width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:7px;font-size:12px;font-family:'DM Sans',sans-serif;resize:vertical;box-sizing:border-box;background:var(--bg);color:var(--navy);">${escapeHtmlCRM(q.draftBody||'')}</textarea></div></div><div style="display:flex;flex-direction:column;gap:5px;flex-shrink:0;align-items:flex-end;padding-left:8px;"><button onclick="event.stopPropagation();ftqSend('${q.id}')" style="padding:5px 11px;border-radius:7px;border:none;background:linear-gradient(135deg,#5B5BD6,#A78BFA);color:#fff;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;">Send</button><button onclick="event.stopPropagation();ftqToggleEdit('${q.id}')" id="ftq-edit-btn-${q.id}" style="padding:5px 11px;border-radius:7px;border:1px solid var(--border);background:var(--card);color:var(--navy);font-size:11px;font-weight:700;cursor:pointer;">Edit</button><button onclick="event.stopPropagation();ftqRegenerate('${q.id}')" style="padding:5px 11px;border-radius:7px;border:1px solid #5B5BD6;background:var(--card);color:#5B5BD6;font-size:11px;font-weight:700;cursor:pointer;">Regenerate</button><button onclick="event.stopPropagation();ftqSkip('${q.id}')" style="padding:5px 11px;border-radius:7px;border:1px solid var(--border);background:var(--card);color:var(--muted);font-size:11px;font-weight:700;cursor:pointer;">Skip</button></div></div>`;
+    });
+  }
+
+  // Scheduled activities
+  const scheduledActs = RELATIONSHIP_TASKS.filter(t => t.status === 'open' && t.type === 'scheduled_activity');
+  if (scheduledActs.length > 0) {
+    scheduledActs.sort((a, b) => (a.dueDate || '').localeCompare(b.dueDate || ''));
+    html += `<div class="task-grp-lbl" style="color:#0891b2;">📅 Scheduled Activities <span class="cnt-badge">${scheduledActs.length}</span></div>`;
+    scheduledActs.forEach(t => {
+      const contact = CONTACTS.find(c => c.id === t.contactId);
+      const isLate = t.dueDate < todayKey;
+      const isToday = t.dueDate === todayKey;
+      const chipStyle = isLate ? 'background:#fdecea;color:var(--red);' : isToday ? 'background:#fef3cd;color:#c0392b;' : 'background:var(--bg);color:var(--muted);';
+      const dateLabel = isLate ? `overdue (${formatDateShort(t.dueDate)})` : isToday ? 'today' : formatDateShort(t.dueDate);
+      const timeLabel = t.startTime ? ` · ${t.startTime.slice(11, 16)}` : '';
+      const ptsLabel = t.potentialPts ? `<span style="font-size:10px;font-weight:700;color:var(--muted);background:var(--bg);border:1px solid var(--border);border-radius:5px;padding:2px 6px;margin-left:4px;">+${t.potentialPts} pts</span>` : '';
+      html += `<div class="task-row${isLate ? ' overdue' : ''}" style="${contact ? rowAccent(contact) : ''}" onclick="${contact ? `goContact('${contact.id}')` : ''}">
+        <div class="task-dot" style="background:#0891b2;"></div>
+        <div style="flex:1;min-width:0;">
+          <div class="task-name" style="display:flex;align-items:center;flex-wrap:wrap;gap:4px;">${escapeHtmlCRM(t.contactName || '')}${contact ? sPill(contact) : ''}${ptsLabel}</div>
+          <div class="task-meta">${escapeHtmlCRM(t.activityName || 'Activity')} · ${dateLabel}${timeLabel}</div>
+          ${t.note ? `<div style="font-size:11px;color:var(--muted);margin-top:2px;">${escapeHtmlCRM(t.note)}</div>` : ''}
+        </div>
+        <div style="display:flex;gap:5px;align-items:center;">
+          <div class="task-chip" style="${chipStyle}">${isLate ? 'Overdue' : isToday ? 'Today' : 'Upcoming'}</div>
+          <button onclick="event.stopPropagation();completeScheduledActivity('${t.id}')" style="padding:4px 8px;border-radius:7px;border:1px solid var(--border);background:var(--card);color:var(--navy);font-size:11px;font-weight:700;cursor:pointer;">Done</button>
+        </div>
+      </div>`;
+    });
+  }
+
   // Due today
   if(dueTodayList.length>0) {
     html+=`<div class="task-grp-lbl" style="color:var(--gold);">📋 Due Today <span class="cnt-badge">${dueTodayList.length}</span></div>`;
@@ -6276,6 +6322,43 @@ function buildContactRow(c) {
   </div>`;
 }
 
+function buildStepsListHTML(c, pb, pbBadge) {
+  if (!pb) { pb = playbookFor(c); }
+  if (!pbBadge && pbBadge !== '') {
+    pbBadge = pb.id !== 'default' && PLAYBOOKS.length > 1
+      ? `<div style="font-size:10px;font-weight:700;color:#5B5BD6;background:rgba(91,91,214,0.08);padding:3px 8px;border-radius:6px;margin-bottom:8px;display:inline-flex;align-items:center;gap:5px;">${pb.icon||'📋'} ${pb.name}</div>`
+      : '';
+  }
+  return pbBadge + pb.steps.map((s, si) => {
+    const {done,dueDate,isLate}=getStepStatus(c,si);
+    const dueStr=dueDate?`${isLate?'⚠️ Overdue · ':'Due '}${formatDateShort(dueDate)}`:(c.clockStarted?'Pending':'Start clock first');
+    return `<div class="ne-step">
+      <div class="ne-step-cb ${done?'done':isLate?'late':''}" id="ne-step-cb-${c.id}-${si}" onclick="toggleNeStep(this,'${c.id}',${si})">${done?'✓':s.icon||''}</div>
+      <div style="flex:1;">
+        <div class="ne-step-n">Step ${si+1}: Day ${s.offsetDays} — ${s.name}</div>
+        <div class="ne-step-due${isLate?' late':''}">${dueStr}</div>
+        <div style="font-size:11px;color:var(--muted);line-height:1.4;margin-top:3px;">${s.description||''}</div>
+        ${!done?`<div style="display:flex;gap:6px;margin-top:7px;">
+          <button onclick="toggleNeStep(document.getElementById('ne-step-cb-${c.id}-${si}'),'${c.id}',${si})" style="font-size:11px;font-weight:700;padding:3px 10px;border:none;border-radius:6px;background:#e8f5ec;color:var(--green);cursor:pointer;">✅ Complete</button>
+          <button onclick="dismissNeStep('${c.id}',${si})" style="font-size:11px;font-weight:700;padding:3px 10px;border:1.5px solid var(--border);border-radius:6px;background:var(--bg);color:var(--muted);cursor:pointer;">✕ Dismiss</button>
+        </div>`:''}
+      </div>
+      <div class="ne-step-pts">${s.points} pts</div>
+    </div>`;
+  }).join('');
+}
+
+function refreshStepsPanel(contactId) {
+  const c = CONTACTS.find(x => x.id === contactId);
+  if (!c) return;
+  const el = document.getElementById('ne-steps-list-' + contactId);
+  if (el) {
+    el.innerHTML = buildStepsListHTML(c);
+  } else {
+    renderNetwork();
+  }
+}
+
 function buildExpandDetail(c) {
   const firstName=c.name.split(' ')[0];
   const dueDates=getStepDueDates(c);
@@ -6285,19 +6368,7 @@ function buildExpandDetail(c) {
   const pbBadge = pb.id !== 'default' && PLAYBOOKS.length > 1
     ? `<div style="font-size:10px;font-weight:700;color:#5B5BD6;background:rgba(91,91,214,0.08);padding:3px 8px;border-radius:6px;margin-bottom:8px;display:inline-flex;align-items:center;gap:5px;">${pb.icon||'📋'} ${pb.name}</div>`
     : '';
-  const stepsHTML = pbBadge + pb.steps.map((s, si) => {
-    const {done,dueDate,isLate}=getStepStatus(c,si);
-    const dueStr=dueDate?`${isLate?'⚠️ Overdue · ':'Due '}${formatDateShort(dueDate)}`:(c.clockStarted?'Pending':'Start clock first');
-    return `<div class="ne-step">
-      <div class="ne-step-cb ${done?'done':isLate?'late':''}" onclick="toggleNeStep(this,'${c.id}',${si})">${done?'✓':s.icon||''}</div>
-      <div style="flex:1;">
-        <div class="ne-step-n">Day ${s.offsetDays} — ${s.name}</div>
-        <div class="ne-step-due${isLate?' late':''}">${dueStr}</div>
-        <div style="font-size:11px;color:var(--muted);line-height:1.4;margin-top:3px;">${s.description||''}</div>
-      </div>
-      <div class="ne-step-pts">${s.points} pts</div>
-    </div>`;
-  }).join('');
+  const stepsHTML = `<div id="ne-steps-list-${c.id}">${buildStepsListHTML(c, pb, pbBadge)}</div>`;
 
   // Linked opportunities
   const contactOpps=OPPORTUNITIES.filter(o=>o.contactId===c.id||o.contactName===c.name);
@@ -6312,6 +6383,7 @@ function buildExpandDetail(c) {
       ${apptUserSlug && apptBookingPages.length ? `<button class="ne-action-btn" onclick="openBookContactModal('${c.id}')"><span class="ne-action-icon">📅</span><span class="ne-action-lbl">Book</span></button>` : ''}
       <button class="ne-action-btn" onclick="onSendToMyLolaClick('${c.id}')" title="${c.myLolaSyncStatus === 'synced' ? 'In MyLola. View or re-sync' : 'Send to MyLola (mortgage CRM)'}"><span class="ne-action-icon" style="display:flex;align-items:center;justify-content:center;height:22px;"><span class="lola-orb" style="width:20px;height:20px;flex-shrink:0;"></span></span><span class="ne-action-lbl">${c.myLolaSyncStatus === 'synced' ? 'In MyLola' : 'MyLola'}</span></button>
       <button class="ne-action-btn" onclick="goGradeContact('${c.id}')"><span class="ne-action-icon">⭐</span><span class="ne-action-lbl">Grade</span></button>
+      ${c.cadencePaused ? `<button class="ne-action-btn" onclick="resumeCadence('${c.id}')"><span class="ne-action-icon">&#9654;</span><span class="ne-action-lbl">Resume</span></button>` : ''}
     </div>
     <div style="padding:0 2px 8px;">
       ${c.myLolaSyncStatus === 'synced'
@@ -6334,7 +6406,7 @@ function buildExpandDetail(c) {
       <div class="ne-info-row"><div class="ne-info-k">Status</div><div class="ne-info-v" style="color:${statusMeta(resolveStatus(c)).color};">${statusMeta(resolveStatus(c)).emoji} ${statusMeta(resolveStatus(c)).label}</div></div>
       <div class="ne-info-row"><div class="ne-info-k">Steps</div><div class="ne-info-v">${c.steps||0}/8</div></div>
       <div class="ne-info-row"><div class="ne-info-k">Added</div><div class="ne-info-v">${c.addedAt?new Date(c.addedAt).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}):'—'}</div></div>
-      ${c.wasted?'<div style="background:#fff4f4;border-radius:9px;padding:11px;margin-top:11px;font-size:12px;color:var(--red);line-height:1.6;border-left:3px solid var(--red);">⚠️ Wasted handshake — address this week.</div>':''}
+      <div id="wasted-banner-${c.id}" style="background:#fff4f4;border-radius:9px;padding:11px;margin-top:11px;font-size:12px;color:var(--red);line-height:1.6;border-left:3px solid var(--red);${c.wasted?'':'display:none;'}">⚠️ Wasted handshake — address this week.</div>
       <div style="display:flex;gap:8px;margin-top:14px;">
         <select style="flex:1;padding:9px;border:1.5px solid var(--border);border-radius:9px;font-family:'DM Sans',sans-serif;font-size:13px;" onchange="updateContactStatus('${c.id}',this.value)">
           ${STATUS_VALUES.map(s=>`<option value="${s}" ${resolveStatus(c)===s?'selected':''}>${statusMeta(s).emoji} ${statusMeta(s).label}</option>`).join('')}
@@ -6346,7 +6418,10 @@ function buildExpandDetail(c) {
     <div class="ne-panel" id="nep-${c.id}-activity">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
         <div style="font-size:11px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--muted);">Activity Timeline</div>
-        <button onclick="openLogActivityModal('${c.id}')" style="background:var(--gold);border:none;border-radius:8px;padding:7px 13px;font-family:'DM Sans',sans-serif;font-size:12px;font-weight:700;color:#fff;cursor:pointer;display:inline-flex;align-items:center;gap:5px;">+ Log Activity</button>
+        <div style="display:flex;gap:7px;">
+          <button onclick="openScheduleActivityModal('${c.id}')" style="background:var(--bg);border:1.5px solid var(--border);border-radius:8px;padding:7px 13px;font-family:'DM Sans',sans-serif;font-size:12px;font-weight:700;color:var(--navy);cursor:pointer;display:inline-flex;align-items:center;gap:5px;">📅 Schedule</button>
+          <button onclick="openLogActivityModal('${c.id}')" style="background:var(--gold);border:none;border-radius:8px;padding:7px 13px;font-family:'DM Sans',sans-serif;font-size:12px;font-weight:700;color:#fff;cursor:pointer;display:inline-flex;align-items:center;gap:5px;">+ Log Activity</button>
+        </div>
       </div>
       <div id="activity-timeline-${c.id}" style="font-size:13px;color:var(--muted);text-align:center;padding:16px;">Loading…</div>
     </div>
@@ -6364,6 +6439,11 @@ function buildExpandDetail(c) {
       <textarea class="ne-notes-ta" rows="3" placeholder="Anything worth remembering…" onblur="saveFormNote('${c.id}','notes',this.value)">${c.notes||''}</textarea>
     </div>
     <div class="ne-panel" id="nep-${c.id}-steps">
+      ${PLAYBOOKS.length > 1 ? `<div style="margin-bottom:10px;">
+        <select onchange="assignPlaybookToContact('${c.id}',this.value)" style="width:100%;padding:7px 10px;border:1.5px solid var(--border);border-radius:8px;font-family:'DM Sans',sans-serif;font-size:12px;font-weight:600;color:var(--navy);background:var(--bg);cursor:pointer;">
+          ${PLAYBOOKS.map(p=>`<option value="${p.id}" ${p.id===pb.id?'selected':''}>${p.icon||'📋'} ${p.name}</option>`).join('')}
+        </select>
+      </div>` : ''}
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
         <div style="font-size:11px;color:var(--muted);">${c.clockStarted?'Clock started '+formatDateShort(c.clockStarted):'Clock not started'}</div>
         <div style="display:flex;gap:8px;">
@@ -6423,29 +6503,73 @@ function formatActivityWhen(iso) {
 function renderActivityTimeline(contactId, list) {
   const el = document.getElementById('activity-timeline-' + contactId);
   if (!el) return;
+
+  // Pending scheduled activities for this contact (from in-memory tasks)
+  const scheduled = (RELATIONSHIP_TASKS || []).filter(t =>
+    t.type === 'scheduled_activity' && t.contactId === contactId && t.status === 'open'
+  ).sort((a, b) => (a.dueDate || '').localeCompare(b.dueDate || ''));
+
+  const scheduledHtml = scheduled.map(t => {
+    const dateLabel = t.dueDate ? formatDateShort(t.dueDate) : 'Upcoming';
+    const timeLabel = t.startTime ? ` at ${t.startTime.slice(11, 16)}` : '';
+    const ptsBadge = t.potentialPts ? `<span style="display:inline-block;padding:2px 7px;border-radius:4px;background:#F4F4F5;color:#6B7280;border:1px solid #D1D5DB;font-size:10px;font-weight:700;letter-spacing:0.04em;">+${t.potentialPts} pts (pending)</span>` : '';
+    return `<div style="padding:11px 12px;border-bottom:1px solid var(--border);background:#F8F9FF;opacity:0.85;">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:5px;">
+        <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap;">
+          <span style="font-size:13px;font-weight:700;color:#0891b2;">📅 ${escapeHtmlCRM(t.activityName || 'Activity')}</span>
+          ${ptsBadge}
+          <span style="display:inline-block;padding:2px 7px;border-radius:4px;background:#E0F2FE;color:#0369A1;border:1px solid #BAE6FD;font-size:10px;font-weight:700;letter-spacing:0.04em;">Scheduled</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;">
+          <div style="font-size:11px;color:var(--muted);white-space:nowrap;">${dateLabel}${timeLabel}</div>
+          <button onclick="event.stopPropagation();completeScheduledActivity('${t.id}')" style="padding:3px 8px;border-radius:6px;border:1px solid var(--border);background:#fff;color:var(--navy);font-size:10px;font-weight:700;cursor:pointer;">Done</button>
+          <button onclick="event.stopPropagation();deleteScheduledActivity('${t.id}','${contactId}')" style="padding:3px 8px;border-radius:6px;border:1px solid var(--border);background:#fff;color:var(--red);font-size:10px;font-weight:700;cursor:pointer;">Delete</button>
+        </div>
+      </div>
+      ${t.note ? `<div style="font-size:12px;color:var(--muted);line-height:1.5;margin-top:3px;">${escapeHtmlCRM(t.note)}</div>` : ''}
+    </div>`;
+  }).join('');
+
   if (!list || list.length === 0) {
-    el.innerHTML = `<div style="text-align:center;padding:24px 12px;color:var(--muted);font-size:13px;line-height:1.6;">No activity logged yet.<br><span style="font-size:12px;">Tap <strong>+ Log Activity</strong> to record a call, meeting, or note.</span></div>`;
+    if (scheduled.length === 0) {
+      el.innerHTML = `<div style="text-align:center;padding:24px 12px;color:var(--muted);font-size:13px;line-height:1.6;">No activity logged yet.<br><span style="font-size:12px;">Tap <strong>+ Log Activity</strong> to record a call, meeting, or note.</span></div>`;
+    } else {
+      el.innerHTML = scheduledHtml;
+    }
     return;
   }
+
   el.style.fontSize = '13px';
   el.style.color = 'var(--text)';
   el.style.textAlign = 'left';
   el.style.padding = '0';
-  el.innerHTML = list.map(a => {
+
+  const loggedHtml = list.map(a => {
     const sourcePill = a.source === 'scorecard'
       ? `<span style="display:inline-block;padding:2px 7px;border-radius:4px;background:#E5EEF8;color:#1F4F87;border:1px solid #B6CFE6;font-size:10px;font-weight:700;letter-spacing:0.04em;">📊 Scorecard</span>`
       : `<span style="display:inline-block;padding:2px 7px;border-radius:4px;background:#F4F4F5;color:#4B5563;border:1px solid #D1D5DB;font-size:10px;font-weight:700;letter-spacing:0.04em;">🗂 CRM</span>`;
     const isNote = a.type === 'Note';
     const typeBadge = `<span style="font-size:13px;font-weight:700;color:var(--text);">${isNote ? '📝 Note' : a.type}</span>`;
     const ptsBadge = a.points > 0 ? `<span style="display:inline-block;padding:2px 7px;border-radius:4px;background:#FFF8E6;color:#7A5C0F;border:1px solid #F0D578;font-size:10px;font-weight:700;letter-spacing:0.04em;">+${a.points} pts</span>` : '';
+    const linkedHtml = (a.linkedContacts && a.linkedContacts.length)
+      ? `<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:6px;">${a.linkedContacts.map(lc =>
+          `<a onclick="goContact('${lc.id}')" style="display:inline-flex;align-items:center;gap:4px;background:rgba(196,181,253,0.15);border:1px solid rgba(196,181,253,0.35);border-radius:20px;padding:2px 9px;font-size:11px;font-weight:600;color:#C4B5FD;cursor:pointer;text-decoration:none;">🔗 ${escapeHtmlCRM(lc.name)}</a>`
+        ).join('')}</div>` : '';
+    const deleteBtn = a.id ? `<button onclick="event.stopPropagation();deleteContactActivity('${contactId}','${a.id}','${(a.type||'').replace(/'/g,"\\'")}',${a.points||0},'${a.dateKey||''}')" title="Delete this entry" style="background:none;border:none;cursor:pointer;padding:2px 5px;color:var(--muted);font-size:13px;line-height:1;opacity:0.45;transition:opacity 0.15s;" onmouseover="this.style.opacity='1';this.style.color='#ef4444'" onmouseout="this.style.opacity='0.45';this.style.color='var(--muted)'">✕</button>` : '';
     return `<div style="padding:11px 12px;border-bottom:1px solid var(--border);background:#fff;">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:5px;">
         <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap;">${typeBadge}${ptsBadge}${sourcePill}</div>
-        <div style="font-size:11px;color:var(--muted);white-space:nowrap;">${formatActivityWhen(a.timestamp)}</div>
+        <div style="display:flex;align-items:center;gap:4px;">
+          <div style="font-size:11px;color:var(--muted);white-space:nowrap;">${formatActivityWhen(a.timestamp)}</div>
+          ${deleteBtn}
+        </div>
       </div>
       ${a.note ? `<div style="font-size:12px;color:var(--muted);line-height:1.5;margin-top:3px;">${(a.note||'').replace(/</g,'&lt;')}</div>` : ''}
+      ${linkedHtml}
     </div>`;
   }).join('');
+
+  el.innerHTML = scheduledHtml + loggedHtml;
 }
 window.loadActivityPanel = async function(contactId) {
   const c = CONTACTS.find(x => x.id === contactId);
@@ -6461,8 +6585,71 @@ window.loadActivityPanel = async function(contactId) {
 
 // ── LOG ACTIVITY MODAL ──
 let _logActivityContactId = null;
+let _laIntroLinkedContacts = []; // [{id, name}]
+
+function laToggleIntroField(typeName) {
+  const field = document.getElementById('la-intro-field');
+  if (!field) return;
+  const isIntro = typeName === 'Make Introduction';
+  field.style.display = isIntro ? '' : 'none';
+  if (!isIntro) {
+    _laIntroLinkedContacts = [];
+    laRenderIntroChips();
+    const s = document.getElementById('la-intro-search');
+    if (s) s.value = '';
+    const sg = document.getElementById('la-intro-suggestions');
+    if (sg) sg.style.display = 'none';
+  }
+}
+
+function laRenderIntroChips() {
+  const container = document.getElementById('la-intro-chips');
+  if (!container) return;
+  container.innerHTML = _laIntroLinkedContacts.map(lc =>
+    `<span style="display:inline-flex;align-items:center;gap:5px;background:rgba(196,181,253,0.18);border:1px solid rgba(196,181,253,0.4);border-radius:20px;padding:3px 10px 3px 10px;font-size:12px;font-weight:600;color:#C4B5FD;">
+      ${lc.name}
+      <button onclick="laRemoveIntroContact('${lc.id}')" style="background:none;border:none;cursor:pointer;padding:0;line-height:1;font-size:14px;color:#C4B5FD;opacity:0.7;">×</button>
+    </span>`
+  ).join('');
+}
+
+window.laRemoveIntroContact = function(id) {
+  _laIntroLinkedContacts = _laIntroLinkedContacts.filter(lc => lc.id !== id);
+  laRenderIntroChips();
+};
+
+window.laIntroSearch = function(val) {
+  const sg = document.getElementById('la-intro-suggestions');
+  if (!sg) return;
+  const q = val.trim().toLowerCase();
+  if (!q) { sg.style.display = 'none'; return; }
+  const excludeIds = new Set([_logActivityContactId, ..._laIntroLinkedContacts.map(lc => lc.id)]);
+  const matches = CONTACTS.filter(c => c.name && c.name.toLowerCase().includes(q) && !excludeIds.has(c.id)).slice(0, 6);
+  if (!matches.length) { sg.style.display = 'none'; return; }
+  sg.innerHTML = matches.map(c =>
+    `<div onclick="laSelectIntroContact('${c.id}','${c.name.replace(/'/g,"\\'")}')"
+      style="padding:8px 12px;cursor:pointer;font-size:13px;font-weight:600;border-bottom:1px solid var(--border);"
+      onmouseover="this.style.background='var(--bg)'" onmouseout="this.style.background=''">
+      ${c.name}${c.company ? `<span style="font-weight:400;color:var(--muted);font-size:11px;margin-left:6px;">${c.company}</span>` : ''}
+    </div>`
+  ).join('');
+  sg.style.display = 'block';
+};
+
+window.laSelectIntroContact = function(id, name) {
+  if (!_laIntroLinkedContacts.find(lc => lc.id === id)) {
+    _laIntroLinkedContacts.push({ id, name });
+    laRenderIntroChips();
+  }
+  const s = document.getElementById('la-intro-search');
+  if (s) s.value = '';
+  const sg = document.getElementById('la-intro-suggestions');
+  if (sg) sg.style.display = 'none';
+};
+
 window.openLogActivityModal = function(contactId) {
   _logActivityContactId = contactId;
+  _laIntroLinkedContacts = [];
   const c = CONTACTS.find(x => x.id === contactId);
   if (!c) return;
   // Build activity type options from user's ACTIVITIES list + Note
@@ -6470,11 +6657,14 @@ window.openLogActivityModal = function(contactId) {
   if (sel) {
     sel.innerHTML = '<option value="__note__">📝 Note (no points)</option>'
       + ACTIVITIES.map(a => `<option value="${(a.name||'').replace(/"/g,'&quot;')}">${a.icon||'•'} ${a.name} (+${a.pts} pts)</option>`).join('');
+    sel.onchange = () => laToggleIntroField(sel.value);
+    laToggleIntroField(sel.value);
   }
   const subtitle = document.getElementById('la-subtitle');
   if (subtitle) subtitle.textContent = `Logging for ${c.name}`;
   const noteInput = document.getElementById('la-note');
   if (noteInput) noteInput.value = '';
+  laRenderIntroChips();
   const overlay = document.getElementById('log-activity-overlay');
   if (overlay) overlay.classList.add('open');
 };
@@ -6489,14 +6679,21 @@ window.saveLogActivity = async function() {
   const c = CONTACTS.find(x => x.id === contactId);
   if (!c) { closeLogActivityModal(); return; }
   const typeRaw = document.getElementById('la-type').value;
-  const note = (document.getElementById('la-note').value || '').trim();
+  let note = (document.getElementById('la-note').value || '').trim();
+  // For Make Introduction with linked contacts, auto-generate note text if blank
+  const isIntro = typeRaw === 'Make Introduction';
+  const linkedContacts = isIntro ? [..._laIntroLinkedContacts] : [];
+  if (isIntro && linkedContacts.length && !note) {
+    note = `Introduced to ${linkedContacts.map(lc => lc.name).join(' and ')}`;
+  }
   if (typeRaw === '__note__') {
     // Note-only — no daily count increment, just timeline entry.
     await logContactActivity(contactId, { type: 'Note', source: 'crm', note, points: 0 });
     showToast(`📝 Note logged for ${c.name}`);
   } else {
     // Activity from the user's list — increment daily count AND mirror to subcollection (source: 'crm').
-    await autoLogActivity(typeRaw, c.name, contactId, 'crm');
+    const extraFields = linkedContacts.length ? { linkedContacts: linkedContacts.map(lc => ({ id: lc.id, name: lc.name })) } : {};
+    await autoLogActivity(typeRaw, c.name, contactId, 'crm', extraFields);
     if (note) {
       // Attach the note as a separate timeline entry so prose isn't lost.
       await logContactActivity(contactId, { type: 'Note', source: 'crm', note, points: 0 });
@@ -6507,6 +6704,156 @@ window.saveLogActivity = async function() {
   const fresh = await loadContactActivities(contactId);
   c._activities = fresh;
   renderActivityTimeline(contactId, fresh);
+};
+
+// ── SCHEDULE ACTIVITY ──
+let _scheduleActivityContactId = null;
+
+window.openScheduleActivityModal = function(contactId) {
+  _scheduleActivityContactId = contactId;
+  const c = CONTACTS.find(x => x.id === contactId);
+  if (!c) return;
+
+  const sel = document.getElementById('sa-type');
+  if (sel) {
+    sel.innerHTML = ACTIVITIES
+      .filter(a => a.name !== 'Note' && a.pts > 0)
+      .map(a => `<option value="${(a.name||'').replace(/"/g,'&quot;')}">${a.icon||'•'} ${a.name} (+${a.pts} pts)</option>`)
+      .join('');
+  }
+
+  const subtitle = document.getElementById('sa-subtitle');
+  if (subtitle) subtitle.textContent = `With ${c.name}`;
+
+  // Default date = tomorrow
+  const tomorrow = addDays(getTodayKey(), 1);
+  const dateInput = document.getElementById('sa-date');
+  if (dateInput) dateInput.value = tomorrow;
+
+  const timeInput = document.getElementById('sa-time');
+  if (timeInput) timeInput.value = '09:00';
+
+  const noteInput = document.getElementById('sa-note');
+  if (noteInput) noteInput.value = '';
+
+  const hint = document.getElementById('sa-calendar-hint');
+  if (hint) hint.style.display = crmNylasConnected ? 'block' : 'none';
+
+  const btn = document.getElementById('sa-confirm-btn');
+  if (btn) btn.textContent = crmNylasConnected ? '📅 Schedule + Add to Calendar' : 'Schedule';
+
+  document.getElementById('schedule-activity-overlay').classList.add('open');
+};
+
+window.closeScheduleActivityModal = function() {
+  _scheduleActivityContactId = null;
+  document.getElementById('schedule-activity-overlay').classList.remove('open');
+};
+
+window.saveScheduleActivity = async function() {
+  const contactId = _scheduleActivityContactId;
+  if (!contactId || !currentUser) return;
+  const c = CONTACTS.find(x => x.id === contactId);
+  if (!c) { closeScheduleActivityModal(); return; }
+
+  const activityName = document.getElementById('sa-type').value;
+  const date = document.getElementById('sa-date').value;
+  const time = document.getElementById('sa-time').value || '09:00';
+  const durationMins = parseInt(document.getElementById('sa-duration').value) || 60;
+  const note = (document.getElementById('sa-note').value || '').trim();
+
+  if (!date) { showToast('Please pick a date', true); return; }
+
+  const actDef = ACTIVITIES.find(a => a.name === activityName) || DEFAULT_ACTS.find(a => a.name === activityName);
+  const potentialPts = actDef ? (actDef.pts || 0) : 0;
+
+  const btn = document.getElementById('sa-confirm-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Saving...'; }
+
+  const startTime = `${date}T${time}:00`;
+  const taskId = `sched_${contactId}_${Date.now()}`;
+  const taskData = {
+    type: 'scheduled_activity',
+    contactId,
+    contactName: c.name,
+    activityName,
+    potentialPts,
+    dueDate: date,
+    startTime,
+    durationMins,
+    note,
+    label: `${activityName} with ${c.name}`,
+    status: 'open',
+    createdAt: new Date().toISOString(),
+  };
+
+  try {
+    await setDoc(doc(db, 'users', currentUser.uid, 'tasks', taskId), taskData);
+    RELATIONSHIP_TASKS.push({ id: taskId, ...taskData });
+
+    // Calendar event if Nylas connected
+    if (crmNylasConnected) {
+      try {
+        const token = await currentUser.getIdToken();
+        const startUnix = Math.floor(new Date(startTime).getTime() / 1000);
+        const endUnix = startUnix + durationMins * 60;
+        const resp = await fetch(`${NYLAS_FN}/createNylasEvent`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify({ title: `${activityName} — ${c.name}`, startTime: startUnix, endTime: endUnix }),
+        });
+        if (resp.ok) {
+          const ev = await resp.json();
+          await updateDoc(doc(db, 'users', currentUser.uid, 'tasks', taskId), { calendarEventId: ev.eventId || null });
+        }
+      } catch (calErr) {
+        console.warn('[scheduleActivity] calendar event failed:', calErr.message);
+      }
+    }
+
+    closeScheduleActivityModal();
+    renderTasks();
+    renderActivityTimeline(contactId, c._activities || []);
+    showToast(`📅 ${activityName} scheduled for ${formatDateShort(date)}`);
+  } catch (e) {
+    console.error('[saveScheduleActivity]', e);
+    showToast('Could not save. Try again.', true);
+    if (btn) { btn.disabled = false; btn.textContent = crmNylasConnected ? '📅 Schedule + Add to Calendar' : 'Schedule'; }
+  }
+};
+
+window.deleteScheduledActivity = async function(taskId, contactId) {
+  if (!currentUser) return;
+  const idx = RELATIONSHIP_TASKS.findIndex(x => x.id === taskId);
+  if (idx === -1) return;
+  RELATIONSHIP_TASKS.splice(idx, 1);
+  await deleteDoc(doc(db, 'users', currentUser.uid, 'tasks', taskId));
+  renderTasks();
+  const c = CONTACTS.find(x => x.id === contactId);
+  renderActivityTimeline(contactId, c ? (c._activities || []) : []);
+  showToast('Scheduled activity removed');
+};
+
+window.completeScheduledActivity = async function(taskId) {
+  if (!currentUser) return;
+  const t = RELATIONSHIP_TASKS.find(x => x.id === taskId);
+  if (!t) return;
+
+  t.status = 'done';
+  await updateDoc(doc(db, 'users', currentUser.uid, 'tasks', taskId), {
+    status: 'done',
+    completedAt: new Date().toISOString(),
+  });
+
+  // Award Scorecard points for the activity
+  if (t.activityName) {
+    await autoLogActivity(t.activityName, t.contactName, t.contactId, 'crm');
+  }
+
+  renderTasks();
+  const doneContact = CONTACTS.find(x => x.id === t.contactId);
+  if (doneContact) renderActivityTimeline(t.contactId, doneContact._activities || []);
+  showToast(`✅ ${t.activityName || 'Activity'} logged`);
 };
 
 // ── TAG-CONTACT PICKER (Scorecard side) ──
@@ -6585,12 +6932,13 @@ window.startClock=async function(contactId){
 
 window.toggleNeStep=async function(el,contactId,stepIndex){
   const c=CONTACTS.find(x=>x.id===contactId);if(!c)return;
+  const pb=playbookFor(c);
   const wasCompleted=el.classList.contains('done');
   const currentSteps=c.steps||0;
-  const newSteps=wasCompleted?Math.max(0,currentSteps-1):Math.min(8,stepIndex+1);
+  const newSteps=wasCompleted?Math.max(0,currentSteps-1):Math.min(pb.steps.length,stepIndex+1);
   c.steps=newSteps;c.lastActivityAt=new Date().toISOString();
   await updateDoc(doc(db,'users',currentUser.uid,'contacts',contactId),{steps:newSteps,lastActivityAt:c.lastActivityAt});
-  detectWastedHandshakes();renderNetwork();
+  detectWastedHandshakes();refreshStepsPanel(contactId);
 
   // Log points when completing (not uncompleting) a step.
   // Step name + pts are resolved from the contact's PLAYBOOK so points
@@ -6612,10 +6960,23 @@ window.toggleNeStep=async function(el,contactId,stepIndex){
   }
 
   // Campaign complete — prompt for relationship grade (only when marking done, not undoing)
-  if (!wasCompleted && newSteps === 8) {
+  if (!wasCompleted && newSteps === pb.steps.length) {
     const existingGrade = resolveStatus(c);
     setTimeout(() => openGradeModal(c.id, c.name, existingGrade !== 'new' ? existingGrade : null), 400);
   }
+};
+
+window.dismissNeStep = async function(contactId, stepIndex) {
+  const c = CONTACTS.find(x => x.id === contactId);
+  if (!c) return;
+  const pb = playbookFor(c);
+  const newSteps = Math.min(pb.steps.length, stepIndex + 1);
+  c.steps = newSteps;
+  c.lastActivityAt = new Date().toISOString();
+  await updateDoc(doc(db, 'users', currentUser.uid, 'contacts', contactId), { steps: newSteps, lastActivityAt: c.lastActivityAt });
+  detectWastedHandshakes();
+  refreshStepsPanel(contactId);
+  showToast('Step dismissed');
 };
 
 window.updateContactStatus=async function(contactId,status){
@@ -6624,6 +6985,16 @@ window.updateContactStatus=async function(contactId,status){
   c.status=status; c.grade=null; // unify on status; clear legacy grade if present
   await updateDoc(doc(db,'users',currentUser.uid,'contacts',contactId),{status,grade:null});
   showToast(`✅ Status updated to ${statusMeta(status).label}`);
+  renderNetwork();
+};
+
+window.assignPlaybookToContact = async function(contactId, playbookId) {
+  const c = CONTACTS.find(x => x.id === contactId);
+  if (!c) return;
+  c.playbookId = playbookId;
+  await updateDoc(doc(db, 'users', currentUser.uid, 'contacts', contactId), { playbookId });
+  const pb = playbookFor(c);
+  showToast(`📋 Switched to "${pb.name}"`);
   renderNetwork();
 };
 
@@ -6750,12 +7121,70 @@ async function logContactActivity(contactId, opts) {
       }
     }
     await updateDoc(doc(db, 'users', currentUser.uid, 'contacts', contactId), { lastActivityAt: data.timestamp, lastMeaningfulInteractionAt: data.timestamp });
+    // Re-evaluate wasted status and update the banner + row border in place
+    detectWastedHandshakes();
+    const wrap = document.getElementById('wrap-' + contactId);
+    if (wrap) wrap.classList.toggle('wasted-wrap', !!c?.wasted);
+    const banner = document.getElementById('wasted-banner-' + contactId);
+    if (banner) banner.style.display = c?.wasted ? '' : 'none';
     return entry;
   } catch (e) {
     console.error('[logContactActivity] error:', e);
     return null;
   }
 }
+
+window.deleteContactActivity = async function(contactId, actId, actType, pts, dateKey) {
+  const ptsTxt = pts > 0 ? ` This will deduct ${pts} pts from your Scorecard.` : '';
+  if (!confirm(`Delete this "${actType}" entry?${ptsTxt}`)) return;
+  try {
+    await deleteDoc(doc(db, 'users', currentUser.uid, 'contacts', contactId, 'activities', actId));
+    // Adjust day totals if the activity was logged today and carried points
+    if (dateKey === getTodayKey() && pts > 0) {
+      const dayRef = doc(db, 'users', currentUser.uid, 'days', dateKey);
+      const daySnap = await getDoc(dayRef);
+      if (daySnap.exists()) {
+        const d = daySnap.data();
+        const breakdown = JSON.parse(JSON.stringify(d.breakdown || {}));
+        const catPts   = JSON.parse(JSON.stringify(d.categoryPts || {}));
+        const counts   = [...(d.counts || [])];
+        if (breakdown[actType]) {
+          breakdown[actType].count = Math.max(0, (breakdown[actType].count || 1) - 1);
+          breakdown[actType].pts   = Math.max(0, (breakdown[actType].pts || pts) - pts);
+          const cat = breakdown[actType].category || 'Other';
+          if (catPts[cat]) catPts[cat] = Math.max(0, (catPts[cat] || pts) - pts);
+          if (breakdown[actType].count === 0) delete breakdown[actType];
+        }
+        // Decrement counts array slot
+        const actIdx = ACTIVITIES.findIndex(a => a.name === actType);
+        if (actIdx >= 0 && counts[actIdx] > 0) {
+          counts[actIdx]--;
+          todayCounts[actIdx] = Math.max(0, (todayCounts[actIdx] || 1) - 1);
+        }
+        let totalPts = 0, leadPts = 0;
+        Object.values(breakdown).forEach(b => {
+          totalPts += b.pts || 0;
+          if (b.lead !== false) leadPts += b.pts || 0;
+        });
+        await updateDoc(dayRef, { breakdown, categoryPts: catPts, counts, totalPts, leadPts, updatedAt: new Date().toISOString() });
+        // Update in-memory week & dashboard
+        weekPts = Math.max(0, weekPts - pts);
+        renderActs();
+        renderDashboard();
+      }
+    }
+    // Remove from in-memory contact activities and re-render timeline
+    const c = CONTACTS.find(x => x.id === contactId);
+    if (c && c._activities) {
+      c._activities = c._activities.filter(a => a.id !== actId);
+      renderActivityTimeline(contactId, c._activities);
+    }
+    showToast('🗑 Activity deleted');
+  } catch(e) {
+    console.error('[deleteContactActivity]', e);
+    showToast('⚠️ Could not delete — try again');
+  }
+};
 
 async function loadContactActivities(contactId) {
   if (!contactId || !currentUser) return [];
@@ -6772,7 +7201,7 @@ async function loadContactActivities(contactId) {
   }
 }
 
-async function autoLogActivity(activityName, contactName, contactId, source) {
+async function autoLogActivity(activityName, contactName, contactId, source, extraFields = {}) {
   try {
     console.log('[autoLogActivity] start:', activityName, contactName, contactId, source);
     const todayKey = getTodayKey();
@@ -6787,7 +7216,7 @@ async function autoLogActivity(activityName, contactName, contactId, source) {
       if (match) resolvedContactId = match.id;
     }
     if (resolvedContactId) {
-      logContactActivity(resolvedContactId, { type: activityName, source: source || 'scorecard', points: pts }).catch(()=>{});
+      logContactActivity(resolvedContactId, { type: activityName, source: source || 'scorecard', points: pts, ...extraFields }).catch(()=>{});
     }
 
     const dayRef = doc(db, 'users', currentUser.uid, 'days', todayKey);
@@ -7446,223 +7875,327 @@ window.setHistView = function(view, btn) {
 };
 
 function renderHistory(view='week') {
+  const panel = document.getElementById('hist-panel');
+  if (!panel) return;
   const todayKey = getTodayKey();
-  let filtered = [];
-  if(view==='week') { const ws=getWeekStart(todayKey); filtered=history.filter(d=>inWeek(d, ws)); }
-  else if(view==='month') { filtered=history.filter(d=>d.monthKey===todayKey.slice(0,7)); }
-  else if(view==='6m') { const cut=new Date();cut.setMonth(cut.getMonth()-6);filtered=history.filter(d=>new Date(d.dateKey+'T12:00:00')>=cut); }
-  else { filtered=history; }
+  const _dk = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  const _td = k => new Date(k + 'T12:00:00');
 
-  let grand=0, totalLead=0, totalLag=0;
-  filtered.forEach(d=>{ grand+=d.totalPts; totalLead+=(d.leadPts||0); totalLag+=(d.lagPts||0); });
-  const avg = filtered.length ? Math.round(grand/filtered.length) : 0;
-  const weekMap={};
-  filtered.forEach(d=>{ weekMap[d.weekKey]=(weekMap[d.weekKey]||0)+d.totalPts; });
-  const consistentWeeks = Object.values(weekMap).filter(v=>v>=100).length;
+  // ── Date range & filtered days ────────────────────────────────────────────
+  let filtered = [], fromDate;
+  const ws = getWeekStart(todayKey);
+  if (view==='week') { filtered=history.filter(d=>inWeek(d,ws)); fromDate=_td(ws); }
+  else if (view==='month') { filtered=history.filter(d=>d.monthKey===todayKey.slice(0,7)); fromDate=new Date(_td(todayKey).getFullYear(),_td(todayKey).getMonth(),1); }
+  else if (view==='6m') { const cut=new Date();cut.setMonth(cut.getMonth()-6);filtered=history.filter(d=>_td(d.dateKey)>=cut);fromDate=cut; }
+  else { filtered=history; const el=history.length?history.map(d=>d.dateKey).sort()[0]:todayKey;fromDate=_td(el); }
 
-  // KPI tiles
-  const kpis = document.getElementById('hist-kpis');
-  if(kpis) kpis.innerHTML=`
-    <div class="kpi gold" style="flex:1;min-width:120px;"><div class="kpi-ey">Total Points</div><div class="kpi-val">${grand}</div><div class="kpi-sub">${filtered.length} days logged</div></div>
-    <div class="kpi" style="flex:1;min-width:120px;"><div class="kpi-ey">Avg pts/day</div><div class="kpi-val">${avg}</div><div class="kpi-sub">${consistentWeeks} consistent weeks</div></div>`;
-
-  // Lead vs Lag
-  const leadLag = document.getElementById('hist-lead-lag');
-  if(leadLag) {
-    const leadPct = grand>0 ? Math.round((totalLead/grand)*100) : 0;
-    const lagPct = grand>0 ? Math.round((totalLag/grand)*100) : 0;
-    leadLag.innerHTML = `
-      <div style="display:flex;gap:16px;margin-bottom:14px;">
-        <div style="flex:1;background:#f4fbf6;border-radius:10px;padding:14px;border-left:3px solid var(--green);">
-          <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--green);margin-bottom:4px;">Lead Indicators</div>
-          <div style="font-family:'Playfair Display',serif;font-size:28px;font-weight:900;color:var(--navy);">${totalLead}</div>
-          <div style="font-size:11px;color:var(--muted);margin-top:2px;">${leadPct}% of total · activities you control</div>
-        </div>
-        <div style="flex:1;background:#fef9f0;border-radius:10px;padding:14px;border-left:3px solid var(--gold);">
-          <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--gold-d);margin-bottom:4px;">Lag Indicators</div>
-          <div style="font-family:'Playfair Display',serif;font-size:28px;font-weight:900;color:var(--navy);">${totalLag}</div>
-          <div style="font-size:11px;color:var(--muted);margin-top:2px;">${lagPct}% of total · results that follow</div>
-        </div>
-      </div>
-      <div style="height:8px;background:var(--border);border-radius:4px;overflow:hidden;">
-        <div style="height:100%;width:${leadPct}%;background:var(--green);border-radius:4px;transition:width 0.5s ease;"></div>
-      </div>
-      <div style="display:flex;justify-content:space-between;margin-top:6px;">
-        <div style="font-size:11px;color:var(--green);font-weight:600;">Lead ${leadPct}%</div>
-        <div style="font-size:11px;color:var(--gold-d);font-weight:600;">Lag ${lagPct}%</div>
-      </div>
-      ${lagPct>50?'<div style="background:#fff8f7;border-radius:9px;padding:10px;margin-top:10px;font-size:12px;color:var(--red);border-left:3px solid var(--red);">⚠️ Strong lag activity detected. Keep your lead indicators strong — results follow activity, not the other way around.</div>':''}
-      ${leadPct>=80?'<div style="background:#f4fbf6;border-radius:9px;padding:10px;margin-top:10px;font-size:12px;color:var(--green);border-left:3px solid var(--green);">✅ Strong lead activity. You are building the pipeline, not just harvesting it.</div>':''}
-      <div style="margin-top:10px;font-size:11px;color:var(--muted);font-style:italic;text-align:center;">"Handshakes are the seed. Follow through is the harvest."</div>`;
+  // ── Totals ────────────────────────────────────────────────────────────────
+  let grand, totalLead, totalLag, daysActive;
+  if (view==='week') {
+    // Use live globals so today's in-progress points are always current
+    totalLead = weekPts; totalLag = weekLagPts; grand = totalLead + totalLag;
+    const weekHistPts = filtered.reduce((s,d)=>s+d.totalPts,0);
+    const todayInHist = !!filtered.find(d=>d.dateKey===todayKey);
+    const todayHasExtra = grand > weekHistPts;
+    daysActive = filtered.filter(d=>d.totalPts>0).length + (todayHasExtra && !todayInHist ? 1 : 0);
+  } else {
+    grand=0;totalLead=0;totalLag=0;
+    filtered.forEach(d=>{grand+=d.totalPts;totalLead+=(d.leadPts||0);totalLag+=(d.lagPts||0);});
+    daysActive=filtered.filter(d=>d.totalPts>0).length;
   }
+  const avg = daysActive>0 ? Math.round(grand/daysActive) : 0;
+  const weekMap={}; filtered.forEach(d=>{weekMap[d.weekKey]=(weekMap[d.weekKey]||0)+d.totalPts;});
+  const consistentWeeks=Object.values(weekMap).filter(v=>v>=100).length;
+  const tier=getTier(grand);
+  const goal=weeklyGoal||200;
 
-  // Last week report (only show on week view)
-  const lwReport = document.getElementById('hist-last-week');
-  if(lwReport) {
-    if(view==='week') {
-      const now=new Date();
-      const currentDay=now.getDay();
-      const daysToLastMonday=currentDay===0?13:currentDay+6;
-      const lastMonday=new Date(now);lastMonday.setDate(now.getDate()-daysToLastMonday);lastMonday.setHours(0,0,0,0);
-      const lastSunday=new Date(lastMonday);lastSunday.setDate(lastMonday.getDate()+6);
-      const lwKey=`${lastMonday.getFullYear()}-${String(lastMonday.getMonth()+1).padStart(2,'0')}-${String(lastMonday.getDate()).padStart(2,'0')}`;
-      const lwDays=history.filter(d=>inWeek(d, lwKey));
-      if(lwDays.length) {
-        lwReport.style.display='block';
-        const opts={month:'short',day:'numeric'};
-        const dEl=document.getElementById('hist-lw-dates');if(dEl)dEl.textContent=lastMonday.toLocaleDateString('en-US',opts)+' – '+lastSunday.toLocaleDateString('en-US',{...opts,year:'numeric'});
-        const totalPts=lwDays.reduce((s,d)=>s+d.totalPts,0);
-        const avgPts=Math.round(totalPts/lwDays.length);
-        const leadPts=lwDays.reduce((s,d)=>s+(d.leadPts||0),0);
-        const lagPts=lwDays.reduce((s,d)=>s+(d.lagPts||0),0);
-        const tier=getTier(totalPts);
-        const pEl=document.getElementById('hist-lw-pts');if(pEl)pEl.textContent=totalPts;
-        const dyEl=document.getElementById('hist-lw-days');if(dyEl)dyEl.textContent=`${lwDays.length} of 7 days active`;
-        const aEl=document.getElementById('hist-lw-avg');if(aEl)aEl.textContent=avgPts;
-        const lEl=document.getElementById('hist-lw-lead');if(lEl)lEl.textContent=leadPts;
-        const lgEl=document.getElementById('hist-lw-lag');if(lgEl)lgEl.textContent=lagPts;
-        const badge=document.getElementById('hist-lw-badge');
-        if(badge){badge.textContent=`${tier.emoji} ${tier.name}`;badge.style.background=tier.color+'22';badge.style.color=tier.color;badge.style.border=`1.5px solid ${tier.color}44`;}
-      } else { lwReport.style.display='none'; }
-    } else { lwReport.style.display='none'; }
-  }
-
-  // Category breakdown
+  // ── Category totals ───────────────────────────────────────────────────────
   const catTotals={};
-  filtered.forEach(d=>{ Object.entries(d.categoryPts||{}).forEach(([cat,pts])=>{ catTotals[cat]=(catTotals[cat]||0)+pts; }); });
+  filtered.forEach(d=>Object.entries(d.categoryPts||{}).forEach(([c,p])=>{catTotals[c]=(catTotals[c]||0)+p;}));
   const totalCat=Object.values(catTotals).reduce((s,v)=>s+v,0)||1;
-  const cbd=document.getElementById('hist-cat-breakdown');
-  if(cbd) cbd.innerHTML=Object.entries(catTotals).sort((a,b)=>b[1]-a[1]).map(([cat,pts])=>{
+
+  // ── Past days range ───────────────────────────────────────────────────────
+  const byDK={}; history.forEach(d=>{byDK[d.dateKey]=d;});
+  const rangeEntries=[];
+  for (let d=new Date(_td(todayKey));d>=fromDate;d.setDate(d.getDate()-1)) {
+    const k=_dk(d);
+    rangeEntries.push(byDK[k]||{dateKey:k,empty:true,totalPts:0});
+  }
+  const loggedDays=rangeEntries.filter(d=>!d.empty&&d.totalPts>0);
+  const maxP=loggedDays.length?Math.max(...loggedDays.map(d=>d.totalPts)):0;
+  const minP=loggedDays.length?Math.min(...loggedDays.map(d=>d.totalPts)):0;
+
+  // ── Helper: category mix bars ─────────────────────────────────────────────
+  const catMixHtml = Object.entries(catTotals).sort((a,b)=>b[1]-a[1]).map(([cat,pts])=>{
     const pct=Math.round((pts/totalCat)*100);const color=CAT_COLORS[cat]||'#1a1a1a';
-    return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;"><div style="width:8px;height:8px;border-radius:50%;background:${color};flex-shrink:0;"></div><div style="font-size:12px;font-weight:600;width:140px;">${cat}</div><div style="flex:1;height:7px;background:var(--border);border-radius:4px;overflow:hidden;"><div style="height:100%;width:${pct}%;background:${color};border-radius:4px;"></div></div><div style="font-size:12px;font-weight:700;width:32px;text-align:right;">${pct}%</div></div>`;
-  }).join('')||'<div style="color:var(--muted);font-size:12px;text-align:center;padding:16px;">Log activities to see breakdown</div>';
+    return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+      <div style="width:8px;height:8px;border-radius:50%;background:${color};flex-shrink:0;"></div>
+      <div style="font-size:12px;font-weight:600;min-width:130px;">${cat}</div>
+      <div style="flex:1;height:7px;background:var(--border);border-radius:4px;overflow:hidden;">
+        <div style="height:100%;width:${pct}%;background:${color};border-radius:4px;"></div>
+      </div>
+      <div style="font-size:12px;font-weight:700;width:32px;text-align:right;">${pct}%</div>
+    </div>`;
+  }).join('')||`<div style="color:var(--muted);font-size:12px;text-align:center;padding:16px;">Log activities to see breakdown</div>`;
 
-  // Chart
-  const chart=document.getElementById('hist-chart');
-  if(chart) {
-    chart.innerHTML='';
-    const chartDays=filtered.slice(0,14).reverse();
-    const maxP=Math.max(...chartDays.map(d=>d.totalPts),1);
-    if(!chartDays.length){
-      // Show the empty-chart placeholder but DON'T bail out of renderHistory
-      // — the Past Days section below still needs to render.
-      chart.innerHTML='<div style="width:100%;text-align:center;color:var(--muted);font-size:13px;align-self:center;">Submit days to see trend</div>';
-    } else {
-      chartDays.forEach(d=>{
-        const h=Math.max(8,(d.totalPts/maxP)*90);
-        const t=getTier(d.totalPts);
-        const wrap=document.createElement('div');wrap.style.cssText='flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;';
-        wrap.innerHTML=`<div style="font-size:8px;font-weight:600;">${d.totalPts}</div><div style="height:${h}px;background:${t.color};opacity:0.85;border-radius:5px 5px 0 0;min-height:4px;width:100%;"></div><div style="font-size:8px;color:var(--muted);">${d.dateKey.slice(5).replace('-','/')}</div>`;
-        chart.appendChild(wrap);
-      });
+  // ── Build panel HTML ──────────────────────────────────────────────────────
+  let html='';
+
+  if (view==='week') {
+    // Last week data for comparison
+    const now=new Date();const cd=now.getDay();
+    const dToLm=cd===0?13:cd+6;
+    const lm=new Date(now);lm.setDate(now.getDate()-dToLm);lm.setHours(0,0,0,0);
+    const lwKey=_dk(lm);
+    const lwDays=history.filter(d=>inWeek(d,lwKey));
+    const lwTotal=lwDays.reduce((s,d)=>s+d.totalPts,0);
+    const lwLead=lwDays.reduce((s,d)=>s+(d.leadPts||0),0);
+    const lwLag=lwDays.reduce((s,d)=>s+(d.lagPts||0),0);
+    const lwTier=getTier(lwTotal);
+    const ls=new Date(lm);ls.setDate(lm.getDate()+6);
+    const fmt=d=>d.toLocaleDateString('en-US',{month:'short',day:'numeric'});
+    const monDate=_td(ws);const sunDate=new Date(monDate);sunDate.setDate(monDate.getDate()+6);
+    const dateRange=`${fmt(monDate)} – ${fmt(sunDate)}`;
+    const pct=Math.min(100,Math.round((grand/goal)*100));
+    const rem=Math.max(0,goal-grand);
+    const trendPct=lwTotal>0?Math.round(((grand-lwTotal)/lwTotal)*100):null;
+
+    // 1. Hero card
+    html += `<div style="padding:0 16px 14px;">
+      <div style="background:var(--navy);border-radius:18px;padding:22px 20px;">
+        <div style="font-size:10px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:rgba(255,255,255,0.35);margin-bottom:6px;">This Week · ${dateRange}</div>
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px;">
+          <div style="font-family:'Playfair Display',serif;font-size:64px;font-weight:900;color:#fff;line-height:1;">${grand}</div>
+          <div style="padding:7px 13px;border-radius:30px;font-size:12px;font-weight:700;margin-top:12px;background:${tier.color}33;color:${tier.color};border:1.5px solid ${tier.color}55;">${tier.emoji} ${tier.name}</div>
+        </div>
+        <div style="font-size:12px;color:rgba(255,255,255,0.4);margin-bottom:12px;">${daysActive} of 7 days · ${pct}% of ${goal} goal${rem>0?` · ${rem} to go`:' · Goal hit!'}</div>
+        <div style="height:4px;background:rgba(255,255,255,0.12);border-radius:2px;overflow:hidden;margin-bottom:18px;">
+          <div style="height:100%;width:${pct}%;background:${tier.color};border-radius:2px;"></div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;padding-top:14px;border-top:1px solid rgba(255,255,255,0.1);">
+          <div style="text-align:center;"><div style="font-family:'Playfair Display',serif;font-size:22px;font-weight:900;color:#fff;">${avg}</div><div style="font-size:10px;color:rgba(255,255,255,0.35);margin-top:3px;">Avg/Day</div></div>
+          <div style="text-align:center;"><div style="font-family:'Playfair Display',serif;font-size:22px;font-weight:900;color:#fff;">${totalLead}</div><div style="font-size:10px;color:rgba(255,255,255,0.35);margin-top:3px;">Lead Pts</div></div>
+          <div style="text-align:center;"><div style="font-family:'Playfair Display',serif;font-size:22px;font-weight:900;color:#fff;">${totalLag}</div><div style="font-size:10px;color:rgba(255,255,255,0.35);margin-top:3px;">Lag Pts</div></div>
+        </div>
+        ${lwTotal>0&&trendPct!==null?`<div style="margin-top:12px;padding-top:10px;border-top:1px solid rgba(255,255,255,0.08);font-size:11px;color:rgba(255,255,255,0.3);text-align:center;">Last week: ${lwTotal} pts · <span style="color:${trendPct>=0?'#4ade80':'#f87171'}">${trendPct>=0?'+':''}${trendPct}% vs last week</span></div>`:''}
+      </div>
+    </div>`;
+
+    // 2. Mon-Sun bar chart
+    const bars=[];
+    for(let i=0;i<7;i++){
+      const d=new Date(monDate);d.setDate(monDate.getDate()+i);
+      const k=_dk(d);const isTd=k===todayKey;const isFut=k>todayKey;
+      const dayData=byDK[k];const pts=dayData?dayData.totalPts:0;
+      const dayTier=pts>0?getTier(pts):null;
+      bars.push({k,isTd,isFut,pts,lbl:['M','T','W','T','F','S','S'][i],dayTier});
     }
+    const maxBar=Math.max(...bars.map(b=>b.pts),goal/7,1);
+    const barHtml=bars.map(b=>{
+      const h=b.pts>0?Math.max(6,Math.round((b.pts/maxBar)*80)):0;
+      const bg=b.isFut||b.pts===0?'var(--border)':b.dayTier?.color||'#6366f1';
+      return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;">
+        <div style="font-size:8px;font-weight:700;color:var(--muted);min-height:11px;">${b.pts>0?b.pts:''}</div>
+        <div style="display:flex;flex-direction:column;justify-content:flex-end;height:80px;width:100%;">
+          <div style="width:100%;height:${h}px;background:${bg};opacity:${b.isFut?'0.25':b.isTd?'1':'0.8'};border-radius:4px 4px 0 0;min-height:2px;${b.isTd&&b.pts>0?'box-shadow:0 0 0 2px '+bg+';':''}" ></div>
+        </div>
+        <div style="font-size:9px;font-weight:${b.isTd?'800':'600'};color:${b.isTd?'var(--navy)':'var(--muted)'};">${b.lbl}</div>
+      </div>`;
+    }).join('');
+    html+=`<div style="padding:0 16px 14px;"><div class="card">
+      <div class="card-hdr"><div class="card-title">Weekly Progress</div><div style="font-size:11px;color:var(--muted);">${dateRange}</div></div>
+      <div class="card-body" style="padding-top:8px;">
+        <div style="display:flex;gap:3px;">${barHtml}</div>
+        <div style="display:flex;justify-content:space-between;margin-top:8px;font-size:10px;color:var(--muted);">
+          <span>Goal: ${goal} pts</span><span>${rem>0?`${rem} pts to go`:'✓ Goal hit'}</span>
+        </div>
+      </div>
+    </div></div>`;
+
+    // 3. Activity Mix
+    html+=`<div style="padding:0 16px 14px;"><div class="card">
+      <div class="card-hdr"><div class="card-title">Activity Mix</div></div>
+      <div class="card-body">${catMixHtml}</div>
+    </div></div>`;
+
+    // 4. Coaching (current week)
+    if (grand>0) {
+      const lagR=grand>0?Math.round((totalLag/grand)*100):0;
+      const followP=Math.round(((catTotals['Follow Through']||0)/totalCat)*100);
+      const netP=Math.round(((catTotals['Networking']||0)/totalCat)*100);
+      const firstName=currentUser?.displayName?.split(' ')[0]||'there';
+      let strength,risk,rec;
+      if(grand>=200)strength=`${firstName}, you hit Master Networker pace — ${grand} pts. You are building infrastructure, not just networking.`;
+      else if(grand>=150)strength=`${tier.name} pace — high consistency this week. Relationships are compounding.`;
+      else if(grand>=goal*0.75)strength=`${grand} pts logged and on pace. Strong finish puts you over the goal.`;
+      else if(grand>=goal*0.4)strength=`${grand} pts this week. You've shown up. Now push toward ${goal}.`;
+      else strength=`${grand} pts on the board. Every activity compounds. More today changes the week.`;
+      if(lagR>50)risk='Results are outpacing activity. Great now, but lead activity predicts next week\'s pipeline.';
+      else if(followP<10&&grand>50)risk='Follow Through is below 10% of your mix. Stalled relationships lose momentum fast.';
+      else if(netP<15&&grand>50)risk='Low networking this week. Make sure you\'re adding new relationships, not just maintaining.';
+      else if(totalLag===0&&grand>0)risk='Zero lag points. When referrals or deals land, make sure you record them.';
+      else risk=null;
+      const ptsLeft=Math.max(0,goal-grand);
+      if(grand>=goal)rec=`Goal hit. Focus on quality — identify your 3 highest-potential contacts and deepen one today.`;
+      else if(ptsLeft<=30)rec=`${ptsLeft} pts from your ${goal}-pt goal. One strong session closes it.`;
+      else rec=`${Math.ceil(ptsLeft/Math.max(1,7-daysActive))} pts/day needed to hit ${goal} by Sunday. High-value activities only.`;
+      const cards=[
+        {label:'STRENGTH',icon:'💪',text:strength,color:'#16a34a',bg:'#f0fdf4'},
+        ...(risk?[{label:'RISK',icon:'⚠️',text:risk,color:'#ca8a04',bg:'#fefce8'}]:[]),
+        {label:'RECOMMENDATION',icon:'🎯',text:rec,color:'#2563eb',bg:'#eff6ff'},
+        {label:"THIS WEEK'S IDENTITY",icon:tier.emoji,text:`"${tier.msg}"`,color:tier.color,bg:tier.color+'11'},
+      ].map(c=>`<div style="background:${c.bg};border-radius:12px;padding:13px 14px;border-left:3px solid ${c.color};">
+        <div style="font-size:10px;font-weight:800;letter-spacing:0.1em;text-transform:uppercase;color:${c.color};margin-bottom:5px;">${c.icon} ${c.label}</div>
+        <div style="font-size:13px;color:var(--text);line-height:1.5;">${c.text}</div>
+      </div>`).join('');
+      html+=`<div style="padding:0 16px 14px;"><div class="card">
+        <div class="card-hdr"><div class="card-title">Coaching</div></div>
+        <div class="card-body" style="display:flex;flex-direction:column;gap:8px;">${cards}</div>
+      </div></div>`;
+    }
+
+    // 5. Past Days heading + container
+    html+=`<div style="padding:0 16px 14px;">
+      <div style="font-size:11px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:var(--muted);margin-bottom:10px;">Past Days</div>
+      <div id="hist-list" style="display:flex;flex-direction:column;gap:10px;"></div>
+      <div id="hist-empty" style="display:none;text-align:center;padding:32px 20px;color:var(--muted);">
+        <div style="font-size:36px;margin-bottom:10px;">📋</div>
+        <div style="font-family:'Playfair Display',serif;font-size:16px;font-weight:700;margin-bottom:6px;">No logged days yet</div>
+        <div style="font-size:12px;">Log activities to see them here.</div>
+      </div>
+    </div>`;
+
+    // 6. Last Week comparison
+    if (lwTotal>0) {
+      html+=`<div style="padding:0 16px 24px;"><div class="card" style="border:1.5px solid var(--border);">
+        <div class="card-hdr">
+          <div class="card-title">Last Week</div>
+          <div style="font-size:11px;color:var(--muted);">${fmt(lm)} – ${fmt(ls)}</div>
+        </div>
+        <div class="card-body">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+            <div>
+              <div style="font-family:'Playfair Display',serif;font-size:44px;font-weight:900;color:var(--navy);line-height:1;">${lwTotal}</div>
+              <div style="font-size:12px;color:var(--muted);margin-top:4px;">${lwDays.length} of 7 days active</div>
+            </div>
+            <div style="padding:7px 13px;border-radius:30px;font-size:12px;font-weight:700;background:${lwTier.color}22;color:${lwTier.color};border:1.5px solid ${lwTier.color}44;">${lwTier.emoji} ${lwTier.name}</div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;padding-top:12px;border-top:1px solid var(--border);">
+            <div style="text-align:center;"><div style="font-family:'Playfair Display',serif;font-size:18px;font-weight:900;">${Math.round(lwTotal/Math.max(1,lwDays.length))}</div><div style="font-size:10px;color:var(--muted);margin-top:2px;">Avg/Day</div></div>
+            <div style="text-align:center;"><div style="font-family:'Playfair Display',serif;font-size:18px;font-weight:900;">${lwLead}</div><div style="font-size:10px;color:var(--muted);margin-top:2px;">Lead Pts</div></div>
+            <div style="text-align:center;"><div style="font-family:'Playfair Display',serif;font-size:18px;font-weight:900;">${lwLag}</div><div style="font-size:10px;color:var(--muted);margin-top:2px;">Lag Pts</div></div>
+          </div>
+        </div>
+      </div></div>`;
+    }
+
+  } else {
+    // ── Non-week views ────────────────────────────────────────────────────────
+    const leadPct=grand>0?Math.round((totalLead/grand)*100):0;
+    html+=`<div style="padding:0 16px 14px;">
+      <div style="display:flex;gap:10px;">
+        <div class="kpi gold" style="flex:1;"><div class="kpi-ey">Total Points</div><div class="kpi-val">${grand}</div><div class="kpi-sub">${daysActive} days logged</div></div>
+        <div class="kpi" style="flex:1;"><div class="kpi-ey">Avg pts/day</div><div class="kpi-val">${avg}</div><div class="kpi-sub">${consistentWeeks} consistent weeks</div></div>
+      </div>
+    </div>
+    <div style="padding:0 16px 14px;"><div class="card">
+      <div class="card-hdr"><div class="card-title">Lead vs Lag</div></div>
+      <div class="card-body">
+        <div style="display:flex;gap:12px;margin-bottom:12px;">
+          <div style="flex:1;background:#f4fbf6;border-radius:10px;padding:14px;border-left:3px solid var(--green);">
+            <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--green);margin-bottom:4px;">Lead</div>
+            <div style="font-family:'Playfair Display',serif;font-size:26px;font-weight:900;color:var(--navy);">${totalLead}</div>
+            <div style="font-size:11px;color:var(--muted);margin-top:2px;">${leadPct}% · activities you control</div>
+          </div>
+          <div style="flex:1;background:#fef9f0;border-radius:10px;padding:14px;border-left:3px solid var(--gold);">
+            <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--gold-d);margin-bottom:4px;">Lag</div>
+            <div style="font-family:'Playfair Display',serif;font-size:26px;font-weight:900;color:var(--navy);">${totalLag}</div>
+            <div style="font-size:11px;color:var(--muted);margin-top:2px;">${100-leadPct}% · results that follow</div>
+          </div>
+        </div>
+        <div style="height:6px;background:var(--border);border-radius:3px;overflow:hidden;">
+          <div style="height:100%;width:${leadPct}%;background:var(--green);border-radius:3px;transition:width 0.5s;"></div>
+        </div>
+        ${leadPct>=80?'<div style="background:#f0fdf4;border-radius:9px;padding:10px;margin-top:10px;font-size:12px;color:var(--green);border-left:3px solid var(--green);">✅ Strong lead activity. You are building the pipeline, not just harvesting it.</div>':''}
+      </div>
+    </div></div>
+    <div style="padding:0 16px 14px;"><div class="card">
+      <div class="card-hdr"><div class="card-title">Activity Mix</div></div>
+      <div class="card-body">${catMixHtml}</div>
+    </div></div>`;
+
+    // Trend chart
+    const chartDays=filtered.slice(0,30).reverse();
+    const maxP2=Math.max(...chartDays.map(d=>d.totalPts),1);
+    const chartHtml=chartDays.length?chartDays.map(d=>{
+      const h=Math.max(4,Math.round((d.totalPts/maxP2)*80));const t=getTier(d.totalPts);
+      return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;">
+        <div style="font-size:7px;font-weight:600;color:var(--muted);">${d.totalPts}</div>
+        <div style="height:${h}px;background:${t.color};opacity:0.85;border-radius:3px 3px 0 0;min-height:4px;width:100%;"></div>
+        <div style="font-size:7px;color:var(--muted);">${d.dateKey.slice(5).replace('-','/')}</div>
+      </div>`;
+    }).join(''):'<div style="text-align:center;color:var(--muted);font-size:12px;align-self:center;padding:20px;">Submit days to see trend</div>';
+    html+=`<div style="padding:0 16px 14px;"><div class="card">
+      <div class="card-hdr"><div class="card-title">Daily Trend</div></div>
+      <div class="card-body"><div style="display:flex;align-items:flex-end;gap:3px;height:100px;">${chartHtml}</div></div>
+    </div></div>`;
+
+    html+=`<div style="padding:0 16px 14px;">
+      <div style="font-size:11px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:var(--muted);margin-bottom:10px;">Past Days</div>
+      <div id="hist-list" style="display:flex;flex-direction:column;gap:10px;"></div>
+      <div id="hist-empty" style="display:none;text-align:center;padding:32px 20px;color:var(--muted);">
+        <div style="font-size:36px;margin-bottom:10px;">📋</div>
+        <div style="font-family:'Playfair Display',serif;font-size:16px;font-weight:700;margin-bottom:6px;">No history yet</div>
+        <div style="font-size:12px;">Save your first day to see it here.</div>
+      </div>
+    </div>`;
   }
 
-  // Past days list — MIRRORS the Scoreboard's renderHistory now. Shows EVERY
-  // day in the selected range, including empty ones (with a "+ Log" button
-  // to backfill) and logged ones (with an "✏️ Edit" button). Both actions
-  // hand off to the Scoreboard with cross-product sign-in + an editDay
-  // hash parameter, so the Scoreboard opens directly into the edit modal
-  // for that date — no second login, no extra clicks.
-  const list = document.getElementById('hist-list');
-  const empty = document.getElementById('hist-empty');
+  panel.innerHTML = html;
+
+  // ── Append past-day cards into #hist-list ──────────────────────────────────
+  const list=document.getElementById('hist-list');
+  const empty=document.getElementById('hist-empty');
   if (!list) return;
-  list.innerHTML = '';
-
-  // Build the date range from the most recent day back to MAX(earliest
-  // logged day, 30 days ago) — matches Scoreboard semantics so the views
-  // feel identical between the two surfaces.
-  const _toDate = k => new Date(k + 'T12:00:00');
-  const _dayKeyFromDate = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-  const earliestLogged = history.length ? history.map(d => d.dateKey).sort()[0] : todayKey;
-  const earliestDate = _toDate(earliestLogged);
-  const minDate30 = new Date(); minDate30.setDate(minDate30.getDate() - 30);
-  // When the user picks a non-week view, respect that range — otherwise
-  // default to "last 30 days OR back to first logged day, whichever is older."
-  let fromDate;
-  if (view === 'month') {
-    fromDate = new Date(_toDate(todayKey).getFullYear(), _toDate(todayKey).getMonth(), 1);
-  } else if (view === '6m') {
-    fromDate = new Date(); fromDate.setMonth(fromDate.getMonth() - 6);
-  } else if (view === 'life') {
-    fromDate = earliestDate;
-  } else { // week
-    const ws = getWeekStart(todayKey);
-    fromDate = _toDate(ws);
-  }
-  // Cap fromDate so we never walk past the earliest logged day on lifetime view
-  if (fromDate < earliestDate && view === 'life') fromDate = earliestDate;
-  const toDate = _toDate(todayKey);
-
-  const byDateKey = {};
-  history.forEach(d => { byDateKey[d.dateKey] = d; });
-
-  const rangeEntries = [];
-  for (let d = new Date(toDate); d >= fromDate; d.setDate(d.getDate() - 1)) {
-    const k = _dayKeyFromDate(d);
-    rangeEntries.push(byDateKey[k] || { dateKey: k, empty: true, totalPts: 0 });
-  }
-
-  if (rangeEntries.length === 0) {
-    if (empty) empty.style.display = 'block';
-    return;
-  }
-  if (empty) empty.style.display = 'none';
-
-  const loggedDays = rangeEntries.filter(d => !d.empty);
-  const pts = loggedDays.map(d => d.totalPts);
-  const maxP = pts.length ? Math.max(...pts) : 0;
-  const minP = pts.length ? Math.min(...pts) : 0;
+  if (!rangeEntries.length) { if(empty)empty.style.display='block'; return; }
+  if (empty) empty.style.display='none';
 
   rangeEntries.forEach(day => {
+    const isToday=day.dateKey===todayKey;
     if (day.empty) {
-      // Empty-day card. Today's empty row is informational only — user
-      // logs via Log Activities tab, not via History edit. Past empty
-      // days get the "+ Log" backfill button.
-      const isToday = day.dateKey === todayKey;
-      const card = document.createElement('div');
-      card.className = 'card';
-      card.style.borderStyle = 'dashed';
-      card.style.opacity = '0.78';
-      card.innerHTML = `
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;">
-          <div>
-            <div style="font-family:'Playfair Display',serif;font-size:15px;font-weight:700;">${formatDate(day.dateKey)}${isToday ? ' · today' : ''}</div>
-            <div style="font-size:11px;color:var(--muted);margin-top:3px;">${isToday ? 'Log activities on the Log Activities tab' : 'No activity logged'}</div>
-          </div>
-          ${isToday ? '' : `<button onclick="editDay('${day.dateKey}')" style="background:var(--gold);border:none;border-radius:9px;padding:9px 16px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:700;color:var(--navy);cursor:pointer;flex-shrink:0;">+ Log</button>`}
-        </div>`;
-      list.appendChild(card);
-      return;
+      const card=document.createElement('div');card.className='card';card.style.borderStyle='dashed';card.style.opacity='0.72';
+      card.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;">
+        <div>
+          <div style="font-family:'Playfair Display',serif;font-size:15px;font-weight:700;">${formatDate(day.dateKey)}${isToday?' · today':''}</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:3px;">${isToday?'Log on the Log Activities tab':'No activity logged'}</div>
+        </div>
+        ${isToday?'':`<button onclick="editDay('${day.dateKey}')" style="background:var(--gold);border:none;border-radius:9px;padding:9px 16px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:700;color:var(--navy);cursor:pointer;flex-shrink:0;">+ Log</button>`}
+      </div>`;
+      list.appendChild(card);return;
     }
-    const isToday = day.dateKey === todayKey;
-    const isHigh = day.totalPts === maxP && loggedDays.length > 1;
-    const isLow  = day.totalPts === minP && loggedDays.length > 1;
-    const tier = getTier(day.totalPts);
-    const badge = isHigh
-      ? '<span style="font-size:10px;font-weight:700;padding:3px 8px;border-radius:20px;background:#e8f5ec;color:var(--green);text-transform:uppercase;">🏆 Best Day</span>'
-      : isLow
-        ? '<span style="font-size:10px;font-weight:700;padding:3px 8px;border-radius:20px;background:#fdecea;color:var(--red);text-transform:uppercase;">📉 Low Day</span>'
-        : '<span style="font-size:10px;font-weight:700;padding:3px 8px;border-radius:20px;background:#eef2f7;color:var(--muted);text-transform:uppercase;">Average</span>';
-    const items = Object.entries(day.breakdown||{}).map(([name,d]) =>
-      `<div style="background:var(--bg);border-radius:8px;padding:4px 10px;font-size:12px;color:var(--muted);">${d.icon} ${name}: <span style="font-weight:600;color:var(--text);">${d.count}x (${d.pts}pts)</span></div>`).join('');
-    const leadPts = day.leadPts || 0;
-    const lagPts = day.lagPts || 0;
-    const card = document.createElement('div');
-    card.className = 'card';
-    // Today's row shows totals but NO edit button — user logs today via
-    // Log Activities tab. Past days keep the ✏️ Edit affordance.
-    card.innerHTML = `
+    const isHigh=day.totalPts===maxP&&loggedDays.length>1;
+    const isLow=day.totalPts===minP&&loggedDays.length>1;
+    const dayTier=getTier(day.totalPts);
+    const badge=isHigh
+      ?'<span style="font-size:10px;font-weight:700;padding:3px 8px;border-radius:20px;background:#e8f5ec;color:var(--green);">🏆 Best Day</span>'
+      :isLow
+        ?'<span style="font-size:10px;font-weight:700;padding:3px 8px;border-radius:20px;background:#fdecea;color:var(--red);">📉 Low Day</span>'
+        :'<span style="font-size:10px;font-weight:700;padding:3px 8px;border-radius:20px;background:#eef2f7;color:var(--muted);">Average</span>';
+    const items=Object.entries(day.breakdown||{}).map(([name,d])=>
+      `<div style="background:var(--bg);border-radius:8px;padding:4px 10px;font-size:12px;color:var(--muted);">${d.icon} ${name}: <span style="font-weight:600;color:var(--text);">${d.count}x (${d.pts}pts)</span></div>`
+    ).join('');
+    const card=document.createElement('div');card.className='card';
+    card.innerHTML=`
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;gap:10px;">
         <div style="flex:1;min-width:0;">
-          <div style="font-family:'Playfair Display',serif;font-size:15px;font-weight:700;">${day.dateLabel || formatDate(day.dateKey)}${isToday ? ' · today' : ''}</div>
+          <div style="font-family:'Playfair Display',serif;font-size:15px;font-weight:700;">${day.dateLabel||formatDate(day.dateKey)}${isToday?' · today':''}</div>
           ${badge}
-          <div style="font-size:11px;font-weight:700;color:${tier.color};margin-top:4px;">${tier.emoji} ${tier.name} pace</div>
+          <div style="font-size:11px;font-weight:700;color:${dayTier.color};margin-top:4px;">${dayTier.emoji} ${dayTier.name} pace</div>
         </div>
         <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex-shrink:0;">
           <div style="font-family:'Playfair Display',serif;font-size:22px;font-weight:900;color:var(--gold);line-height:1;">${day.totalPts}</div>
-          <div style="font-size:10px;color:var(--muted);">Lead: ${leadPts} · Lag: ${lagPts}</div>
-          <button onclick="${isToday ? `showScreen('log',document.querySelectorAll('.nav-btn')[2])` : `editDay('${day.dateKey}')`}" style="background:var(--bg);border:1px solid var(--border);border-radius:7px;padding:5px 10px;font-family:'DM Sans',sans-serif;font-size:11px;font-weight:700;color:var(--navy);cursor:pointer;margin-top:3px;">${isToday ? '+ Add More' : '✏️ Edit'}</button>
+          <div style="font-size:10px;color:var(--muted);">Lead: ${day.leadPts||0} · Lag: ${day.lagPts||0}</div>
+          <button onclick="${isToday?`showScreen('log',document.querySelectorAll('.nav-btn')[2])`:`editDay('${day.dateKey}')`}" style="background:var(--bg);border:1px solid var(--border);border-radius:7px;padding:5px 10px;font-family:'DM Sans',sans-serif;font-size:11px;font-weight:700;color:var(--navy);cursor:pointer;margin-top:3px;">${isToday?'+ Add More':'✏️ Edit'}</button>
         </div>
       </div>
       <div style="display:flex;flex-wrap:wrap;gap:6px;">${items}</div>`;
@@ -8046,6 +8579,161 @@ window.completeReconnectTask = async function(taskId) {
 
   renderTasks();
   showToast('✅ Reconnect logged');
+};
+
+// ── FOLLOW-THROUGH QUEUE: Send / Edit / Skip / Resume ──
+
+function ftqActivityName(pts) {
+  if (pts >= 10) return 'Attend 1:1, Coffee, Lunch';
+  if (pts >= 5)  return 'Good to Meet You Follow Through';
+  return 'Perform Other 8 Step Activities';
+}
+
+window.ftqSend = async function(docId) {
+  if (!currentUser) return;
+  const q = FOLLOW_THROUGH_QUEUE.find(x => x.id === docId);
+  if (!q) return;
+
+  const btn = document.querySelector(`#ftq-row-${docId} button`);
+  if (btn) { btn.disabled = true; btn.textContent = 'Sending...'; }
+
+  const editArea = document.getElementById(`ftq-ta-${docId}`);
+  const subjInput = document.getElementById(`ftq-subj-${docId}`);
+  const body    = editArea  ? editArea.value.trim()  : q.draftBody;
+  const subject = subjInput ? subjInput.value.trim() : q.draftSubject;
+
+  try {
+    const token = await currentUser.getIdToken();
+    const resp = await fetch(`${NYLAS_FN}/sendFollowThroughEmail`, {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ docId, contactId: q.contactId, stepIndex: q.stepIndex, subject, body }),
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || 'Send failed');
+
+    // Scorecard points
+    const ftqPts = (Array.isArray(STEP_PTS) && STEP_PTS[q.stepIndex]) || q.stepPoints || 5;
+    await autoLogActivity(ftqActivityName(ftqPts), q.contactName, q.contactId, 'crm');
+
+    // Advance local contact
+    const c = CONTACTS.find(x => x.id === q.contactId);
+    if (c) c.steps = data.newSteps;
+
+    // Flip queue item
+    q.status = 'sent';
+    const row = document.getElementById(`ftq-row-${docId}`);
+    if (row) row.style.opacity = '0.4';
+
+    renderTasks();
+    showToast('Email sent');
+  } catch (e) {
+    console.error('[ftqSend]', e);
+    if (btn) { btn.disabled = false; btn.textContent = 'Send'; }
+    showToast('Send failed: ' + (e.message || 'unknown error'), true);
+  }
+};
+
+window.ftqToggleEdit = function(docId) {
+  const editBlock = document.getElementById(`ftq-edit-${docId}`);
+  const bodyBlock = document.getElementById(`ftq-body-${docId}`);
+  const btn       = document.getElementById(`ftq-edit-btn-${docId}`);
+  if (!editBlock) return;
+  const isOpen = editBlock.style.display !== 'none';
+  editBlock.style.display = isOpen ? 'none' : 'block';
+  if (bodyBlock) bodyBlock.style.display = isOpen ? 'block' : 'none';
+  if (btn) btn.textContent = isOpen ? 'Edit' : 'Done';
+};
+
+window.ftqSkip = async function(docId) {
+  if (!currentUser) return;
+  const q = FOLLOW_THROUGH_QUEUE.find(x => x.id === docId);
+  if (!q) return;
+  q.status = 'skipped';
+  await updateDoc(doc(db, 'users', currentUser.uid, 'followThroughQueue', docId), { status: 'skipped' });
+  renderTasks();
+  showToast('Skipped');
+};
+
+// Regenerate a queue draft with revision notes. Opens a modal asking what to
+// change, calls regenerateFollowThroughDraft, then updates the card in place.
+window.ftqRegenerate = function(docId) {
+  const q = FOLLOW_THROUGH_QUEUE.find(x => x.id === docId);
+  if (!q) return;
+  let modal = document.getElementById('ftq-regen-modal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'ftq-regen-modal';
+    modal.style.cssText = 'position:fixed;inset:0;z-index:9999;display:none;align-items:center;justify-content:center;background:rgba(10,10,10,0.55);padding:20px;';
+    modal.innerHTML = '<div style="background:var(--card,#fff);border-radius:16px;max-width:440px;width:100%;padding:22px;box-shadow:0 20px 60px rgba(0,0,0,0.3);">'
+      + '<div style="font-family:\'Playfair Display\',serif;font-size:19px;font-weight:800;color:var(--navy,#1a1a1a);margin-bottom:4px;">Regenerate draft</div>'
+      + '<div id="ftq-regen-for" style="font-size:12.5px;color:var(--muted,#888);margin-bottom:14px;"></div>'
+      + '<div id="ftq-regen-chips" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px;"></div>'
+      + '<textarea id="ftq-regen-input" rows="3" placeholder="What should Lola change? e.g. make it shorter, mention the conference, add a clear ask…" style="width:100%;padding:10px 12px;border:1.5px solid var(--border,#e3e3e3);border-radius:9px;font-size:13px;font-family:\'DM Sans\',sans-serif;resize:vertical;box-sizing:border-box;background:var(--bg,#fafafa);color:var(--navy,#1a1a1a);"></textarea>'
+      + '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;">'
+      + '<button id="ftq-regen-cancel" style="padding:9px 16px;border-radius:8px;border:1px solid var(--border,#e3e3e3);background:transparent;color:var(--muted,#888);font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;">Cancel</button>'
+      + '<button id="ftq-regen-go" style="padding:9px 18px;border-radius:8px;border:none;background:linear-gradient(135deg,#5B5BD6,#A78BFA);color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;">Regenerate</button>'
+      + '</div></div>';
+    document.body.appendChild(modal);
+    ['Make it shorter','Warmer tone','More direct','Add a clear ask','Less salesy','More specific'].forEach(t => {
+      const b = document.createElement('button');
+      b.type = 'button'; b.textContent = t;
+      b.style.cssText = 'padding:5px 11px;border-radius:999px;border:1px solid var(--border,#e3e3e3);background:var(--bg,#f5f5f5);color:var(--navy,#333);font-size:11.5px;font-weight:600;cursor:pointer;font-family:inherit;';
+      b.onclick = () => {
+        const ta = modal.querySelector('#ftq-regen-input');
+        ta.value = ta.value.trim() ? (ta.value.trim() + '. ' + t) : t;
+        ta.focus();
+      };
+      modal.querySelector('#ftq-regen-chips').appendChild(b);
+    });
+    modal.querySelector('#ftq-regen-cancel').onclick = () => { modal.style.display = 'none'; };
+    modal.addEventListener('click', (e) => { if (e.target === modal) modal.style.display = 'none'; });
+  }
+  modal.querySelector('#ftq-regen-for').textContent = (q.contactName || 'Contact') + ' · ' + (q.stepName || '');
+  modal.querySelector('#ftq-regen-input').value = '';
+  const goBtn = modal.querySelector('#ftq-regen-go');
+  goBtn.disabled = false; goBtn.textContent = 'Regenerate';
+  goBtn.onclick = () => ftqRegenerateSubmit(docId);
+  modal.style.display = 'flex';
+  setTimeout(() => { try { modal.querySelector('#ftq-regen-input').focus(); } catch (_) {} }, 50);
+};
+
+window.ftqRegenerateSubmit = async function(docId) {
+  const modal = document.getElementById('ftq-regen-modal');
+  if (!modal) return;
+  const feedback = modal.querySelector('#ftq-regen-input').value.trim();
+  const goBtn = modal.querySelector('#ftq-regen-go');
+  goBtn.disabled = true; goBtn.textContent = 'Regenerating…';
+  try {
+    const res = await httpsCallable(functions, 'regenerateFollowThroughDraft')({ docId, feedback });
+    const subject = res.data && res.data.subject;
+    const body = res.data && res.data.body;
+    const q = FOLLOW_THROUGH_QUEUE.find(x => x.id === docId);
+    if (q) { if (subject) q.draftSubject = subject; if (body) q.draftBody = body; }
+    const bodyEl = document.getElementById('ftq-body-' + docId); if (bodyEl && body) bodyEl.textContent = body;
+    const taEl = document.getElementById('ftq-ta-' + docId); if (taEl && body) taEl.value = body;
+    const subjEl = document.getElementById('ftq-subj-' + docId); if (subjEl && subject) subjEl.value = subject;
+    modal.style.display = 'none';
+    showToast('Draft regenerated');
+  } catch (e) {
+    console.error('[ftqRegenerate]', e);
+    goBtn.disabled = false; goBtn.textContent = 'Regenerate';
+    showToast('Could not regenerate: ' + (e.message || 'error'), true);
+  }
+};
+
+window.resumeCadence = async function(contactId) {
+  if (!currentUser) return;
+  const c = CONTACTS.find(x => x.id === contactId);
+  if (!c) return;
+  c.cadencePaused = false;
+  c.cadencePausedAt = null;
+  await updateDoc(doc(db, 'users', currentUser.uid, 'contacts', contactId), {
+    cadencePaused: false,
+    cadencePausedAt: null,
+  });
+  renderNetwork();
+  showToast('Cadence resumed');
 };
 
 // ── CALENDAR SYNC ──
@@ -8664,13 +9352,21 @@ window.openEditActivities = function() {
   document.getElementById('edit-acts-overlay').classList.add('open');
 };
 
+const ACTIVITY_CATEGORIES = [
+  'Networking', 'Conversations', 'Follow Through',
+  'High-Value Meetings', 'Referrals & Results', 'Other',
+];
+
 function renderEditActRow(id, icon, name, cat, pts, lead) {
-  // lead can be true (Lead — future business), false (Lag — current results), or undefined → default Lead
   const isLag = lead === false;
+  // Include the current category even if it's custom (not in the standard list)
+  const cats = ACTIVITY_CATEGORIES.includes(cat) ? ACTIVITY_CATEGORIES : [...ACTIVITY_CATEGORIES, cat].filter(Boolean);
+  const catOptions = cats.map(c => `<option value="${c.replace(/"/g,'&quot;')}" ${c===cat?'selected':''}>${c}</option>`).join('');
   return `<div class="edit-act-row" id="ear-${id}" style="display:grid;grid-template-columns:44px 1fr 130px 60px 76px 32px;gap:8px;align-items:center;margin-bottom:8px;">
-    <input type="text" value="${icon}" id="ear-icon-${id}" style="width:44px;height:38px;text-align:center;font-size:18px;border:1.5px solid var(--border);border-radius:8px;background:var(--bg);font-family:'DM Sans',sans-serif;">
+    <button type="button" id="ear-icon-btn-${id}" onclick="event.stopPropagation();openIconPicker('${id}',this)" style="width:44px;height:38px;font-size:20px;border:1.5px solid var(--border);border-radius:8px;background:var(--bg);cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;">${icon||'⭐'}</button>
+    <input type="hidden" value="${icon||'⭐'}" id="ear-icon-${id}">
     <input type="text" value="${name}" id="ear-name-${id}" placeholder="Activity name" style="padding:8px 10px;border:1.5px solid var(--border);border-radius:8px;font-family:'DM Sans',sans-serif;font-size:13px;color:var(--navy);background:var(--bg);width:100%;">
-    <input type="text" list="cat-options" autocomplete="off" value="${cat}" id="ear-cat-${id}" placeholder="Type or pick…" title="Pick an existing category or type a new one to create it" style="padding:8px 10px;border:1.5px solid var(--border);border-radius:8px;font-family:'DM Sans',sans-serif;font-size:12px;color:var(--navy);background:var(--bg);width:100%;">
+    <select id="ear-cat-${id}" style="padding:8px 6px;border:1.5px solid var(--border);border-radius:8px;font-family:'DM Sans',sans-serif;font-size:12px;color:var(--navy);background:var(--bg);width:100%;cursor:pointer;">${catOptions}</select>
     <input type="number" value="${pts}" id="ear-pts-${id}" min="1" max="99" style="padding:8px;border:1.5px solid var(--border);border-radius:8px;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:700;color:var(--navy);background:var(--bg);text-align:center;width:100%;">
     <select id="ear-lead-${id}" onchange="(function(s){const lag=s.value==='lag';s.style.color=lag?'#1e40af':'#2f6b3f';s.style.background=lag?'#dbeafe':'#e8f5ec';})(this)" title="Lead = future-business action you take. Lag = current-results outcome." style="padding:8px 6px;border:1.5px solid var(--border);border-radius:8px;font-family:'DM Sans',sans-serif;font-size:11px;font-weight:700;color:${isLag?'#1e40af':'#2f6b3f'};background:${isLag?'#dbeafe':'#e8f5ec'};text-align:center;width:100%;cursor:pointer;">
       <option value="lead" ${!isLag?'selected':''}>Lead</option>
@@ -8706,8 +9402,61 @@ window.addEditActRow = function() {
 };
 
 window.closeEditActivities = function() {
+  closeIconPicker();
   document.getElementById('edit-acts-overlay').classList.remove('open');
 };
+
+const ICON_PICKER_EMOJIS = [
+  '📞','📱','💬','✉️','📧','📝','📋','🗒️',
+  '☕','🍽️','🤝','👋','👥','💼','🏢','🧑‍💼',
+  '🎤','🎧','🎉','🥂','🏆','🎯','🎪','🎓',
+  '✅','⭐','🌟','💫','🔔','📅','⏰','🚀',
+  '📸','🤳','💻','🖥️','📊','📈','🔗','🌐',
+  '🎁','💡','📚','🧠','🔑','💎','👑','🏅',
+  '💰','🤑','📬','🙏','❤️','✨','🌱','🔥',
+  '⚡','🎶','🌎','🦁','🐝','🍀','🎲','🏋️',
+  '🤙','📣','🗣️','🏡','🚗','✈️','🌴','🎸',
+];
+
+let _iconPickerTargetId = null;
+
+window.openIconPicker = function(rowId, anchorEl) {
+  if (_iconPickerTargetId === rowId) { closeIconPicker(); return; }
+  _iconPickerTargetId = rowId;
+
+  const grid = document.getElementById('icon-picker-grid');
+  grid.innerHTML = ICON_PICKER_EMOJIS.map(e =>
+    `<button type="button" onclick="selectIcon('${e}')" style="font-size:20px;padding:5px;border:none;background:none;cursor:pointer;border-radius:6px;line-height:1;" onmouseover="this.style.background='var(--bg)'" onmouseout="this.style.background='none'">${e}</button>`
+  ).join('');
+
+  const pop = document.getElementById('icon-picker-popover');
+  const rect = anchorEl.getBoundingClientRect();
+  pop.style.display = 'block';
+  const popH = pop.offsetHeight || 320;
+  const spaceBelow = window.innerHeight - rect.bottom;
+  if (spaceBelow < popH + 12) {
+    pop.style.top = (rect.top - popH - 6) + 'px';
+  } else {
+    pop.style.top = (rect.bottom + 6) + 'px';
+  }
+  pop.style.left = Math.min(rect.left, window.innerWidth - 290) + 'px';
+};
+
+window.selectIcon = function(emoji) {
+  if (!_iconPickerTargetId) return;
+  const hidden = document.getElementById('ear-icon-' + _iconPickerTargetId);
+  const btn    = document.getElementById('ear-icon-btn-' + _iconPickerTargetId);
+  if (hidden) hidden.value = emoji;
+  if (btn)    btn.textContent = emoji;
+  closeIconPicker();
+};
+
+function closeIconPicker() {
+  _iconPickerTargetId = null;
+  const pop = document.getElementById('icon-picker-popover');
+  if (pop) pop.style.display = 'none';
+}
+document.addEventListener('click', closeIconPicker);
 
 window.saveEditActivities = async function() {
   // Save 8-step names and points
@@ -8730,7 +9479,7 @@ window.saveEditActivities = async function() {
     const lead = leadVal === 'lag' ? false : true;
     if(!name) return;
     const orig = ACTIVITIES.find(a => a.name === name);
-    newActs.push({ icon, name, cat, pts, lead, ctx: orig?.ctx || null });
+    newActs.push({ icon, name, cat, category: cat, pts, lead, ctx: orig?.ctx || null });
   });
   if(newActs.length === 0) { showToast('⚠️ Add at least one activity'); return; }
   // Append any catalog items the user opted in to via the "Available from Catalog" section
@@ -8743,7 +9492,7 @@ window.saveEditActivities = async function() {
     const g = (GLOBAL_CATALOG || []).find(x => x.name === name);
     if (!g) return;
     const orig = ACTIVITIES.find(a => a.name === name);
-    newActs.push({ icon: g.icon, name: g.name, cat: g.cat, pts: g.pts, lead: g.lead, ctx: orig?.ctx || null });
+    newActs.push({ icon: g.icon, name: g.name, cat: g.cat, category: g.cat, pts: g.pts, lead: g.lead, ctx: orig?.ctx || null });
     optedInCount++;
   });
   // Always keep system activities
@@ -8950,6 +9699,29 @@ const LOLA_FN_BASE = (location.hostname.includes('localhost'))
 let _lolaHistory = []; // [{role:'user'|'assistant', text, proposal?}]
 let _lolaBusy = false;
 let _lolaPendingProposal = null;
+let _lolaCurrentMode = null; // persists across turns so follow-up replies stay in the same mode
+
+function parseContactFromText(text) {
+  const result = { first: '', last: '', phone: '', email: '', company: '', event: '' };
+  const emailMatch = text.match(/[\w.+-]+@[\w-]+\.[\w.]+/);
+  if (emailMatch) result.email = emailMatch[0];
+  const phoneMatch = text.match(/(\+?1[\s.-]?)?(\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4})/);
+  if (phoneMatch) result.phone = phoneMatch[0].trim();
+  const metMatch = text.match(/met\s+(?:through|at|via|in)\s+(.+?)(?:\s+on\s+[A-Z][a-z]+|\s*[.,]?\s*$)/i);
+  if (metMatch) result.event = metMatch[1].trim().replace(/\s*[–—]\s*/g, ' - ');
+  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+  const firstLine = (lines[0] || '').replace(/^(add|new contact)[:\s]+/i, '');
+  const parts = firstLine.split(',').map(p => p.trim()).filter(Boolean);
+  const textParts = parts.filter(p => !/(\d{3}[\s.-]?\d{3}[\s.-]?\d{4})/.test(p) && !p.includes('@'));
+  if (textParts.length >= 1) {
+    const words = textParts[0].split(/\s+/);
+    result.first = words[0] || '';
+    result.last = words.slice(1).join(' ') || '';
+  }
+  if (textParts.length === 2) result.company = textParts[1];
+  else if (textParts.length >= 3) result.company = textParts[textParts.length - 1];
+  return result;
+}
 
 function lolaAccessAllowed() {
   // CRM is Pro-only already; Lola is included with Pro.
@@ -9016,6 +9788,18 @@ function _parseLolaCopySegments(text) {
   return { displayText: segments.join('\n\n'), copyText: inner, hasDraft: true };
 }
 
+function lolaLinkifyContacts(html) {
+  if (!CONTACTS || !CONTACTS.length) return html;
+  const sorted = [...CONTACTS].filter(c => c.name && c.name.length >= 3)
+    .sort((a, b) => b.name.length - a.name.length);
+  sorted.forEach(c => {
+    const esc = c.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const re = new RegExp(`(?<!\\w)(${esc})(?!\\w)`, 'g');
+    html = html.replace(re, `<a onclick="goContact('${c.id}')" style="color:#C4B5FD;text-decoration:underline dotted;cursor:pointer;font-weight:700;">$1</a>`);
+  });
+  return html;
+}
+
 function lolaPushBot(text, proposal) {
   _lolaHistory.push({ role: 'assistant', text, proposal });
   const body = document.getElementById('lola-body');
@@ -9024,9 +9808,11 @@ function lolaPushBot(text, proposal) {
   // Detect a drafted message (Lola wraps in <<<COPY>>>…<<<ENDCOPY>>>).
   const parsed = _parseLolaCopySegments(text);
   // Basic bold/italic rendering on the cleaned display text
-  div.innerHTML = escapeHtmlCRM(parsed.displayText)
-    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    .replace(/\n/g, '<br>');
+  div.innerHTML = lolaLinkifyContacts(
+    escapeHtmlCRM(parsed.displayText)
+      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+      .replace(/\n/g, '<br>')
+  );
   body.appendChild(div);
   // Copy button — when a draft is present, copies ONLY the draft content
   // (clean, ready to paste into email/text). When no draft markers are
@@ -9128,6 +9914,7 @@ window.lolaSaveProposal = async function() {
     updatePlaybookSettingsSub();
     lolaPushBot(`Saved "${saved.name}" to your library. You can assign it to any contact from their card.`);
     _lolaPendingProposal = null;
+    _lolaCurrentMode = null; // ready for a new topic
   } catch (e) {
     showToast('⚠️ ' + e.message);
   }
@@ -9149,14 +9936,25 @@ window.lolaSend = function() {
   if (!text) return;
   input.value = '';
   lolaPushUser(text);
-  // Detect intent: if message starts with "build" or mentions "playbook", route to build_playbook
-  const lower = text.toLowerCase();
-  if (lower.includes('playbook') || lower.startsWith('build ') || lower.startsWith('make ') || lower.startsWith('create ')) {
-    runLolaCall({ mode: 'build_playbook', prompt: text });
-  } else {
-    runLolaCall({ mode: 'freeform', prompt: text });
+
+  // Intent detection: only re-run when there's no active build_playbook thread.
+  // Once Lola starts building a playbook, keep all follow-up messages in that
+  // mode so answers like "networking event contact" don't fall through to freeform.
+  if (_lolaCurrentMode !== 'build_playbook') {
+    const lower = text.toLowerCase();
+    const hasEmail = /[\w.+-]+@[\w-]+\.[\w.]+/.test(text);
+    const hasPhone = /\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}/.test(text);
+    const hasAddIntent = /^(add|new contact)\b/i.test(text.trim());
+    if ((hasEmail && hasPhone) || (hasAddIntent && (hasEmail || hasPhone))) {
+      _lolaCurrentMode = 'add_contact';
+    } else if (lower.includes('playbook') || lower.startsWith('build ') || lower.startsWith('make ') || lower.startsWith('create ')) {
+      _lolaCurrentMode = 'build_playbook';
+    } else {
+      _lolaCurrentMode = 'freeform';
+    }
   }
-  // Reset textarea height after send
+  runLolaCall({ mode: _lolaCurrentMode, prompt: text });
+
   const inputEl = document.getElementById('lola-input');
   if (inputEl) { inputEl.style.height = 'auto'; }
 };
@@ -9166,6 +9964,22 @@ async function runLolaCall(payload) {
   document.getElementById('lola-send').disabled = true;
   lolaPushThinking();
   try {
+    // Handle contact paste client-side — no Cloud Function needed
+    if (payload.mode === 'add_contact') {
+      const p = parseContactFromText(payload.prompt);
+      openAddContact();
+      if (p.first)   document.getElementById('ac-first').value   = p.first;
+      if (p.last)    document.getElementById('ac-last').value    = p.last;
+      if (p.phone)   document.getElementById('ac-phone').value   = p.phone;
+      if (p.email)   document.getElementById('ac-email').value   = p.email;
+      if (p.company) document.getElementById('ac-company').value = p.company;
+      if (p.event)   document.getElementById('ac-event').value   = p.event;
+      const name = [p.first, p.last].filter(Boolean).join(' ');
+      lolaClearThinking();
+      lolaPushBot(`Got it — I've pre-filled the Add Contact form for ${name || 'this contact'}. Review the details and tap "Add Contact ✓" to save.`);
+      _lolaCurrentMode = null;
+      return;
+    }
     const token = await currentUser.getIdToken();
     // Build context for daily_brief: overdue + due-today bucket counts
     // Identify the active screen from the DOM (the .screen with display!=='none')
@@ -9190,10 +10004,18 @@ async function runLolaCall(payload) {
         return { name: c.name, company: c.company || '', status: resolveStatus(c) || '', stepIndex: nextStep, stepName: s.name, daysSinceClockStart: c.clockStarted ? Math.floor((Date.now() - new Date(c.clockStarted).getTime())/86400000) : 0 };
       });
     }
+    // Pass recent history so Lola has context for follow-up turns.
+    // Exclude the last entry (just pushed by lolaPushUser — that's the current userMessage).
+    const historyForApi = _lolaHistory.slice(0, -1).slice(-8).map(h => ({
+      role: h.role,
+      content: h.role === 'assistant'
+        ? (h.text || (h.proposal ? `[Proposed playbook: ${h.proposal.name}]` : ''))
+        : (h.text || ''),
+    })).filter(h => h.content);
     const res = await fetch(`${LOLA_FN_BASE}/lolaSwhAssistant`, {
       method: 'POST',
       headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...payload, context: ctx }),
+      body: JSON.stringify({ ...payload, context: ctx, history: historyForApi }),
     });
     lolaClearThinking();
     if (!res.ok) {

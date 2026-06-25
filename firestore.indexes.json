@@ -1,0 +1,64 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "vaTasks",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "dueAt", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "vaTasks",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "contactId", "order": "ASCENDING" },
+        { "fieldPath": "dueAt", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "vaTasks",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "contactId", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "dueAt", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "vaTasks",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "contactId", "order": "ASCENDING" },
+        { "fieldPath": "step", "order": "ASCENDING" },
+        { "fieldPath": "dueAt", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "vaTasks",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "step", "order": "ASCENDING" },
+        { "fieldPath": "dueAt", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "vaTasks",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "nextNagAt", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "integrations",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "product", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

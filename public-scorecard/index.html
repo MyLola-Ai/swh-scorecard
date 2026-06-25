@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
-<title>SWH Scoreboard v18 — Stop Wasting Handshakes</title>
+<title>SWH Scoreboard — Stop Wasting Handshakes</title>
 <meta property="og:title" content="Stop Wasting Handshakes">
 <meta property="og:description" content="Stop Wasting Handshakes. Start Building Momentum.">
 <meta property="og:image" content="https://swh-scoreboard.web.app/assets/swh/swh-lockup-light.png">
@@ -438,6 +438,7 @@
   function normalizeActivities(list) {
     return (list || []).map(act => {
       if (act.category) return act;
+      if (act.cat) return { ...act, category: act.cat };
       const def = DEFAULT_ACTIVITIES.find(d => d.name === act.name);
       return { ...act, category: def ? def.category : 'Activities' };
     });
@@ -1826,9 +1827,7 @@
   let _actUnsub = null;
   function _startActListener(uid) {
     if (_actUnsub) { _actUnsub(); _actUnsub = null; }
-    let initDone = false;
     _actUnsub = onSnapshot(doc(db, 'users', uid, 'config', 'activities'), snap => {
-      if (!initDone) { initDone = true; return; } // skip echo of initial getDoc value
       if (!snap.exists() || snap.metadata.hasPendingWrites) return; // skip local writes
       const list = snap.data().list || DEFAULT_ACTIVITIES.map(a => ({...a}));
       activities = normalizeActivities(list);
@@ -2764,7 +2763,7 @@
       items.forEach(({act,i})=>{
         const count=todayCounts[i]||0;
         const isLag=act.lead===false;
-        const llBadge = `<span style="display:inline-flex;align-items:center;gap:3px;padding:2px 7px;border-radius:999px;font-size:9px;font-weight:800;letter-spacing:0.06em;text-transform:uppercase;white-space:nowrap;flex-shrink:0;${isLag?'background:#FED7AA;color:#9A3412;':'background:#DBEAFE;color:#1E40AF;'};margin-left:6px;vertical-align:middle;">${isLag?'Lag':'Lead'}</span>`;
+        const llBadge = `<span style="display:inline-flex;align-items:center;gap:3px;padding:2px 7px;border-radius:999px;font-size:9px;font-weight:800;letter-spacing:0.06em;text-transform:uppercase;white-space:nowrap;flex-shrink:0;${isLag?'background:#FED7AA;color:#9A3412;':'background:#DBEAFE;color:#1E40AF;'};vertical-align:middle;">${isLag?'Lag':'Lead'}</span>`;
         const card=document.createElement('div'); card.className='activity-card';
         card.style.borderLeftColor=color;
         card.innerHTML=`
@@ -3969,7 +3968,7 @@
   .activity-icon{width:38px;height:38px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0;}
   .activity-info{min-width:0;overflow:hidden;}
   .activity-name{font-size:14px;font-weight:600;display:flex;align-items:center;gap:6px;white-space:normal;}
-  .activity-name-text{flex:1;min-width:0;overflow-wrap:break-word;word-break:break-word;}
+  .activity-name-text{flex:1;min-width:0;overflow-wrap:break-word;word-break:normal;}
   .lag-tag{font-size:9px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;background:#fef3cd;color:#b8860b;padding:2px 6px;border-radius:4px;flex-shrink:0;white-space:nowrap;}
   .activity-pts{font-size:11px;color:var(--text-muted);margin-top:1px;overflow-wrap:break-word;word-break:break-word;white-space:normal;}
   .activity-counter{display:flex;align-items:center;gap:6px;flex-shrink:0;}

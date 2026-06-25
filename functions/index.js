@@ -2268,6 +2268,14 @@ async function mirrorSubscriptionToUser(sub) {
     syncApptPlan(uid, sub.id).catch(err =>
       console.warn('[mirrorSubscriptionToUser] appt sync failed (non-fatal):', err?.message ?? err)
     );
+    // Enroll in onboarding drip — idempotent, so safe to call on every renewal.
+    // Resolves email from the user doc rather than Stripe to avoid coupling.
+    db.collection('users').doc(uid).get().then(uSnap => {
+      const ud = uSnap.data() || {};
+      enrollOnboardingDripForUid(uid, ud.email || '', ud.displayName || '').catch(e =>
+        console.warn('[mirrorSubscriptionToUser] drip enroll failed (non-fatal):', e?.message)
+      );
+    }).catch(() => {});
   }
 }
 
@@ -3597,7 +3605,14 @@ CRITICAL formatting rule — sendable message markers:
 When building a playbook:
 - Always return exactly 8 steps.
 - Day offsets should be reasonable for the relationship type. Faster cadence for hot opportunities (e.g. 1, 2, 4, 7, 10, 14, 21, 30). Slower for VIP / past-client / long-game (e.g. 1, 14, 30, 60, 90, 120, 180, 365).
-- Each step has a name (4-7 words), a description (1-2 sentences, action-oriented, no fluff), an icon (single emoji), and points (5 for normal, 10 for high-effort like 1:1 meetings or major value gifts).
+- Each step has a name (4-7 words), a description (1-2 sentences, action-oriented, no fluff), an icon (single emoji), and points. Assign points by matching the step to the closest Log Activity:
+  - Initial message / "Good to meet you" outreach: 5 pts
+  - FORM conversation (the actual 1-on-1 where you do FORM): 5 pts
+  - Phone call or text-based check-in: 5 pts
+  - Attending a physical or virtual 1:1, coffee, or lunch: 10 pts
+  - Making an introduction: 10 pts
+  - Giving a referral: 10 pts
+  - Everything else (social media connects, newsletter invites, resource shares, event invitations, check-in messages, follow-through messages that don't fit above): 1 pt ("Perform Other 8 Step Activities")
 - Step descriptions should be specific, not generic. "Send a quick text" is bad. "Text them a one-liner referencing where you met, no pitch" is good.
 
 When writing a step message:
@@ -3608,6 +3623,8 @@ When writing a step message:
 
 const LOLA_BUILD_PLAYBOOK_INSTRUCTIONS = `Build an 8-step follow-through playbook for the relationship type the user describes.
 
+You may ask ONE clarifying question if you have zero context about the relationship type. The moment the user provides any description (even brief, like "networking event" or "past client"), build the playbook immediately. Do NOT ask follow-up questions about specific people, their names, or their company. Those details belong in the contact record, not the playbook.
+
 Return your answer in this JSON shape (and ONLY this JSON, no surrounding prose, no markdown fences):
 
 {
@@ -3615,7 +3632,7 @@ Return your answer in this JSON shape (and ONLY this JSON, no surrounding prose,
   "description": "<1 sentence explaining when to use this playbook>",
   "icon": "<single emoji>",
   "steps": [
-    { "name": "<4-7 words>", "description": "<1-2 sentences, specific and actionable>", "offsetDays": <int>, "points": <int 5-15>, "icon": "<single emoji>" },
+    { "name": "<4-7 words>", "description": "<1-2 sentences, specific and actionable>", "offsetDays": <int>, "points": <1|5|10 — see points mapping>, "icon": "<single emoji>" },
     ... 8 total
   ],
   "intro": "<1-2 sentences to the user explaining the cadence you chose and why. No 'Here is your playbook' filler. Talk like a coach.>"
@@ -3626,7 +3643,7 @@ Constraints:
 - offsetDays must be strictly increasing (each step happens later than the previous).
 - offsetDays[0] should be 1 unless the relationship type strongly suggests otherwise (e.g., VIP long-game might start at day 3 or 7).
 - Use emoji icons that match the step's action.
-- Points: 5 for light touches, 10 for high-effort (real conversations, 1:1 meetings, major value drops), occasionally 15 for the highest-leverage step.`;
+- Points: use the activity mapping (defined in the system prompt). Initial outreach / "good to meet you" message = 5. FORM conversation = 5. Phone/text check-in = 5. In-person or virtual 1:1 / coffee / lunch = 10. Making an introduction = 10. Giving a referral = 10. Everything else = 1.`;
 
 const LOLA_DAILY_BRIEF_INSTRUCTIONS = `Look at the user's overdue follow-throughs (provided in context.overdue). Return a JSON object:
 
@@ -3636,13 +3653,15 @@ const LOLA_DAILY_BRIEF_INSTRUCTIONS = `Look at the user's overdue follow-through
 
 Do NOT return a numbered list. Talk like a sharp executive assistant briefing them over coffee. Reference at most 3 contacts by name. If they have zero overdue, give them a positive nudge to add 1 new touch today.`;
 
-const LOLA_WRITE_STEP_INSTRUCTIONS = `Draft an outreach message for the user to send. Return a JSON object:
+const LOLA_WRITE_STEP_INSTRUCTIONS = `Draft an outreach message for the user to send. Return ONLY valid JSON, no prose, no markdown fences:
 
 {
-  "text": "<the full message, ready to copy. No subject line unless step is email. No prefix like 'Here is your message:'. Just the message itself.>"
+  "subject": "<email subject line, 5-10 words, warm and specific, no em-dashes>",
+  "body": "<the full message body, ready to send. First-person as the user. Reference the contact by first name. Specific and warm, no pitch. No subject line at the top. No em-dashes. No placeholder text in brackets.>",
+  "text": "<same as body, included for backward compatibility>"
 }
 
-Match the user's voice. Reference specific context. Keep it concise.`;
+Match the user's voice. Reference specific context from the step and contact notes. Keep it concise. No em-dashes anywhere.`;
 
 // ============================================================
 // loadLolaCrmContext — gives Lola visibility into the user's CRM
@@ -3732,8 +3751,17 @@ async function loadLolaCrmContext(uid) {
     };
   });
 
-  // Recent activity totals (last 7 + last 30 days)
+  // Recent activity totals — current calendar week (Mon–today, leadPts only, matches dashboard)
+  // plus rolling windows for trend context.
   const days = daysSnap.docs.map(d => d.data());
+  // Monday of current week
+  const todayDate = new Date(todayKey + 'T12:00:00');
+  const dayOfWeek = todayDate.getDay(); // 0=Sun
+  const daysToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+  const monDate = new Date(todayDate);
+  monDate.setDate(monDate.getDate() + daysToMonday);
+  const weekStartKey = monDate.toISOString().slice(0, 10);
+  const currentWeek = days.filter(d => d.dateKey && d.dateKey >= weekStartKey && d.dateKey <= todayKey);
   const last7 = days.filter(d => {
     if (!d.dateKey) return false;
     const ageDays = Math.floor((now - new Date(d.dateKey + 'T12:00:00').getTime()) / dayMs);
@@ -3771,6 +3799,9 @@ async function loadLolaCrmContext(uid) {
       weeklyGoal: user.weeklyGoal || 150,
     },
     activity: {
+      weekPts: sum(currentWeek, 'leadPts'),
+      weekGoal: user.weeklyGoal || 200,
+      weekActiveDays: currentWeek.length,
       pts7d: sum(last7, 'totalPts'),
       leadPts7d: sum(last7, 'leadPts'),
       lagPts7d: sum(last7, 'lagPts'),
@@ -3818,7 +3849,7 @@ exports.lolaSwhAssistant = onRequest({
   try {
     const decoded = await requireAuth(req);
     const uid = decoded.uid;
-    const { mode, prompt, context } = req.body || {};
+    const { mode, prompt, context, history } = req.body || {};
     if (!mode) throw Object.assign(new Error('mode is required'), { statusCode: 400 });
 
     // Plan gate — Lola is included with CRM Pro only
@@ -3907,7 +3938,13 @@ When listing contacts, use this format (no bullet markers, just lines):
         model: 'claude-opus-4-5',
         max_tokens: 1500,
         system: fullSystemPrompt,
-        messages: [{ role: 'user', content: userMessage }],
+        messages: [
+          ...(Array.isArray(history) ? history : []).slice(-8).map(h => ({
+            role: h.role === 'assistant' ? 'assistant' : 'user',
+            content: String(h.content || ''),
+          })).filter(h => h.content),
+          { role: 'user', content: userMessage },
+        ],
       }),
     });
 
@@ -3922,13 +3959,16 @@ When listing contacts, use this format (no bullet markers, just lines):
 
     // Parse the response based on mode
     if (mode === 'build_playbook') {
-      // Strip markdown code fences if Claude included any
-      const cleaned = rawText.replace(/```json|```/g, '').trim();
+      // Strip markdown code fences, then extract the JSON object even if
+      // Claude added preamble prose like "Got it. Here's the playbook:".
+      const stripped = rawText.replace(/```json|```/g, '');
+      const jsonMatch = stripped.match(/\{[\s\S]*\}/);
       let proposal;
       try {
-        proposal = JSON.parse(cleaned);
+        if (!jsonMatch) throw new Error('No JSON object found');
+        proposal = JSON.parse(jsonMatch[0]);
       } catch (e) {
-        console.error('[lolaSwhAssistant] Failed to parse playbook JSON:', cleaned);
+        console.error('[lolaSwhAssistant] Failed to parse playbook JSON:', stripped);
         return res.json({ text: rawText, proposal: null });
       }
       const introText = proposal.intro || `Here's a draft for "${proposal.name}". Edit anything before saving.`;
@@ -5946,4 +5986,773 @@ exports.backfillRelationshipGrades = onCall(async (req) => {
     proposals.push({ id: d.id, name: c.name, current: existing || 'new', proposed, daysSince, reason: `${daysSince}d since last touch` });
   }
   return { dryRun: true, count: proposals.length, proposals };
+});
+
+// ============================================================
+// FOLLOW-THROUGH QUEUE — morning build job + Lola drafter
+// ============================================================
+
+function chicagoTodayKey() {
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Chicago' });
+}
+
+function addDaysServer(dateKey, days) {
+  const [y, m, d] = dateKey.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10);
+}
+
+// Normalize clockStarted to a 'YYYY-MM-DD' key. Accepts a date-only string,
+// a full ISO datetime, a Firestore Timestamp, a Date, or epoch ms. Returns
+// null if it cannot be parsed, so the caller can skip that one contact
+// instead of crashing the whole run on an Invalid Date.
+function toDateKey(v) {
+  if (!v) return null;
+  if (typeof v === 'string') {
+    const m = v.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    return m ? `${m[1]}-${m[2]}-${m[3]}` : null;
+  }
+  try {
+    const d = typeof v.toDate === 'function' ? v.toDate() : new Date(v);
+    return isNaN(d.getTime()) ? null : d.toISOString().slice(0, 10);
+  } catch (_) {
+    return null;
+  }
+}
+
+// Build the user's email signature: name, phone, email (or a custom
+// emailSignature override). Appended to every drafted follow-through.
+// Contact block appended UNDER the model's own sign-off (it signs with the name
+// in Austen's voice; we add the real phone + email so they are never guessed).
+function buildSignature(ud) {
+  ud = ud || {};
+  if (ud.emailSignature) return String(ud.emailSignature).trim();
+  return [ud.phone || '', ud.email || ''].filter(Boolean).join('\n');
+}
+
+// Per-step link that must appear in the draft, exactly. Keyed off the step
+// name so it works with custom playbook step names (e.g. "The Networking Wire
+// Invitation", "Invite to 1:1").
+function stepLink(stepName) {
+  const n = String(stepName || '').toLowerCase();
+  if (n.includes('networking wire')) return 'https://thenetworkingwire.com';
+  if (n.includes('invite')) return 'https://schedule.austensmith.com';
+  return null;
+}
+
+// Austen's writing voice, distilled from his real samples + the copy across his
+// products. Used as the system prompt so every draft sounds like he wrote it.
+const VOICE_PROFILE = `You are drafting a networking follow-up email AS Austen Smith. It must read like Austen personally typed it, never like AI.
+
+VOICE: Warm, confident, educational, helpful-first. You are a guide who happens to do mortgages, not a salesperson. Write the way you talk.
+
+GREETING: Use "Hi [First]," for clients, prospects, and newer contacts. Use "Hey [First]," for warm or partner relationships. For a milestone or congrats note, the first name alone on a line is fine. Never "Dear."
+
+LENGTH: Short. Two to four short paragraphs, most one to three sentences each, roughly 100 to 250 words. One idea per email. Concise is respectful.
+
+STRUCTURE: (1) Warm opener referencing where you met or the last conversation. (2) One genuine helpful-first reason for the note: teach one small thing, share a resource, or just check in. No pitch stacked on it. (3) A single soft next step, or explicitly no ask ("No agenda."). (4) A short warm closing line. (5) Sign-off plus your first name.
+
+RHYTHM: Short declaratives and the occasional fragment for emphasis. Mix one longer warm clause in, then snap back short. Heavy contractions, active voice, natural speech. Use parentheses for asides. Never use em-dashes.
+
+PRESSURE-REMOVAL PHRASES to draw from: "No rush." "No agenda." "Not trying to sell you anything." "No pitch."
+CARRY-THE-WORK OFFERS to draw from: "I'm one text away," "give me 5 min on a call," "happy to point you in the right direction," "happy to think out loud with you," "let me know if there's ever anything I can help with."
+Keep recommendations soft and collaborative: "probably makes the most sense," "Want me to...?" Never "You should" or "I recommend" as a command. Validate the person before suggesting anything.
+
+SIGN-OFFS to rotate: "Thanks, Austen" / "Chat soon, Austen" / "Talk soon, Austen" / just "Austen." On a more formal first touch, "Thanks, Austen Smith." Never "Best regards," "Sincerely," or a title block.
+
+NEVER USE: em-dashes, emoji, corporate filler ("I hope this finds you well," "circle back," "touch base," "per our conversation"), urgency or salesy lines ("act now," "don't miss out," "let's hop on a quick call to discuss how I can add value"), hype adjectives ("premier," "world-class," "stunning," "must-see"), menus of multiple asks, markdown headers or bold, or perfectly balanced robotic cadence. Vary your sentence length so it sounds human.
+
+Examples of how Austen writes (match this voice and rhythm; do not copy verbatim or reuse their specifics):
+
+EXAMPLE (good to meet you):
+Hi John,
+
+It was great meeting you today. I always enjoy connecting with people who are out building real relationships, not just chasing the next deal.
+
+As promised, wanted to introduce myself properly. I've been in the mortgage world for over 20 years, but the part I actually care about is helping clients and referral partners understand the why behind a financing decision instead of just quoting rates.
+
+If there's ever anything I can do for you, your clients, or even just a quick mortgage question, don't hesitate to reach out. And if you're ever not sure who to call on something, I'm happy to point you in the right direction.
+
+Looking forward to staying in touch.
+
+Thanks,
+Austen
+
+EXAMPLE (value, no ask):
+Hey Sarah,
+
+Came across this and thought of our conversation the other day.
+
+One thing I've learned over the years: the people who stay in front of their database consistently are usually the ones still getting referrals years after a deal closes. It doesn't have to be complicated. Just staying top of mind does most of the work.
+
+Figured you'd appreciate it since we were talking about building long-term relationships instead of constantly chasing new business.
+
+Hope you're having a great week. Let me know if there's ever anything I can help with.
+
+Chat soon,
+Austen
+
+EXAMPLE (check-in):
+Hi Mike,
+
+Hope you've been doing well.
+
+It's been a little while since we last talked, so I just wanted to check in and see how things are going. How's business been?
+
+If anything's changed, if you've got questions about the market, or if someone comes to mind who could use a second opinion on financing, I'm always happy to help.
+
+No agenda. Just wanted to say hello.
+
+Hope you have a great rest of your week.
+
+Thanks,
+Austen`;
+
+// In-process drafter — called by the build job directly, no HTTP overhead.
+async function draftWriteStep(ctx) {
+  const { stepName, stepDescription, contactName, contactCompany, contactEvent,
+          notesPreview, form, userFirstName, daysSinceClockStart,
+          userFeedback, previousBody, signature, linkUrl } = ctx;
+
+  const systemPrompt = VOICE_PROFILE + `
+
+Return ONLY valid JSON, no prose, no markdown fences:
+{"subject":"<email subject, 5-10 words, warm and specific, no em-dashes>","body":"<the full email body in Austen's voice, first-person, referencing the contact by first name. End with a short sign-off and his first name (e.g. Thanks, Austen). Do NOT add phone, email, or a contact block; that is appended automatically. No bracket placeholders, no em-dashes>","text":"<same as body>"}`;
+
+  const userMessage = [
+    `Step to complete: ${stepName}`,
+    stepDescription ? `Step goal: ${stepDescription}` : '',
+    `Contact: ${contactName}${contactCompany ? ' at ' + contactCompany : ''}`,
+    contactEvent ? `Where we met: ${contactEvent}` : '',
+    `Days since clock started: ${daysSinceClockStart || 0}`,
+    notesPreview ? `My notes: ${notesPreview}` : '',
+    form && (form.family || form.occupation || form.recreation || form.motivation)
+      ? `FORM intel: ${JSON.stringify(form)}` : '',
+    `My name: ${userFirstName || 'Austen'}`,
+    linkUrl ? `IMPORTANT: you MUST include this exact link in the message, written out in full and unchanged — do not alter, shorten, or invent a different URL: ${linkUrl}` : '',
+    previousBody ? `\nMy current draft (revise this, keep what works):\n${previousBody}` : '',
+    userFeedback ? `What to change — apply exactly: ${userFeedback}` : '',
+    '',
+    userFeedback ? 'Revise my message with those instructions. Return the same JSON shape.' : 'Draft this message for me.',
+  ].filter(Boolean).join('\n');
+
+  const apiResp = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': ANTHROPIC_API_KEY.value(),
+      'anthropic-version': '2023-06-01',
+    },
+    body: JSON.stringify({
+      model: 'claude-opus-4-5',
+      max_tokens: 600,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: userMessage }],
+    }),
+  });
+
+  if (!apiResp.ok) throw new Error(`Anthropic ${apiResp.status}`);
+  const result = await apiResp.json();
+  const raw = result.content?.[0]?.text || '';
+
+  const sig = signature ? '\n' + signature : '';
+  const match = raw.match(/\{[\s\S]*\}/);
+  if (!match) return { subject: stepName, body: raw + sig, text: raw + sig };
+  try {
+    const parsed = JSON.parse(match[0]);
+    const body = (parsed.body || parsed.text || raw) + sig;
+    const text = (parsed.text || parsed.body || raw) + sig;
+    return { subject: parsed.subject || stepName, body, text };
+  } catch (_) {
+    return { subject: stepName, body: raw + sig, text: raw + sig };
+  }
+}
+
+const DEFAULT_STEP_OFFSETS_SERVER = [1, 3, 6, 10, 14, 21, 30, 45];
+const DEFAULT_STEP_NAMES_SERVER = [
+  'Good to Meet You Message', 'Social Connection', 'Value Touch (No Ask)',
+  'Invite to 1:1', 'FORM Conversation (1:1)', 'Strategic Follow Through',
+  'Stay Top of Mind', 'Long-Term Positioning',
+];
+const DEFAULT_STEP_PTS_SERVER = [5, 5, 5, 5, 10, 10, 5, 5];
+
+exports.buildFollowThroughQueue = onSchedule({
+  schedule: 'every day 08:00',
+  timeZone: 'America/Chicago',
+  secrets: [ANTHROPIC_API_KEY],
+}, async () => {
+  const todayKey = chicagoTodayKey();
+  console.log('[buildFollowThroughQueue] running for', todayKey);
+
+  const grants = await admin.firestore().collectionGroup('integrations')
+    .where('product', '==', 'swh-crm')
+    .where('status', '==', 'active')
+    .get();
+
+  for (const g of grants.docs) {
+    const grantData = g.data();
+    if (!ADMIN_EMAILS.includes(grantData.email)) continue; // V1 gate
+
+    const uid = g.ref.parent.parent.id;
+    console.log('[buildFollowThroughQueue] uid', uid);
+
+    const [userSnap, pbSnap, contactsSnap] = await Promise.all([
+      admin.firestore().doc(`users/${uid}`).get(),
+      admin.firestore().collection(`users/${uid}/playbooks`).get(),
+      admin.firestore().collection(`users/${uid}/contacts`).get(),
+    ]);
+
+    const userDoc = userSnap.exists ? userSnap.data() : {};
+    const userFirstName = (userDoc.displayName || userDoc.name || 'Austen').split(' ')[0];
+
+    const playbooks = {};
+    let defaultPbId = null;
+    for (const pb of pbSnap.docs) {
+      const d = pb.data();
+      playbooks[pb.id] = d;
+      if (d.isDefault) defaultPbId = pb.id;
+    }
+
+    for (const cd of contactsSnap.docs) {
+      const c = cd.data();
+      const contactId = cd.id;
+
+      if (!c.clockStarted) continue;
+      const clockKey = toDateKey(c.clockStarted);
+      if (!clockKey) { console.warn('[buildFollowThroughQueue] skip', contactId, '- unparseable clockStarted:', c.clockStarted); continue; }
+      if (c.wasted) continue;
+      if (c.cadencePaused) continue;
+      const stepsDone = c.steps || 0;
+      if (stepsDone >= 8) continue;
+
+      const pbId = c.playbookId && playbooks[c.playbookId] ? c.playbookId : defaultPbId;
+      const pb = pbId ? playbooks[pbId] : null;
+      const stepOffsets = pb?.steps?.map(s => s.offsetDays) || DEFAULT_STEP_OFFSETS_SERVER;
+      const stepMetas = pb?.steps || null;
+
+      const N = stepsDone;
+      if (N >= stepOffsets.length) continue;
+
+      const dueDate = addDaysServer(clockKey, stepOffsets[N]);
+      if (dueDate > todayKey) continue;
+
+      const docId = `${contactId}_${N}`;
+      const existingSnap = await admin.firestore().doc(`users/${uid}/followThroughQueue/${docId}`).get();
+      if (existingSnap.exists) {
+        const ex = existingSnap.data();
+        if (ex.status === 'sent' || ex.status === 'skipped') continue;
+        if (ex.builtAt && ex.builtAt.slice(0, 10) === todayKey) continue;
+      }
+
+      const stepMeta = stepMetas?.[N] || {};
+      const stepName = stepMeta.name || DEFAULT_STEP_NAMES_SERVER[N] || `Step ${N + 1}`;
+      const stepDescription = stepMeta.description || '';
+      const stepPoints = stepMeta.points || DEFAULT_STEP_PTS_SERVER[N] || 5;
+      const notesPreview = c.notes ? String(c.notes).slice(0, 300) : '';
+      const daysSinceClockStart = Math.floor(
+        (Date.now() - new Date(clockKey + 'T12:00:00Z').getTime()) / 86400000
+      );
+
+      let draftSubject = stepName;
+      let draftBody = '';
+      try {
+        const draft = await draftWriteStep({
+          stepName, stepDescription,
+          contactName: c.name,
+          contactCompany: c.company || '',
+          contactEvent: c.event || '',
+          notesPreview,
+          form: c.form || {},
+          userFirstName,
+          daysSinceClockStart,
+          signature: buildSignature(userDoc),
+          linkUrl: stepLink(stepName),
+        });
+        draftSubject = draft.subject;
+        draftBody = draft.body;
+      } catch (err) {
+        console.error('[buildFollowThroughQueue] draft failed:', c.name, err.message);
+      }
+
+      await admin.firestore().doc(`users/${uid}/followThroughQueue/${docId}`).set({
+        contactId,
+        contactName: c.name,
+        contactEmail: c.email || '',
+        stepIndex: N,
+        stepName,
+        stepPoints,
+        dueDate,
+        draftSubject,
+        draftBody,
+        channel: 'email',
+        status: 'pending',
+        builtAt: new Date().toISOString(),
+      });
+
+      console.log('[buildFollowThroughQueue] queued', c.name, 'step', N + 1);
+    }
+  }
+
+  console.log('[buildFollowThroughQueue] done');
+});
+
+// Regenerate a single follow-through draft with the user's revision notes.
+// Called from the queue's "Regenerate" button. Reuses draftWriteStep with the
+// previous draft + the user's instructions, then writes the new draft back.
+exports.regenerateFollowThroughDraft = onCall({ secrets: [ANTHROPIC_API_KEY] }, async (request) => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in required');
+  const uid = request.auth.uid;
+  const docId = request.data?.docId;
+  const feedback = String(request.data?.feedback || '').slice(0, 500);
+  if (!docId) throw new HttpsError('invalid-argument', 'docId required');
+
+  const qRef = db.doc(`users/${uid}/followThroughQueue/${docId}`);
+  const qSnap = await qRef.get();
+  if (!qSnap.exists) throw new HttpsError('not-found', 'Queue item not found');
+  const q = qSnap.data();
+
+  const [contactSnap, userSnap] = await Promise.all([
+    q.contactId ? db.doc(`users/${uid}/contacts/${q.contactId}`).get() : Promise.resolve(null),
+    db.doc(`users/${uid}`).get(),
+  ]);
+  const c = (contactSnap && contactSnap.exists) ? contactSnap.data() : {};
+  const ud = userSnap.data() || {};
+  const userFirstName = String(ud.displayName || ud.name || 'Austen').split(' ')[0];
+
+  const draft = await draftWriteStep({
+    stepName: q.stepName,
+    stepDescription: '',
+    contactName: q.contactName || c.name || 'there',
+    contactCompany: c.company || '',
+    contactEvent: c.event || '',
+    notesPreview: c.notes ? String(c.notes).slice(0, 300) : '',
+    form: c.form || {},
+    userFirstName,
+    daysSinceClockStart: 0,
+    userFeedback: feedback,
+    previousBody: q.draftBody || '',
+    signature: buildSignature(ud),
+    linkUrl: stepLink(q.stepName),
+  });
+
+  await qRef.set({
+    draftSubject: draft.subject,
+    draftBody: draft.body,
+    regeneratedAt: new Date().toISOString(),
+  }, { merge: true });
+
+  return { subject: draft.subject, body: draft.body };
+});
+
+// ===================================================================
+// SWH CRM ONBOARDING DRIP
+// 14 emails, one per business day (Mon-Fri 7am America/Chicago).
+// Enrollment: top-level onboardingDrip/{uid} — single-field range query,
+// no composite index needed. First-enrollment-only (idempotent).
+// Unsubscribe: tokenized public HTTP endpoint (no login); sets
+//   users/{uid}/config/settings.onboardingDripUnsubscribed = true.
+// HMAC signing reuses OAUTH_STATE_SECRET (already deployed).
+// ===================================================================
+
+const _ARROWS_URL  = 'https://swh-crm.web.app/assets/swh/swh-arrows.png';
+const _APPT_URL    = 'https://myappointment.ai/austensmith/welcome-call';
+const _PREFS_URL   = 'https://crm.stopwastinghandshakes.com';
+const _UNSUB_BASE  = 'https://us-central1-swh-scoreboard.cloudfunctions.net/unsubscribeEmail';
+const _DRIP_FROM   = 'Austen with SWH <noreply@stopwastinghandshakes.com>';
+const _DRIP_REPLY  = 'hello@mylola.ai';
+
+// Curriculum — exact copy from SWH-Onboarding-Emails.html
+const ONBOARDING_CURRICULUM = [
+  { day: 1,  subject: "You're in. Your first 5 minutes.",                 preheader: "Three quick steps and you're rolling.",          heading: "You're in. Your first 5 minutes.",                 body: "Welcome to the networking CRM built on the 8-Step Follow-Through. Handshakes are the seed, follow through is the harvest. Five minutes gets you set up.",                                                                         tryline: "finish your profile, set your weekly goal, and open your Scorecard.", ctaText: "Open my Scorecard",    ctaUrl: "https://app.stopwastinghandshakes.com",  day1Book: true  },
+  { day: 2,  subject: "The one habit that changes everything.",            preheader: "Log your day. Every day.",                        heading: "The one habit that changes everything.",            body: "The habit that separates great networkers from busy ones: they log their day, every day. Your Scorecard turns every call and coffee into points you can actually see.",                                                         tryline: "log today's activity on the Scorecard.",               ctaText: "Log my day",           ctaUrl: "https://app.stopwastinghandshakes.com"                   },
+  { day: 3,  subject: "Lead vs lag: why activity wins.",                   preheader: "Chase the number you control.",                   heading: "Lead vs lag: why activity wins.",                   body: "Lag points are outcomes you can't force. Lead points are the reach-outs you control. Stack the lead points and the lag points follow.",                                                                                           tryline: "hit your lead-point goal before 5pm.",                 ctaText: "See my points",        ctaUrl: "https://app.stopwastinghandshakes.com"                   },
+  { day: 4,  subject: "Handshakes are the seed. Here's the harvest.",      preheader: "Meet the 8-Step Follow-Through.",                 heading: "Handshakes are the seed. Here's the harvest.",      body: "Most people collect cards and never follow up. The 8-Step Follow-Through turns one handshake into a real relationship. Pick a contact and start their clock.",                                                                  tryline: "start the 8-step on one contact.",                     ctaText: "Start a follow-through", ctaUrl: "https://crm.stopwastinghandshakes.com"                },
+  { day: 5,  subject: "Add the people you actually met.",                  preheader: "Every handshake becomes a contact.",              heading: "Add the people you actually met.",                  body: "Your follow-through is only as good as your list. Add the people you met this week so no one slips through the cracks.",                                                                                                        tryline: "add or import 5 contacts.",                            ctaText: "Add contacts",         ctaUrl: "https://crm.stopwastinghandshakes.com"                   },
+  { day: 6,  subject: "Your follow-through on autopilot.",                 preheader: "Playbooks run the 8 steps for you.",              heading: "Your follow-through on autopilot.",                 body: "A Playbook is your 8-step cadence, ready to assign. Set it once and every new contact follows the same proven path, no remembering, no dropping the ball.",                                                                     tryline: "assign a Playbook to a contact.",                      ctaText: "Open Playbooks",       ctaUrl: "https://crm.stopwastinghandshakes.com"                   },
+  { day: 7,  subject: "Step 1 of 8: the message that sounds like you.",    preheader: "The 24-hour touch.",                             heading: "Step 1 of 8: the message that sounds like you.",    body: "Step one is the 24-hour touch: short, genuine, sent while the handshake is still warm. Make it sound like you, not a template.",                                                                                                tryline: "send step one to a new contact.",                      ctaText: "Send step one",        ctaUrl: "https://crm.stopwastinghandshakes.com"                   },
+  { day: 8,  subject: "Stop logging by hand. Connect your inbox.",         preheader: "Auto-log emails, sync your calendar.",           heading: "Stop logging by hand. Connect your inbox.",         body: "Connect your email once and SWH auto-logs your touches, syncs your calendar, and pulls your network into Contacts. Less data entry, more relationship.",                                                                         tryline: "connect your email in Settings.",                      ctaText: "Connect my inbox",     ctaUrl: "https://crm.stopwastinghandshakes.com"                   },
+  { day: 9,  subject: "Turn contacts into opportunities.",                 preheader: "Your queue, cleared daily.",                     heading: "Turn contacts into opportunities.",                 body: "As contacts move through the 8 steps, real opportunities surface. Your follow-through queue shows exactly who's due today, so you never wonder who to call next.",                                                               tryline: "clear today's follow-through queue.",                  ctaText: "See my queue",         ctaUrl: "https://crm.stopwastinghandshakes.com"                   },
+  { day: 10, subject: "The 1-to-1 that makes a referral partner.",         preheader: "Coffee is where it happens.",                    heading: "The 1-to-1 that makes a referral partner.",         body: "The 1-to-1 is the heart of it: a real FORM conversation (Family, Occupation, Recreation, Motivation) that turns an acquaintance into someone who sends you business.",                                                        tryline: "schedule one 1-to-1 this week.",                       ctaText: "Book a 1-to-1",        ctaUrl: "https://crm.stopwastinghandshakes.com"                   },
+  { day: 11, subject: "Give to get: the referral flywheel.",               preheader: "The fastest way to receive is to give.",         heading: "Give to get: the referral flywheel.",               body: "Referrals compound. Give one intro this week and watch what comes back. Giving is a lead activity too, so log it.",                                                                                                              tryline: "give one referral or make one intro.",                 ctaText: "Log a referral",       ctaUrl: "https://crm.stopwastinghandshakes.com"                   },
+  { day: 12, subject: "Don't break the streak.",                           preheader: "Consistency is the edge.",                       heading: "Don't break the streak.",                           body: "One great week doesn't build a network. Showing up every day does. Even a single touch keeps the streak alive.",                                                                                                                tryline: "log something today.",                                 ctaText: "Log today",            ctaUrl: "https://app.stopwastinghandshakes.com"                   },
+  { day: 13, subject: "Your week in review.",                              preheader: "Your numbers don't lie.",                        heading: "Your week in review.",                              body: "Every week your recap shows what you actually did: lead points, lag points, your best day, your streak. Read it like game film, then set next week's goal.",                                                                     tryline: "review last week's recap.",                            ctaText: "See my recap",         ctaUrl: "https://app.stopwastinghandshakes.com"                   },
+  { day: 14, subject: "You built the habit. What's next.",                 preheader: "Now scale it.",                                  heading: "You built the habit. What's next.",                 body: "Two weeks in, you've logged your days, started follow-throughs, and connected your network. This is where it compounds. Invite your team and set a bigger goal.",                                                               tryline: "invite a teammate or set next month's goal.",          ctaText: "Keep building",        ctaUrl: "https://crm.stopwastinghandshakes.com"                   },
+];
+
+function _makeUnsubUrl(uid, secret) {
+  const crypto = require('crypto');
+  const sig = crypto.createHmac('sha256', secret).update(uid + ':onboarding').digest('hex').slice(0, 32);
+  return `${_UNSUB_BASE}?uid=${encodeURIComponent(uid)}&cat=onboarding&t=${sig}`;
+}
+
+function _buildDripHtml(entry, firstName, unsubUrl, prefsUrl) {
+  const fn = escHtml(firstName || 'there');
+  const bookHead = entry.day1Book ? 'Want to meet the creator?' : 'Need a hand, or want to talk strategy?';
+  const bookBody = entry.day1Book
+    ? 'I built SWH, and I&#x27;d love to help you get rolling. Grab a free 30 minutes with me whenever works for you. Austen'
+    : 'Book a free 30-minute call with Austen, the creator of SWH.';
+  return `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<title>${escHtml(entry.subject)}</title>
+</head>
+<body style="margin:0;padding:0;background:#e9e9ec;-webkit-font-smoothing:antialiased;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#0a0a0a" style="background:#0a0a0a;">
+<tr><td align="center" style="padding:26px 16px 40px;">
+<table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:600px;max-width:600px;background:#ffffff;border-radius:16px;overflow:hidden;">
+  <tr><td style="display:none;font-size:1px;color:#ffffff;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;">${escHtml(entry.preheader)}</td></tr>
+  <tr><td style="background:#0a0a0a;padding:16px 30px;">
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
+      <td valign="middle" style="padding-right:11px;"><img src="${_ARROWS_URL}" width="26" height="28" alt="SWH" style="display:block;border:0;"></td>
+      <td valign="middle" style="font:bold 20px/1 Georgia,serif;color:#ffffff;letter-spacing:.04em;">SWH</td>
+      <td valign="middle" style="padding-left:13px;"><span style="font:600 11px/1 Arial,sans-serif;color:#9a9a9a;letter-spacing:.1em;text-transform:uppercase;">Stop&nbsp;Wasting&nbsp;Handshakes</span></td>
+    </tr></table>
+  </td></tr>
+  <tr><td style="padding:34px 30px 24px;">
+    <h1 style="margin:0 0 18px;font:bold 23px/1.25 Arial,sans-serif;color:#1a1a1a;">${escHtml(entry.heading)}</h1>
+    <p style="margin:0 0 16px;font:400 15px/1.6 Arial,sans-serif;color:#333;">Hi&nbsp;${fn},</p>
+    <p style="margin:0 0 22px;font:400 15px/1.6 Arial,sans-serif;color:#333;">${escHtml(entry.body)}</p>
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:0 0 26px;"><tr>
+      <td style="border-left:3px solid #E63946;background:#fcf3f4;padding:12px 16px;border-radius:0 6px 6px 0;">
+        <span style="font:700 13px/1.5 Arial,sans-serif;color:#E63946;">Try today:</span>
+        <span style="font:400 14px/1.5 Arial,sans-serif;color:#444;"> ${escHtml(entry.tryline)}</span>
+      </td></tr></table>
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
+      <td bgcolor="#E63946" style="background:#E63946;border-radius:8px;">
+        <a href="${entry.ctaUrl}" style="display:inline-block;padding:13px 26px;font:700 14px/1 Arial,sans-serif;color:#ffffff;text-decoration:none;">${escHtml(entry.ctaText)} &rarr;</a>
+      </td></tr></table>
+  </td></tr>
+  <tr><td style="padding:0 30px 30px;">
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background:#faf7f2;border:1px solid #f1eae1;border-radius:10px;">
+      <tr><td style="padding:17px 19px;">
+        <p style="margin:0 0 8px;font:700 14px/1.4 Arial,sans-serif;color:#1a1a1a;">${escHtml(bookHead)}</p>
+        <p style="margin:0 0 14px;font:400 13px/1.55 Arial,sans-serif;color:#5a5a5a;">${bookBody}</p>
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
+          <td style="border:1.5px solid #E63946;border-radius:7px;">
+            <a href="${_APPT_URL}" style="display:inline-block;padding:9px 18px;font:700 13px/1 Arial,sans-serif;color:#E63946;text-decoration:none;">Book a 30-min call with Austen &rarr;</a>
+          </td></tr></table>
+      </td></tr>
+    </table>
+  </td></tr>
+  <tr><td style="padding:22px 30px 26px;border-top:1px solid #eeeeee;">
+    <p style="margin:0 0 6px;font:400 12px/1.5 Arial,sans-serif;color:#9a9a9a;">Sent by SWH &middot; Stop Wasting Handshakes</p>
+    <p style="margin:0 0 6px;font:400 12px/1.5 Arial,sans-serif;color:#bbbbbb;">8600 N FM 620 #411, Austin, TX 78726</p>
+    <p style="margin:0;font:400 12px/1.5 Arial,sans-serif;color:#9a9a9a;">
+      <a href="${unsubUrl}" style="color:#E63946;text-decoration:underline;">Unsubscribe</a> &nbsp;&middot;&nbsp;
+      <a href="${prefsUrl}" style="color:#9a9a9a;text-decoration:underline;">Manage preferences</a>
+    </p>
+  </td></tr>
+</table>
+</td></tr>
+</table>
+</body></html>`;
+}
+
+function _buildDripText(entry, firstName, unsubUrl) {
+  const first = firstName || 'there';
+  return `${entry.heading}\n\nHi ${first},\n\n${entry.body}\n\nTry today: ${entry.tryline}\n\n${entry.ctaText}: ${entry.ctaUrl}\n\n---\nWant to book a 30-min call with Austen?\n${_APPT_URL}\n\n---\nSent by SWH - Stop Wasting Handshakes\n8600 N FM 620 #411, Austin, TX 78726\n\nUnsubscribe: ${unsubUrl}\nManage preferences: ${_PREFS_URL}\n`;
+}
+
+// Idempotent enrollment — used by both the callable and mirrorSubscriptionToUser.
+// Creates onboardingDrip/{uid}; no-ops if it already exists.
+async function enrollOnboardingDripForUid(uid, email) {
+  if (!uid || !email) return;
+  const ref = db.collection('onboardingDrip').doc(uid);
+  if ((await ref.get()).exists) return;
+  const settingsSnap = await db.doc(`users/${uid}/config/settings`).get();
+  const displayName = settingsSnap.data()?.displayName || '';
+  const firstName = (displayName || email).split(/[\s@]/)[0];
+  const enrolledDate = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Chicago' });
+  await ref.set({ uid, email, firstName, enrolledDate, dripIndex: 0, lastSentDate: null });
+  console.log('[enrollOnboardingDrip] enrolled', uid, email, 'on', enrolledDate);
+}
+
+// Callable — invoked from CRM app load; idempotent no-op if already enrolled.
+// Resolves effective plan so team-CRM members are covered without a per-user plan field.
+exports.enrollOnboardingDrip = onCall({ cors: true }, async (request) => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in required');
+  const uid = request.auth.uid;
+  const tokenEmail = request.auth.token.email || '';
+
+  const userSnap = await db.collection('users').doc(uid).get();
+  const ud = userSnap.data() || {};
+  let plan = ud.plan || 'free';
+  if (ud.teamId) {
+    const teamSnap = await db.collection('teams').doc(ud.teamId).get();
+    if (teamSnap.exists) {
+      const t = teamSnap.data();
+      const active = t.active || t.subscriptionStatus === 'active' || t.subscriptionStatus === 'trialing' || t.subscriptionStatus === 'comp';
+      if (active && t.plan === 'team_crm') plan = 'pro';
+    }
+  }
+  if (plan !== 'pro') return { enrolled: false, reason: 'no_crm_plan' };
+
+  const email = tokenEmail || ud.email || '';
+  await enrollOnboardingDripForUid(uid, email);
+  return { enrolled: true };
+});
+
+// Scheduled — Mon-Fri 7am America/Chicago.
+// Queries onboardingDrip where dripIndex < 14; sends next email; advances index.
+exports.sendOnboardingDrip = onSchedule({
+  schedule: '0 7 * * 1-5',
+  timeZone: 'America/Chicago',
+  secrets: [OAUTH_STATE_SECRET],
+}, async () => {
+  const todayCentral = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Chicago' });
+  const snap = await db.collection('onboardingDrip').where('dripIndex', '<', 14).get();
+  let sent = 0;
+
+  await Promise.all(snap.docs.map(async (d) => {
+    const { uid, email, firstName, enrolledDate, dripIndex, lastSentDate } = d.data();
+    if (!email) return;
+    if (enrolledDate >= todayCentral) return;   // enrolled today — email 1 waits for next day
+    if (lastSentDate === todayCentral) return;   // retry-guard: already sent today
+
+    const settingsSnap = await db.doc(`users/${uid}/config/settings`).get();
+    if (settingsSnap.data()?.onboardingDripUnsubscribed) return;
+
+    const entry = ONBOARDING_CURRICULUM[dripIndex];
+    if (!entry) return;
+
+    const unsubUrl = _makeUnsubUrl(uid, OAUTH_STATE_SECRET.value());
+    const prefsUrl = _PREFS_URL;
+    try {
+      await db.collection('mail').add({
+        from:    _DRIP_FROM,
+        replyTo: _DRIP_REPLY,
+        to:      [email],
+        message: {
+          subject: entry.subject,
+          html:    _buildDripHtml(entry, firstName, unsubUrl, prefsUrl),
+          text:    _buildDripText(entry, firstName, unsubUrl),
+        },
+      });
+      await d.ref.set({ dripIndex: dripIndex + 1, lastSentDate: todayCentral }, { merge: true });
+      sent++;
+      console.log('[sendOnboardingDrip] day', entry.day, '->', email);
+    } catch (e) {
+      console.error('[sendOnboardingDrip] failed for', uid, e.message);
+    }
+  }));
+
+  console.log(`[sendOnboardingDrip] sent=${sent} date=${todayCentral}`);
+});
+
+// Admin HTTP — one-shot backfill: marks all existing pro/team-CRM users as
+// drip-complete (dripIndex:14) so they never receive the onboarding sequence.
+// Safe to re-run — skips anyone who already has an onboardingDrip doc.
+exports.backfillOnboardingDrip = onRequest({ cors: true }, async (req, res) => {
+  if (req.method === 'OPTIONS') { res.status(204).send(''); return; }
+  try {
+    const decoded = await requireAuth(req);
+    if (!ADMIN_EMAILS.includes((decoded.email || '').toLowerCase())) {
+      res.status(403).json({ error: 'admin only' }); return;
+    }
+
+    const todayCentral = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Chicago' });
+
+    // Collect active team_crm team IDs so we can catch team members whose
+    // personal plan field is still 'free'.
+    const teamSnap = await db.collection('teams').where('plan', '==', 'team_crm').get();
+    const activeCrmTeams = new Set();
+    teamSnap.docs.forEach(d => {
+      const t = d.data();
+      if (t.active || t.subscriptionStatus === 'active' || t.subscriptionStatus === 'trialing' || t.subscriptionStatus === 'comp') {
+        activeCrmTeams.add(d.id);
+      }
+    });
+
+    const usersSnap = await db.collection('users').get();
+    let marked = 0, skipped = 0, errors = 0;
+
+    await Promise.all(usersSnap.docs.map(async (userDoc) => {
+      try {
+        const uid = userDoc.id;
+        const ud = userDoc.data() || {};
+        const hasCrm = ud.plan === 'pro' || (ud.teamId && activeCrmTeams.has(ud.teamId));
+        if (!hasCrm) { skipped++; return; }
+
+        const dripRef = db.collection('onboardingDrip').doc(uid);
+        if ((await dripRef.get()).exists) { skipped++; return; }
+
+        const email = ud.email || '';
+        if (!email) { skipped++; return; }
+
+        const settingsSnap = await db.doc(`users/${uid}/config/settings`).get();
+        const displayName = settingsSnap.data()?.displayName || '';
+        const firstName = (displayName || email).split(/[\s@]/)[0];
+
+        await dripRef.set({ uid, email, firstName, enrolledDate: todayCentral, dripIndex: 14, lastSentDate: todayCentral });
+        marked++;
+      } catch (e) {
+        console.error('[backfillOnboardingDrip] uid', userDoc.id, e.message);
+        errors++;
+      }
+    }));
+
+    console.log(`[backfillOnboardingDrip] marked=${marked} skipped=${skipped} errors=${errors}`);
+    res.json({ ok: true, marked, skipped, errors, date: todayCentral });
+  } catch (e) {
+    console.error('[backfillOnboardingDrip]', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Public HTTP — one-click unsubscribe (no login required, CAN-SPAM compliant).
+// Verifies HMAC, sets users/{uid}/config/settings.onboardingDripUnsubscribed.
+exports.unsubscribeEmail = onRequest({ cors: false, secrets: [OAUTH_STATE_SECRET] }, async (req, res) => {
+  const { uid, cat, t } = req.query;
+  if (!uid || !cat || !t) { res.status(400).send('Invalid unsubscribe link.'); return; }
+  const expected = require('crypto').createHmac('sha256', OAUTH_STATE_SECRET.value())
+    .update(uid + ':' + cat).digest('hex').slice(0, 32);
+  if (expected !== t) { res.status(403).send('Invalid or expired unsubscribe link.'); return; }
+  if (cat !== 'onboarding') { res.status(400).send('Unknown category.'); return; }
+
+  await db.doc(`users/${uid}/config/settings`).set({ onboardingDripUnsubscribed: true }, { merge: true });
+  console.log('[unsubscribeEmail] unsubscribed', uid, 'from', cat);
+
+  res.status(200).set('Content-Type', 'text/html; charset=utf-8').send(`<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Unsubscribed</title></head>
+<body style="margin:0;padding:40px 20px;font-family:Arial,sans-serif;background:#f5f5f5;color:#333;text-align:center;">
+  <div style="max-width:480px;margin:0 auto;background:#fff;border-radius:12px;padding:40px 32px;box-shadow:0 2px 12px rgba(0,0,0,0.08);">
+    <div style="font-size:36px;margin-bottom:16px;">&#10003;</div>
+    <h1 style="margin:0 0 12px;font-size:22px;font-weight:700;color:#1a1a1a;">You are unsubscribed.</h1>
+    <p style="margin:0 0 24px;font-size:15px;line-height:1.6;color:#555;">You will not receive any more onboarding emails from SWH. If you change your mind, you can re-enable them in your <a href="${_PREFS_URL}" style="color:#E63946;">account settings</a>.</p>
+    <a href="${_PREFS_URL}" style="display:inline-block;padding:11px 24px;background:#E63946;color:#fff;font-weight:700;font-size:14px;text-decoration:none;border-radius:8px;">Back to SWH CRM</a>
+  </div>
+</body></html>`);
+});
+
+// ===================================================================
+// FOLLOW-THROUGH MORNING DIGEST
+// Emails the day's pre-drafted touches (built by buildFollowThroughQueue
+// at 08:00) with a one-tap link into the CRM dashboard to send / revise.
+// Runs 08:30 Mon-Fri America/Chicago, admin-gated (V1, mirrors the build job),
+// and only sends when there is at least one pending touch. Monday's digest
+// bundles any touches that came due over the weekend.
+// ===================================================================
+const _QUEUE_URL   = 'https://crm.stopwastinghandshakes.com/?screen=tasks';
+const _DIGEST_FROM = 'SWH Follow-Through <noreply@stopwastinghandshakes.com>';
+
+function _buildDigestHtml(firstName, items, dateLabel) {
+  const fn = escHtml(firstName || 'there');
+  const n = items.length;
+  const rows = items.map((it) => {
+    const who     = escHtml(it.contactName || 'Contact');
+    const step    = escHtml(it.stepName || ('Step ' + ((it.stepIndex || 0) + 1)));
+    const subj    = escHtml(it.draftSubject || it.stepName || 'Follow-up');
+    const clipped = String(it.draftBody || '').replace(/\s+/g, ' ').trim().slice(0, 150);
+    const preview = escHtml(clipped) + (clipped.length >= 150 ? '&hellip;' : '');
+    return `
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 12px;border:1px solid #ececec;border-radius:10px;">
+        <tr><td style="padding:14px 16px;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
+            <td style="font:700 14px/1.3 Arial,sans-serif;color:#1a1a1a;">${who}</td>
+            <td align="right" style="font:700 10px/1 Arial,sans-serif;color:#E63946;letter-spacing:.05em;text-transform:uppercase;">${step}</td>
+          </tr></table>
+          <p style="margin:8px 0 4px;font:700 13px/1.4 Arial,sans-serif;color:#333;">${subj}</p>
+          <p style="margin:0;font:400 13px/1.55 Arial,sans-serif;color:#777;">${preview}</p>
+        </td></tr>
+      </table>`;
+  }).join('');
+
+  return `<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#e9e9ec;-webkit-font-smoothing:antialiased;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#0a0a0a" style="background:#0a0a0a;">
+<tr><td align="center" style="padding:26px 16px 40px;">
+<table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:600px;max-width:600px;background:#ffffff;border-radius:16px;overflow:hidden;">
+  <tr><td style="background:#0a0a0a;padding:16px 30px;">
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
+      <td valign="middle" style="padding-right:11px;"><img src="${_ARROWS_URL}" width="26" height="28" alt="SWH" style="display:block;border:0;"></td>
+      <td valign="middle" style="font:bold 20px/1 Georgia,serif;color:#ffffff;letter-spacing:.04em;">SWH</td>
+      <td valign="middle" style="padding-left:13px;"><span style="font:600 11px/1 Arial,sans-serif;color:#9a9a9a;letter-spacing:.1em;text-transform:uppercase;">Stop&nbsp;Wasting&nbsp;Handshakes</span></td>
+    </tr></table>
+  </td></tr>
+  <tr><td style="padding:32px 30px 6px;">
+    <h1 style="margin:0 0 8px;font:bold 22px/1.25 Arial,sans-serif;color:#1a1a1a;">Good morning, ${fn}.</h1>
+    <p style="margin:0;font:400 15px/1.6 Arial,sans-serif;color:#333;">Lola drafted <strong>${n} follow-through${n === 1 ? '' : 's'}</strong> for you, ${escHtml(dateLabel)}. Review and send in one tap.</p>
+  </td></tr>
+  <tr><td style="padding:18px 30px 4px;">
+    ${rows}
+  </td></tr>
+  <tr><td align="center" style="padding:8px 30px 30px;">
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
+      <td bgcolor="#E63946" style="background:#E63946;border-radius:8px;">
+        <a href="${_QUEUE_URL}" style="display:inline-block;padding:13px 30px;font:700 14px/1 Arial,sans-serif;color:#ffffff;text-decoration:none;">Review &amp; send in my queue &rarr;</a>
+      </td></tr></table>
+  </td></tr>
+  <tr><td style="padding:18px 30px 26px;border-top:1px solid #eeeeee;">
+    <p style="margin:0 0 6px;font:400 12px/1.5 Arial,sans-serif;color:#9a9a9a;">Your daily Follow-Through digest &middot; SWH</p>
+    <p style="margin:0;font:400 12px/1.5 Arial,sans-serif;color:#9a9a9a;"><a href="${_PREFS_URL}" style="color:#9a9a9a;text-decoration:underline;">Manage in settings</a></p>
+  </td></tr>
+</table>
+</td></tr>
+</table>
+</body></html>`;
+}
+
+function _buildDigestText(firstName, items, dateLabel) {
+  const lines = items.map((it, i) =>
+    `${i + 1}. ${it.contactName || 'Contact'} — ${it.stepName || ('Step ' + ((it.stepIndex || 0) + 1))}\n   Subject: ${it.draftSubject || ''}\n   ${String(it.draftBody || '').replace(/\s+/g, ' ').trim().slice(0, 150)}`);
+  return `Good morning, ${firstName || 'there'}.\n\nLola drafted ${items.length} follow-through${items.length === 1 ? '' : 's'} for you, ${dateLabel}.\nReview and send in your queue: ${_QUEUE_URL}\n\n${lines.join('\n\n')}\n\n— Your daily Follow-Through digest from SWH\nManage in settings: ${_PREFS_URL}\n`;
+}
+
+exports.sendFollowThroughDigest = onSchedule({
+  schedule: '30 8 * * 1-5',
+  timeZone: 'America/Chicago',
+}, async () => {
+  const todayCentral = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Chicago' });
+  const dateLabel = new Date().toLocaleDateString('en-US', {
+    timeZone: 'America/Chicago', weekday: 'long', month: 'long', day: 'numeric',
+  });
+
+  const grants = await db.collectionGroup('integrations')
+    .where('product', '==', 'swh-crm')
+    .where('status', '==', 'active')
+    .get();
+
+  let sent = 0;
+  for (const g of grants.docs) {
+    const grantData = g.data();
+    if (!ADMIN_EMAILS.includes(grantData.email)) continue; // V1 gate — mirrors buildFollowThroughQueue
+
+    const uid = g.ref.parent.parent.id;
+    const userSnap = await db.doc(`users/${uid}`).get();
+    const ud = userSnap.data() || {};
+    const email = ud.email || grantData.email;
+    if (!email) continue;
+
+    const settingsSnap = await db.doc(`users/${uid}/config/settings`).get();
+    if (settingsSnap.data()?.followThroughDigestDisabled) continue;
+
+    const firstName = String(ud.displayName || ud.name || email).split(/[\s@]/)[0];
+
+    const qSnap = await db.collection(`users/${uid}/followThroughQueue`)
+      .where('status', '==', 'pending').get();
+    const items = qSnap.docs.map(d => d.data())
+      .filter(it => !it.dueDate || it.dueDate <= todayCentral)
+      .sort((a, b) => String(a.dueDate || '').localeCompare(String(b.dueDate || '')));
+
+    if (items.length === 0) continue; // never send an empty digest
+
+    try {
+      await db.collection('mail').add({
+        from: _DIGEST_FROM,
+        to: [email],
+        message: {
+          subject: `${items.length} follow-through${items.length === 1 ? '' : 's'} ready for today`,
+          html: _buildDigestHtml(firstName, items, dateLabel),
+          text: _buildDigestText(firstName, items, dateLabel),
+        },
+      });
+      sent++;
+      console.log('[sendFollowThroughDigest]', email, items.length, 'items');
+    } catch (e) {
+      console.error('[sendFollowThroughDigest] failed for', uid, e.message);
+    }
+  }
+  console.log(`[sendFollowThroughDigest] sent=${sent} date=${todayCentral}`);
 });

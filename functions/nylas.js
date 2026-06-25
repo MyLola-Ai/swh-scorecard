@@ -52,7 +52,7 @@ const PRODUCT_SCOPES = {
   scorecard: ['calendar.events'],
   // SWH CRM only reads email (auto-logging), so request gmail.readonly /
   // Mail.Read (least privilege for a cleaner Google verification).
-  crm: ['email.read_only', 'calendar.events', 'contacts'],
+  crm: ['email.read_only', 'email.send', 'calendar.events', 'contacts'],
 };
 // product request value → Firestore `product` field value
 const PRODUCT_FIELD = {
@@ -454,7 +454,9 @@ async function handleInboundMessage(uid, msg) {
     await db().doc(`users/${uid}/contacts/${contactId}`).set({
       lastActivityAt: touch.receivedAt,
       lastInboundAt: touch.receivedAt,
-      followThroughNeeded: false, // they replied — clear any open flag
+      followThroughNeeded: false,
+      cadencePaused: true,
+      cadencePausedAt: touch.receivedAt,
     }, { merge: true });
   } else {
     // Unknown sender → surface a prompt for the user to create a contact.
@@ -479,6 +481,8 @@ async function handleThreadReplied(uid, thread) {
       lastActivityAt: nowIso,
       lastReplyAt: nowIso,
       followThroughNeeded: false,
+      cadencePaused: true,
+      cadencePausedAt: nowIso,
     }, { merge: true });
   }
 }
@@ -803,6 +807,9 @@ async function loadActiveGrant(uid, res) {
 async function maybeFlagExpired(req, e) {
   const status = e.statusCode || e.status || 0;
   if (status !== 401 && status !== 403) return;
+  // A 403 from a missing scope is NOT token expiry. Don't flag the grant.
+  const errMsg = String(e.message || e.body || '').toLowerCase();
+  if (errMsg.includes('scope') || errMsg.includes('permission') || errMsg.includes('insufficient')) return;
   try {
     const header = req.headers.authorization || '';
     const token = header.startsWith('Bearer ') ? header.slice(7) : null;
@@ -825,3 +832,105 @@ function resultPage(title, body, success) {
   </div>
 </body>`;
 }
+
+// ============================================================
+// Follow-Through Queue: one-tap send from the morning queue
+// ============================================================
+const ADMIN_EMAILS_FTQ = ['austen@austensmith.com'];
+
+exports.sendFollowThroughEmail = onRequest(
+  { cors: true, secrets: [NYLAS_API_KEY], invoker: 'public' },
+  async (req, res) => {
+    try {
+      const decoded = await requireAuth(req);
+      const uid = decoded.uid;
+
+      // V1 gate
+      const userSnap = await db().doc(`users/${uid}`).get();
+      const userEmail = userSnap.exists ? (userSnap.data().email || '') : '';
+      if (!ADMIN_EMAILS_FTQ.includes(userEmail)) {
+        return res.status(403).json({ error: 'Not available yet.' });
+      }
+
+      const { docId, contactId, stepIndex, subject, body } = req.body || {};
+      if (!docId || !contactId || stepIndex === undefined || !body) {
+        return res.status(400).json({ error: 'Missing required fields.' });
+      }
+
+      const [queueDoc, contactDoc] = await Promise.all([
+        db().doc(`users/${uid}/followThroughQueue/${docId}`).get(),
+        db().doc(`users/${uid}/contacts/${contactId}`).get(),
+      ]);
+      if (!queueDoc.exists) return res.status(404).json({ error: 'Queue item not found.' });
+      if (!contactDoc.exists) return res.status(404).json({ error: 'Contact not found.' });
+
+      const contact = contactDoc.data();
+      if (!contact.email) return res.status(400).json({ error: 'Contact has no email address.' });
+
+      const integration = await loadActiveGrant(uid, res);
+      if (!integration) return;
+
+      const nylas = nylasClient();
+      const sendResp = await nylas.messages.send({
+        identifier: integration.grantId,
+        requestBody: {
+          to: [{ email: contact.email, name: contact.name }],
+          subject: subject || queueDoc.data().draftSubject || 'Checking in',
+          body,
+        },
+      });
+
+      const msgData = sendResp.data || sendResp;
+      const nylasMsgId = msgData.id || `ftq_${Date.now()}`;
+      const nowIso = new Date().toISOString();
+      const todayKey = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Chicago' });
+
+      const q = queueDoc.data();
+      const batch = db().batch();
+
+      // (a) Email record with direction:'sent' so the Emails tab renders correctly
+      batch.set(db().doc(`users/${uid}/contacts/${contactId}/emails/${nylasMsgId}`), {
+        direction: 'sent',
+        subject: subject || q.draftSubject || '',
+        snippet: body.slice(0, 200),
+        sentAt: nowIso,
+        source: 'follow-through-queue',
+        syncedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+
+      // (b) Activity log
+      const actId = `ftq_${contactId}_${stepIndex}_${todayKey}`;
+      batch.set(db().doc(`users/${uid}/contacts/${contactId}/activities/${actId}`), {
+        type: q.stepName || `Step ${stepIndex + 1}`,
+        source: 'follow-through-queue',
+        points: q.stepPoints || 1,
+        timestamp: nowIso,
+        dateKey: todayKey,
+        contactId,
+        contactName: contact.name,
+      });
+
+      // (c) Advance steps counter (integer, capped at 8)
+      const newSteps = Math.min(8, (contact.steps || 0) + 1);
+      batch.set(db().doc(`users/${uid}/contacts/${contactId}`), {
+        steps: newSteps,
+        lastActivityAt: nowIso,
+        lastOutboundAt: nowIso,
+      }, { merge: true });
+
+      // (d) Mark queue doc sent
+      batch.set(db().doc(`users/${uid}/followThroughQueue/${docId}`), {
+        status: 'sent',
+        sentAt: nowIso,
+      }, { merge: true });
+
+      await batch.commit();
+
+      res.json({ ok: true, newSteps, nylasMsgId });
+    } catch (e) {
+      console.error('[sendFollowThroughEmail]', e);
+      await maybeFlagExpired(req, e);
+      sendErr(res, e);
+    }
+  }
+);
