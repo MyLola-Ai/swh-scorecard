@@ -6343,6 +6343,60 @@ exports.regenerateFollowThroughDraft = onCall({ secrets: [ANTHROPIC_API_KEY] }, 
   return { subject: draft.subject, body: draft.body };
 });
 
+// On-demand draft for any contact step — no queue item created.
+// Called from the "Draft Email" button on a contact's step card.
+exports.generateStepDraft = onCall({ secrets: [ANTHROPIC_API_KEY] }, async (request) => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in required');
+  const uid       = request.auth.uid;
+  const contactId = String(request.data?.contactId || '').trim();
+  const stepIndex = Number(request.data?.stepIndex  ?? -1);
+  if (!contactId || stepIndex < 0 || stepIndex > 7)
+    throw new HttpsError('invalid-argument', 'contactId and stepIndex (0-7) required');
+
+  const [contactSnap, userSnap, pbSnap] = await Promise.all([
+    db.doc(`users/${uid}/contacts/${contactId}`).get(),
+    db.doc(`users/${uid}`).get(),
+    db.collection(`users/${uid}/playbooks`).get(),
+  ]);
+  if (!contactSnap.exists) throw new HttpsError('not-found', 'Contact not found');
+  const c  = contactSnap.data();
+  const ud = userSnap.data() || {};
+  const userFirstName = String(ud.displayName || ud.name || 'Austen').split(' ')[0];
+
+  const playbooks = {};
+  let defaultPbId = null;
+  for (const pb of pbSnap.docs) {
+    const d = pb.data();
+    playbooks[pb.id] = d;
+    if (d.isDefault) defaultPbId = pb.id;
+  }
+  const pbId     = c.playbookId && playbooks[c.playbookId] ? c.playbookId : defaultPbId;
+  const pb       = pbId ? playbooks[pbId] : null;
+  const stepMeta = pb?.steps?.[stepIndex] || {};
+
+  const stepName        = stepMeta.name        || DEFAULT_STEP_NAMES_SERVER[stepIndex] || `Step ${stepIndex + 1}`;
+  const stepDescription = stepMeta.description || '';
+  const clockKey        = toDateKey(c.clockStarted);
+  const daysSinceClockStart = clockKey
+    ? Math.floor((Date.now() - new Date(clockKey + 'T12:00:00Z').getTime()) / 86400000)
+    : 0;
+
+  const draft = await draftWriteStep({
+    stepName, stepDescription,
+    contactName:    c.name    || 'there',
+    contactCompany: c.company || '',
+    contactEvent:   c.event   || '',
+    notesPreview:   c.notes   ? String(c.notes).slice(0, 300) : '',
+    form:           c.form    || {},
+    userFirstName,
+    daysSinceClockStart,
+    signature: buildSignature(ud),
+    linkUrl:   stepLink(stepName),
+  });
+
+  return { subject: draft.subject, body: draft.body };
+});
+
 // ===================================================================
 // SWH CRM ONBOARDING DRIP
 // 14 emails, one per business day (Mon-Fri 7am America/Chicago).

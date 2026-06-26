@@ -6338,9 +6338,10 @@ function buildStepsListHTML(c, pb, pbBadge) {
         <div class="ne-step-n">Step ${si+1}: Day ${s.offsetDays} — ${s.name}</div>
         <div class="ne-step-due${isLate?' late':''}">${dueStr}</div>
         <div style="font-size:11px;color:var(--muted);line-height:1.4;margin-top:3px;">${s.description||''}</div>
-        ${!done?`<div style="display:flex;gap:6px;margin-top:7px;">
+        ${!done?`<div style="display:flex;gap:6px;margin-top:7px;flex-wrap:wrap;">
           <button onclick="toggleNeStep(document.getElementById('ne-step-cb-${c.id}-${si}'),'${c.id}',${si})" style="font-size:11px;font-weight:700;padding:3px 10px;border:none;border-radius:6px;background:#e8f5ec;color:var(--green);cursor:pointer;">✅ Complete</button>
           <button onclick="dismissNeStep('${c.id}',${si})" style="font-size:11px;font-weight:700;padding:3px 10px;border:1.5px solid var(--border);border-radius:6px;background:var(--bg);color:var(--muted);cursor:pointer;">✕ Dismiss</button>
+          <button onclick="event.stopPropagation();generateNeStepEmail('${c.id}',${si})" style="font-size:11px;font-weight:700;padding:3px 10px;border:none;border-radius:6px;background:linear-gradient(135deg,#5B5BD6,#A78BFA);color:#fff;cursor:pointer;">✉️ Draft Email</button>
         </div>`:''}
       </div>
       <div class="ne-step-pts">${s.points} pts</div>
@@ -6978,6 +6979,92 @@ window.dismissNeStep = async function(contactId, stepIndex) {
   refreshStepsPanel(contactId);
   showToast('Step dismissed');
 };
+
+// ── Generate Email modal (step cards) ──────────────────────────────────
+let _neDraftCtx = null;
+
+window.generateNeStepEmail = async function(contactId, stepIndex) {
+  const c = CONTACTS.find(x => x.id === contactId);
+  if (!c) return;
+  const pb   = playbookFor(c);
+  const step = pb.steps[stepIndex] || {};
+  _neDraftCtx = { contactId, stepIndex };
+
+  const overlay = document.getElementById('ne-draft-modal-overlay');
+  document.getElementById('ne-draft-modal-title').textContent = `Step ${stepIndex + 1}: ${step.name || ''}`;
+  document.getElementById('ne-draft-modal-sub').textContent   = c.name || '';
+  document.getElementById('ne-draft-spinner').style.display   = 'block';
+  document.getElementById('ne-draft-fields').style.display    = 'none';
+  document.getElementById('ne-draft-actions').style.display   = 'none';
+  document.getElementById('ne-draft-subj').value = '';
+  document.getElementById('ne-draft-body').value = '';
+  overlay.classList.add('open');
+
+  try {
+    const fn  = httpsCallable(functions, 'generateStepDraft');
+    const res = await fn({ contactId, stepIndex });
+    document.getElementById('ne-draft-subj').value          = res.data.subject || '';
+    document.getElementById('ne-draft-body').value          = res.data.body    || '';
+    document.getElementById('ne-draft-spinner').style.display = 'none';
+    document.getElementById('ne-draft-fields').style.display  = 'flex';
+    document.getElementById('ne-draft-actions').style.display = 'flex';
+    document.getElementById('ne-draft-modal-title').textContent = `Draft ready — Step ${stepIndex + 1}`;
+  } catch (err) {
+    document.getElementById('ne-draft-spinner').innerHTML =
+      `<div style="color:var(--red);font-size:13px;">Failed to generate draft.<br><small>${err.message||''}</small></div>`;
+  }
+};
+
+window.neStepDraftClose = function() {
+  document.getElementById('ne-draft-modal-overlay').classList.remove('open');
+  _neDraftCtx = null;
+};
+
+window.neStepDraftCopy = async function() {
+  const subj = document.getElementById('ne-draft-subj').value;
+  const body = document.getElementById('ne-draft-body').value;
+  try {
+    await navigator.clipboard.writeText(`Subject: ${subj}\n\n${body}`);
+    const btn = document.getElementById('ne-draft-copy-btn');
+    btn.textContent = 'Copied!';
+    setTimeout(() => { btn.textContent = 'Copy'; }, 1800);
+  } catch (_) { showToast('Copy failed — select text manually'); }
+};
+
+window.neStepDraftMailto = function() {
+  const subj = encodeURIComponent(document.getElementById('ne-draft-subj').value);
+  const body = encodeURIComponent(document.getElementById('ne-draft-body').value);
+  const c    = _neDraftCtx && CONTACTS.find(x => x.id === _neDraftCtx.contactId);
+  const to   = c?.email ? encodeURIComponent(c.email) : '';
+  window.open(`mailto:${to}?subject=${subj}&body=${body}`, '_blank');
+};
+
+window.neStepDraftRegenerate = async function() {
+  if (!_neDraftCtx) return;
+  const { contactId, stepIndex } = _neDraftCtx;
+  document.getElementById('ne-draft-spinner').innerHTML =
+    '<div style="font-size:28px;margin-bottom:8px;animation:spin 1s linear infinite;display:inline-block;">⏳</div><br>Regenerating...';
+  document.getElementById('ne-draft-spinner').style.display = 'block';
+  document.getElementById('ne-draft-fields').style.display  = 'none';
+  document.getElementById('ne-draft-actions').style.display = 'none';
+  try {
+    const fn  = httpsCallable(functions, 'generateStepDraft');
+    const res = await fn({ contactId, stepIndex });
+    document.getElementById('ne-draft-subj').value            = res.data.subject || '';
+    document.getElementById('ne-draft-body').value            = res.data.body    || '';
+    document.getElementById('ne-draft-spinner').style.display = 'none';
+    document.getElementById('ne-draft-fields').style.display  = 'flex';
+    document.getElementById('ne-draft-actions').style.display = 'flex';
+    const c    = CONTACTS.find(x => x.id === contactId);
+    const pb   = playbookFor(c);
+    const step = pb.steps[stepIndex] || {};
+    document.getElementById('ne-draft-modal-title').textContent = `Draft ready — Step ${stepIndex + 1}: ${step.name || ''}`;
+  } catch (err) {
+    document.getElementById('ne-draft-spinner').innerHTML =
+      `<div style="color:var(--red);font-size:13px;">Failed.<br><small>${err.message||''}</small></div>`;
+  }
+};
+// ── /Generate Email modal ───────────────────────────────────────────────
 
 window.updateContactStatus=async function(contactId,status){
   const c=CONTACTS.find(x=>x.id===contactId);if(!c)return;
@@ -11754,6 +11841,40 @@ window.onSendToMyLolaSubmit = async function() {
 <script src="nylas-email.js"></script>
 
 <!-- ===== RELATIONSHIP GRADE MODAL ===== -->
+<div class="ctx-overlay" id="ne-draft-modal-overlay" onclick="if(event.target===this)neStepDraftClose()">
+  <div class="ctx-box" style="max-width:520px;">
+    <div class="ctx-header">
+      <div class="ctx-handle mobile-only"></div>
+      <div class="ctx-icon">✉️</div>
+      <div class="ctx-title" id="ne-draft-modal-title">Drafting your email...</div>
+      <div class="ctx-subtitle" id="ne-draft-modal-sub"></div>
+    </div>
+    <div class="ctx-body" id="ne-draft-modal-body" style="padding:16px 20px;display:flex;flex-direction:column;gap:10px;">
+      <div id="ne-draft-spinner" style="text-align:center;padding:32px 0;color:var(--muted);font-size:13px;">
+        <div style="font-size:28px;margin-bottom:8px;animation:spin 1s linear infinite;display:inline-block;">⏳</div><br>Lola is writing...
+      </div>
+      <div id="ne-draft-fields" style="display:none;flex-direction:column;gap:8px;">
+        <div>
+          <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px;">Subject</div>
+          <input id="ne-draft-subj" type="text" style="width:100%;padding:7px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;font-family:'DM Sans',sans-serif;box-sizing:border-box;background:var(--bg);color:var(--navy);">
+        </div>
+        <div>
+          <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px;">Body</div>
+          <textarea id="ne-draft-body" rows="9" style="width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;font-family:'DM Sans',sans-serif;resize:vertical;box-sizing:border-box;background:var(--bg);color:var(--navy);line-height:1.55;"></textarea>
+        </div>
+      </div>
+    </div>
+    <div style="padding:12px 20px 16px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:8px;">
+      <button class="tb-btn" onclick="neStepDraftClose()">Close</button>
+      <div style="display:flex;gap:8px;" id="ne-draft-actions" style="display:none;">
+        <button class="tb-btn" id="ne-draft-regen-btn" onclick="neStepDraftRegenerate()" style="color:#5B5BD6;border-color:#5B5BD6;">↺ Regenerate</button>
+        <button class="tb-btn" id="ne-draft-copy-btn" onclick="neStepDraftCopy()" style="font-weight:700;">Copy</button>
+        <button class="tb-btn" id="ne-draft-mailto-btn" onclick="neStepDraftMailto()" style="font-weight:700;background:linear-gradient(135deg,#5B5BD6,#A78BFA);color:#fff;border-color:transparent;">Open in Mail</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="ctx-overlay" id="grade-modal-overlay" onclick="if(event.target===this)closeGradeModal()">
   <div class="ctx-box" style="max-width:480px;">
     <div class="ctx-header">
