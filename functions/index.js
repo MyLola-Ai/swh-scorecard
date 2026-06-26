@@ -6397,6 +6397,81 @@ exports.generateStepDraft = onCall({ secrets: [ANTHROPIC_API_KEY] }, async (requ
   return { subject: draft.subject, body: draft.body };
 });
 
+// Context-aware email draft — NOT tied to a specific step.
+// Knows where the contact is in the sequence and pivots the prompt:
+//   - mid-sequence: right touch for where the relationship is
+//   - all 8 done:   creative reason to re-engage without an agenda
+exports.draftContactEmail = onCall({ secrets: [ANTHROPIC_API_KEY] }, async (request) => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in required');
+  const uid       = request.auth.uid;
+  const contactId = String(request.data?.contactId || '').trim();
+  if (!contactId) throw new HttpsError('invalid-argument', 'contactId required');
+
+  const [contactSnap, userSnap] = await Promise.all([
+    db.doc(`users/${uid}/contacts/${contactId}`).get(),
+    db.doc(`users/${uid}`).get(),
+  ]);
+  if (!contactSnap.exists) throw new HttpsError('not-found', 'Contact not found');
+  const c  = contactSnap.data();
+  const ud = userSnap.data() || {};
+  const userFirstName = String(ud.displayName || ud.name || 'Austen').split(' ')[0];
+
+  const stepsDone = c.steps || 0;
+  const allDone   = stepsDone >= 8;
+  const clockKey  = toDateKey(c.clockStarted);
+  const daysSince = clockKey
+    ? Math.floor((Date.now() - new Date(clockKey + 'T12:00:00Z').getTime()) / 86400000)
+    : 0;
+
+  const situation = allDone
+    ? `You have completed all 8 follow-through steps with this person. They are a real, cultivated relationship — not a prospect to chase. The goal of this email is to keep the relationship warm and prevent it from going stagnant. Find a genuine, specific reason to reach out: a useful resource, a referral opportunity, something tied to what they shared (family, work, hobbies, goals), a milestone worth acknowledging, or a simple human check-in that adds value. No pitch, no agenda — just a real touch that reminds them you think of them.`
+    : `You have completed ${stepsDone} of 8 follow-through steps with this person (${daysSince} days since you met). This is NOT a scripted step — just draft the right email for where you are with them right now. Match the tone and depth to the relationship as it actually stands at this moment.`;
+
+  const formParts = c.form
+    ? ['family','occupation','recreation','motivation'].map(k => c.form[k] ? `${k}: ${c.form[k]}` : '').filter(Boolean)
+    : [];
+
+  const userMessage = [
+    situation,
+    `Contact: ${c.name}${c.company ? ' at ' + c.company : ''}`,
+    c.event   ? `Where we met: ${c.event}` : '',
+    `My name: ${userFirstName}`,
+    c.notes   ? `My notes on them: ${String(c.notes).slice(0, 300)}` : '',
+    formParts.length ? `FORM intel — ${formParts.join(' | ')}` : '',
+    '',
+    'Draft this email for me.',
+  ].filter(Boolean).join('\n');
+
+  const systemPrompt = VOICE_PROFILE + `\n\nReturn ONLY valid JSON, no prose, no markdown fences:\n{"subject":"<email subject, 5-10 words, warm and specific, no em-dashes>","body":"<the full email body in Austen's voice, first-person, referencing the contact by first name. End with a short sign-off and his first name (e.g. Thanks, Austen). Do NOT add phone, email, or a contact block; that is appended automatically. No bracket placeholders, no em-dashes>","text":"<same as body>"}`;
+
+  const apiResp = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': ANTHROPIC_API_KEY.value(),
+      'anthropic-version': '2023-06-01',
+    },
+    body: JSON.stringify({
+      model: 'claude-opus-4-5',
+      max_tokens: 600,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: userMessage }],
+    }),
+  });
+  if (!apiResp.ok) throw new Error(`Anthropic ${apiResp.status}`);
+  const result = await apiResp.json();
+  const raw    = result.content?.[0]?.text || '';
+  const sig    = buildSignature(ud) ? '\n' + buildSignature(ud) : '';
+  const match  = raw.match(/\{[\s\S]*\}/);
+  if (!match) return { subject: 'Checking in', body: raw + sig };
+  try {
+    const parsed = JSON.parse(match[0]);
+    return { subject: parsed.subject || 'Checking in', body: (parsed.body || raw) + sig };
+  } catch (_) {
+    return { subject: 'Checking in', body: raw + sig };
+  }
+});
+
 // ===================================================================
 // SWH CRM ONBOARDING DRIP
 // 14 emails, one per business day (Mon-Fri 7am America/Chicago).

@@ -6996,7 +6996,7 @@ window.openEmailActionPopup = function(contactId, email, btn) {
       onmouseover="this.style.background='var(--bg)'" onmouseout="this.style.background='transparent'">
       📧 Compose Email
     </button>
-    <button onclick="document.getElementById('email-action-popup')?.remove();generateNeStepEmail('${contactId}',null);"
+    <button onclick="document.getElementById('email-action-popup')?.remove();draftContactEmail('${contactId}');"
       style="display:flex;align-items:center;gap:9px;padding:9px 12px;border:none;background:linear-gradient(135deg,#5B5BD6,#A78BFA);border-radius:8px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:700;color:#fff;cursor:pointer;width:100%;text-align:left;">
       ✨ Lola Draft
     </button>`;
@@ -7005,6 +7005,41 @@ window.openEmailActionPopup = function(contactId, email, btn) {
     function outside(e) { if (!div.contains(e.target) && e.target !== btn) { div.remove(); document.removeEventListener('click', outside); } }
     document.addEventListener('click', outside);
   }, 0);
+};
+
+// ── Context-aware Lola Draft (from Email action button) ─────────────────
+window.draftContactEmail = async function(contactId) {
+  const c = CONTACTS.find(x => x.id === contactId);
+  if (!c) return;
+  _neDraftCtx = { contactId, mode: 'contact' };
+
+  const overlay = document.getElementById('ne-draft-modal-overlay');
+  document.getElementById('ne-draft-modal-title').textContent = 'Drafting your email...';
+  document.getElementById('ne-draft-modal-sub').textContent   = c.name || '';
+  document.getElementById('ne-draft-spinner').innerHTML =
+    '<div style="font-size:28px;margin-bottom:8px;animation:spin 1s linear infinite;display:inline-block;">⏳</div><br>Lola is writing...';
+  document.getElementById('ne-draft-spinner').style.display = 'block';
+  document.getElementById('ne-draft-fields').style.display  = 'none';
+  document.getElementById('ne-draft-actions').style.display = 'none';
+  document.getElementById('ne-draft-subj').value = '';
+  document.getElementById('ne-draft-body').value = '';
+  overlay.classList.add('open');
+
+  try {
+    const fn  = httpsCallable(functions, 'draftContactEmail');
+    const res = await fn({ contactId });
+    document.getElementById('ne-draft-subj').value            = res.data.subject || '';
+    document.getElementById('ne-draft-body').value            = res.data.body    || '';
+    document.getElementById('ne-draft-spinner').style.display = 'none';
+    document.getElementById('ne-draft-fields').style.display  = 'flex';
+    document.getElementById('ne-draft-actions').style.display = 'flex';
+    const stepsDone = c.steps || 0;
+    document.getElementById('ne-draft-modal-title').textContent =
+      stepsDone >= 8 ? 'Draft ready — keeping it warm' : `Draft ready — ${stepsDone}/8 steps in`;
+  } catch (err) {
+    document.getElementById('ne-draft-spinner').innerHTML =
+      `<div style="color:var(--red);font-size:13px;">Failed to generate draft.<br><small>${err.message||''}</small></div>`;
+  }
 };
 
 // ── Generate Email modal (step cards) ──────────────────────────────────
@@ -7072,24 +7107,33 @@ window.neStepDraftMailto = function() {
 
 window.neStepDraftRegenerate = async function() {
   if (!_neDraftCtx) return;
-  const { contactId, stepIndex } = _neDraftCtx;
+  const { contactId, stepIndex, mode } = _neDraftCtx;
   document.getElementById('ne-draft-spinner').innerHTML =
     '<div style="font-size:28px;margin-bottom:8px;animation:spin 1s linear infinite;display:inline-block;">⏳</div><br>Regenerating...';
   document.getElementById('ne-draft-spinner').style.display = 'block';
   document.getElementById('ne-draft-fields').style.display  = 'none';
   document.getElementById('ne-draft-actions').style.display = 'none';
   try {
-    const fn  = httpsCallable(functions, 'generateStepDraft');
-    const res = await fn({ contactId, stepIndex });
+    let res;
+    if (mode === 'contact') {
+      res = await httpsCallable(functions, 'draftContactEmail')({ contactId });
+    } else {
+      res = await httpsCallable(functions, 'generateStepDraft')({ contactId, stepIndex });
+    }
     document.getElementById('ne-draft-subj').value            = res.data.subject || '';
     document.getElementById('ne-draft-body').value            = res.data.body    || '';
     document.getElementById('ne-draft-spinner').style.display = 'none';
     document.getElementById('ne-draft-fields').style.display  = 'flex';
     document.getElementById('ne-draft-actions').style.display = 'flex';
-    const c    = CONTACTS.find(x => x.id === contactId);
-    const pb   = playbookFor(c);
-    const step = pb.steps[stepIndex] || {};
-    document.getElementById('ne-draft-modal-title').textContent = `Draft ready — Step ${stepIndex + 1}: ${step.name || ''}`;
+    const c = CONTACTS.find(x => x.id === contactId);
+    if (mode === 'contact') {
+      const stepsDone = c?.steps || 0;
+      document.getElementById('ne-draft-modal-title').textContent =
+        stepsDone >= 8 ? 'Draft ready — keeping it warm' : `Draft ready — ${stepsDone}/8 steps in`;
+    } else {
+      const step = playbookFor(c).steps[stepIndex] || {};
+      document.getElementById('ne-draft-modal-title').textContent = `Draft ready — Step ${stepIndex + 1}: ${step.name || ''}`;
+    }
   } catch (err) {
     document.getElementById('ne-draft-spinner').innerHTML =
       `<div style="color:var(--red);font-size:13px;">Failed.<br><small>${err.message||''}</small></div>`;
