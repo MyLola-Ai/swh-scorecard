@@ -6338,11 +6338,11 @@ function buildStepsListHTML(c, pb, pbBadge) {
         <div class="ne-step-n">Step ${si+1}: Day ${s.offsetDays} — ${s.name}</div>
         <div class="ne-step-due${isLate?' late':''}">${dueStr}</div>
         <div style="font-size:11px;color:var(--muted);line-height:1.4;margin-top:3px;">${s.description||''}</div>
-        ${!done?`<div style="display:flex;gap:6px;margin-top:7px;flex-wrap:wrap;">
-          <button onclick="toggleNeStep(document.getElementById('ne-step-cb-${c.id}-${si}'),'${c.id}',${si})" style="font-size:11px;font-weight:700;padding:3px 10px;border:none;border-radius:6px;background:#e8f5ec;color:var(--green);cursor:pointer;">✅ Complete</button>
-          <button onclick="dismissNeStep('${c.id}',${si})" style="font-size:11px;font-weight:700;padding:3px 10px;border:1.5px solid var(--border);border-radius:6px;background:var(--bg);color:var(--muted);cursor:pointer;">✕ Dismiss</button>
+        <div style="display:flex;gap:6px;margin-top:7px;flex-wrap:wrap;">
+          ${!done?`<button onclick="toggleNeStep(document.getElementById('ne-step-cb-${c.id}-${si}'),'${c.id}',${si})" style="font-size:11px;font-weight:700;padding:3px 10px;border:none;border-radius:6px;background:#e8f5ec;color:var(--green);cursor:pointer;">✅ Complete</button>
+          <button onclick="dismissNeStep('${c.id}',${si})" style="font-size:11px;font-weight:700;padding:3px 10px;border:1.5px solid var(--border);border-radius:6px;background:var(--bg);color:var(--muted);cursor:pointer;">✕ Dismiss</button>`:''}
           <button onclick="event.stopPropagation();generateNeStepEmail('${c.id}',${si})" style="font-size:11px;font-weight:700;padding:3px 10px;border:none;border-radius:6px;background:linear-gradient(135deg,#5B5BD6,#A78BFA);color:#fff;cursor:pointer;">✉️ Draft Email</button>
-        </div>`:''}
+        </div>
       </div>
       <div class="ne-step-pts">${s.points} pts</div>
     </div>`;
@@ -6378,7 +6378,7 @@ function buildExpandDetail(c) {
     <div class="ne-actions">
       <button class="ne-action-btn" onclick="window.location.href='tel:${c.phone||''}'"><span class="ne-action-icon">📞</span><span class="ne-action-lbl">Call</span></button>
       <button class="ne-action-btn" onclick="window.location.href='sms:${c.phone||''}'"><span class="ne-action-icon">💬</span><span class="ne-action-lbl">Text</span></button>
-      <button class="ne-action-btn" onclick="window.location.href='mailto:${c.email||''}'"><span class="ne-action-icon">📧</span><span class="ne-action-lbl">Email</span></button>
+      <button class="ne-action-btn" onclick="openEmailActionPopup('${c.id}','${escapeHtmlCRM(c.email||'')}',this)"><span class="ne-action-icon">📧</span><span class="ne-action-lbl">Email</span></button>
       <button class="ne-action-btn" onclick="openAddOpp('${c.id}','${c.name}')"><span class="ne-action-icon">💼</span><span class="ne-action-lbl">Add Opp</span></button>
       <button class="ne-action-btn" onclick="openSyncContactModal('${c.id}')"><span class="ne-action-icon">📇</span><span class="ne-action-lbl">Save</span></button>
       ${apptUserSlug && apptBookingPages.length ? `<button class="ne-action-btn" onclick="openBookContactModal('${c.id}')"><span class="ne-action-icon">📅</span><span class="ne-action-lbl">Book</span></button>` : ''}
@@ -6980,12 +6980,43 @@ window.dismissNeStep = async function(contactId, stepIndex) {
   showToast('Step dismissed');
 };
 
+// ── Email action popup (Compose / Lola Draft) ───────────────────────────
+window.openEmailActionPopup = function(contactId, email, btn) {
+  document.getElementById('email-action-popup')?.remove();
+  const div = document.createElement('div');
+  div.id = 'email-action-popup';
+  div.style.cssText = 'position:fixed;z-index:9999;background:#fff;border:1.5px solid var(--border);border-radius:12px;padding:6px;box-shadow:0 8px 32px rgba(0,0,0,0.18);min-width:190px;display:flex;flex-direction:column;gap:3px;';
+  const rect = btn.getBoundingClientRect();
+  div.style.top  = (rect.bottom + 8) + 'px';
+  div.style.left = rect.left + 'px';
+  const composeHref = email ? `mailto:${email}` : 'mailto:';
+  div.innerHTML = `
+    <button onclick="window.open('${composeHref}','_blank');document.getElementById('email-action-popup')?.remove();"
+      style="display:flex;align-items:center;gap:9px;padding:9px 12px;border:none;background:transparent;border-radius:8px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;color:var(--navy);cursor:pointer;width:100%;text-align:left;"
+      onmouseover="this.style.background='var(--bg)'" onmouseout="this.style.background='transparent'">
+      📧 Compose Email
+    </button>
+    <button onclick="document.getElementById('email-action-popup')?.remove();generateNeStepEmail('${contactId}',null);"
+      style="display:flex;align-items:center;gap:9px;padding:9px 12px;border:none;background:linear-gradient(135deg,#5B5BD6,#A78BFA);border-radius:8px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:700;color:#fff;cursor:pointer;width:100%;text-align:left;">
+      ✨ Lola Draft
+    </button>`;
+  document.body.appendChild(div);
+  setTimeout(() => {
+    function outside(e) { if (!div.contains(e.target) && e.target !== btn) { div.remove(); document.removeEventListener('click', outside); } }
+    document.addEventListener('click', outside);
+  }, 0);
+};
+
 // ── Generate Email modal (step cards) ──────────────────────────────────
 let _neDraftCtx = null;
 
 window.generateNeStepEmail = async function(contactId, stepIndex) {
   const c = CONTACTS.find(x => x.id === contactId);
   if (!c) return;
+  // null stepIndex → auto-select next incomplete step (or last step if all done)
+  if (stepIndex === null || stepIndex === undefined) {
+    stepIndex = Math.min(c.steps || 0, (playbookFor(c).steps.length || 8) - 1);
+  }
   const pb   = playbookFor(c);
   const step = pb.steps[stepIndex] || {};
   _neDraftCtx = { contactId, stepIndex };
