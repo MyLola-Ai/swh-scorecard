@@ -956,7 +956,7 @@ html,body{height:100%;font-family:'DM Sans',sans-serif;background:var(--bg);colo
     <img src="assets/swh/swh-spinner.png" alt="" aria-hidden="true" style="position:absolute;inset:0;width:100%;height:100%;object-fit:contain;animation:spin 1.4s linear infinite;transform-origin:50% 50%;">
     <div style="position:relative;z-index:1;font-family:'Anton','Archivo Black','Helvetica Neue',sans-serif;font-weight:400;font-size:30px;letter-spacing:0.02em;color:#fff;text-transform:uppercase;">SWH</div>
   </div>
-  <div style="color:rgba(255,255,255,0.5);font-size:13px;">Loading your scoreboard…</div>
+  <div style="color:rgba(255,255,255,0.5);font-size:13px;">Loading your CRM…</div>
 </div>
 <style>@keyframes spin{to{transform:rotate(360deg);}}
   /* ===== Powered by Lola — per official Brand Package v1.0 ===== */
@@ -10702,7 +10702,8 @@ window.confirmOutlookDisconnect = async function() {
   const isStandalone = window.navigator.standalone === true || window.matchMedia('(display-mode: standalone)').matches;
   const dismissed = localStorage.getItem('swh-install-dismissed');
   const isChrome = /CriOS/i.test(navigator.userAgent);
-  if(isIOS && !isStandalone && !dismissed) {
+  const isNativeApp = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+  if(isIOS && !isStandalone && !dismissed && !isNativeApp) {
     setTimeout(() => {
       const banner = document.getElementById('ios-install-banner');
       const instructions = document.getElementById('ios-install-instructions');
