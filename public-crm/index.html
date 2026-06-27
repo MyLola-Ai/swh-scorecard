@@ -3013,7 +3013,7 @@ html,body{height:100%;font-family:'DM Sans',sans-serif;background:var(--bg);colo
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, GoogleAuthProvider, OAuthProvider, signInWithPopup, signOut, onAuthStateChanged,
   createUserWithEmailAndPassword, signInWithEmailAndPassword, sendPasswordResetEmail, updateProfile,
-  signInWithCustomToken }
+  signInWithCustomToken, setPersistence, browserLocalPersistence }
   from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import {
   getFirestore, doc, getDoc, setDoc, addDoc, updateDoc, deleteDoc,
@@ -3545,6 +3545,11 @@ window._xprodSigninInFlight = /[#&]signin=[^&]+/.test(window.location.hash || ''
   }
 })();
 
+(async () => {
+  const _isNativeCap = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+  if (_isNativeCap) {
+    try { await setPersistence(auth, browserLocalPersistence); } catch(_) {}
+  }
 onAuthStateChanged(auth, async user => {
   if (user) {
     currentUser = user;
@@ -3589,6 +3594,7 @@ onAuthStateChanged(auth, async user => {
     showLogin();
   }
 });
+})();
 
 window.doLogin = async () => {
   try {
