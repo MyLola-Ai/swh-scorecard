@@ -3023,6 +3023,28 @@ import {
 import { getFunctions, httpsCallable }
   from "https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js";
 
+// ── Capacitor native shell detection ─────────────────────────────────────
+// Must run before any UI renders so the splash hides on the first paint
+// and platform CSS classes are applied immediately.
+{
+  const _cap = window.Capacitor;
+  const _isNative = !!(_cap && _cap.isNativePlatform && _cap.isNativePlatform());
+  const _platform = _isNative && _cap.getPlatform ? _cap.getPlatform() : null;
+  if (_isNative) {
+    document.documentElement.classList.add('native-platform');
+    if (_platform === 'ios')     document.documentElement.classList.add('ios-platform');
+    if (_platform === 'android') document.documentElement.classList.add('android-platform');
+    // Hide the native splash after the first paint (two rAFs = one full paint cycle).
+    // launchAutoHide:false in capacitor.config.json keeps it up until this fires.
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        try { _cap.Plugins.SplashScreen.hide({ fadeOutDuration: 300 }); } catch (_) {}
+      });
+    });
+  }
+}
+// ── /Capacitor ────────────────────────────────────────────────────────────
+
 const firebaseConfig = {
   apiKey: "AIzaSyBnENHc4CqQSqparmGvGdvqUlzNV0mlhyk",
   authDomain: "swh-scoreboard.firebaseapp.com",

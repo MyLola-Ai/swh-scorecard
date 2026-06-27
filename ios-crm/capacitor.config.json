@@ -3,22 +3,21 @@
   "appName": "SWH CRM",
   "webDir": "../public-crm",
   "ios": {
-    "scheme": "SWH CRM",
-    "contentInset": "always",
+    "scheme": "https",
+    "contentInset": "never",
     "limitsNavigationsToAppBoundDomains": false,
     "preferredContentMode": "mobile",
-    "backgroundColor": "#0E1D32"
+    "backgroundColor": "#ffffff"
   },
-  "backgroundColor": "#0E1D32",
   "server": {
     "iosScheme": "https",
     "hostname": "crm.stopwastinghandshakes.com"
   },
   "plugins": {
     "SplashScreen": {
-      "launchAutoHide": true,
-      "launchShowDuration": 2000,
-      "backgroundColor": "#0E1D32",
+      "launchAutoHide": false,
+      "launchShowDuration": 0,
+      "backgroundColor": "#ffffff",
       "showSpinner": false,
       "iosSpinnerStyle": "small"
     },
@@ -27,7 +26,12 @@
     },
     "FirebaseAuthentication": {
       "skipNativeAuth": false,
-      "providers": ["google.com", "apple.com", "microsoft.com"]
+      "providers": ["google.com", "apple.com"]
+    },
+    "StatusBar": {
+      "overlaysWebView": true,
+      "style": "DARK",
+      "backgroundColor": "#ffffff"
     }
   }
 }
