@@ -3005,6 +3005,31 @@ html,body{height:100%;font-family:'DM Sans',sans-serif;background:var(--bg);colo
 
 <div class="toast" id="toast"></div>
 
+<script>
+// Runs unconditionally before the Firebase module — guarantees the loader
+// never spins forever if the module fails to load (CDN unreachable, etc.)
+(function() {
+  var _isNative = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+  if (!_isNative) return;
+  // Hide OAuth buttons that won't work in WKWebView
+  document.addEventListener('DOMContentLoaded', function() {
+    ['login-btn','ms-login-btn'].forEach(function(id) {
+      var el = document.getElementById(id);
+      if (el) el.style.display = 'none';
+    });
+  });
+  // Hard escape: show login screen if Firebase module hasn't resolved in 10s
+  setTimeout(function() {
+    var loader = document.getElementById('loader');
+    var login  = document.getElementById('login-screen');
+    if (loader && loader.style.display !== 'none' && login && login.style.display === 'none') {
+      loader.style.display = 'none';
+      login.style.display  = 'flex';
+    }
+  }, 10000);
+})();
+</script>
+
 <script type="module">
 // ═══════════════════════════════════════════════════
 //  SWH CRM — Full Production Build — Open Beta
@@ -3549,6 +3574,15 @@ window._xprodSigninInFlight = /[#&]signin=[^&]+/.test(window.location.hash || ''
   const _isNativeCap = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
   if (_isNativeCap) {
     try { await setPersistence(auth, browserLocalPersistence); } catch(_) {}
+    // In native WKWebView, signInWithPopup doesn't work — hide OAuth buttons
+    document.querySelectorAll('#login-btn, #ms-login-btn').forEach(el => el.style.display = 'none');
+    // Escape hatch: if onAuthStateChanged hasn't fired in 8s, show login screen
+    setTimeout(() => {
+      if (document.getElementById('loader').style.display !== 'none') {
+        showLoader(false);
+        showLogin();
+      }
+    }, 8000);
   }
 onAuthStateChanged(auth, async user => {
   if (user) {
