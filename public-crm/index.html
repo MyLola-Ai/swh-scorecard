@@ -3829,10 +3829,14 @@ window.doLogin = async () => {
   try {
     if (btn) btn.textContent = 'Signing in…';
     if (_fbPlugin) {
+      showToast('Step 1: calling signInWithGoogle…');
       const result = await _fbPlugin.signInWithGoogle();
+      showToast('Step 2: idToken=' + (result?.credential?.idToken ? 'YES' : 'NO') + ' user=' + (result?.user?.uid || 'null'));
       const idToken = result && result.credential && result.credential.idToken;
-      if (!idToken) throw new Error('Google sign-in did not return a credential');
-      await signInWithCredential(auth, GoogleAuthProvider.credential(idToken));
+      if (!idToken) throw new Error('No idToken in credential');
+      showToast('Step 3: calling signInWithCredential…');
+      const userCred = await signInWithCredential(auth, GoogleAuthProvider.credential(idToken));
+      showToast('Step 4: done! uid=' + (userCred?.user?.uid || 'null'));
     } else {
       await signInWithPopup(auth, provider);
     }
