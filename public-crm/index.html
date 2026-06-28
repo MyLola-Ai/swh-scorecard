@@ -2524,6 +2524,20 @@ html,body{height:100%;font-family:'DM Sans',sans-serif;background:var(--bg);colo
      toggled to "0" via _refreshLolaGate() once loadAllData finishes. */
   body[data-lola-locked="1"] .lola-fab,
   body:not([data-lola-locked="0"]) .lola-fab { display: none; }
+
+  /* Native/web visibility helpers */
+  .native-only { display: none !important; }
+  .native-platform .native-only { display: revert !important; }
+  .native-platform .web-only { display: none !important; }
+
+  /* IAP paywall modal — full-screen on native */
+  #crm-paywall-modal { display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.7);align-items:flex-end;justify-content:center; }
+  #crm-paywall-modal.open { display:flex; }
+  .native-platform #crm-paywall-modal { align-items:flex-start; }
+  #crm-paywall-modal .cpw-sheet { background:linear-gradient(180deg,#1a1a1a 0%,#222 100%);color:#fff;border-radius:22px 22px 0 0;padding:24px 24px max(24px,env(safe-area-inset-bottom));width:100%;max-width:480px;box-sizing:border-box;max-height:90vh;overflow-y:auto; }
+  .native-platform #crm-paywall-modal .cpw-sheet { border-radius:0;max-height:100vh;height:100vh;padding-top:max(56px,calc(env(safe-area-inset-top) + 20px));padding-bottom:max(44px,calc(env(safe-area-inset-bottom) + 24px)); }
+  .cpw-handle { width:40px;height:4px;border-radius:2px;background:rgba(255,255,255,0.18);margin:0 auto 20px; }
+  .native-platform .cpw-handle { display:none; }
 </style>
 <button id="lola-fab" class="lola-fab" onclick="openLola()" title="Ask Lola" aria-label="Ask Lola">
   <span class="lola-fab-label">Ask Lola</span>
@@ -3078,6 +3092,22 @@ import { getFunctions, httpsCallable }
 }
 // ── /Capacitor ────────────────────────────────────────────────────────────
 
+// True immediately (before any async) — used to gate native-only paths.
+const isNativeEarly = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+const isNative = () => isNativeEarly;
+
+// RevenueCat public API key for the SWH CRM iOS app.
+// Get from: RevenueCat dashboard → Apps → SWH CRM iOS → Public API key
+const REVENUECAT_CRM_IOS_KEY = 'appl_nbhmRDbmuarjSPcoHhkyQNdOBAL'; // TODO: replace with CRM-specific key
+
+// Wrap a promise with a timeout so silent plugin hangs become visible errors.
+function withTimeout(promise, ms, label) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error((label || 'call') + ' timed out after ' + ms + 'ms')), ms))
+  ]);
+}
+
 const firebaseConfig = {
   apiKey: "AIzaSyBnENHc4CqQSqparmGvGdvqUlzNV0mlhyk",
   authDomain: "swh-scoreboard.firebaseapp.com",
@@ -3474,7 +3504,7 @@ async function deletePlaybook(id) {
 
 // ── STATE ──
 let currentUser = null;
-let userPlan = 'pro';
+let userPlan = 'free';
 let ACTIVITIES = [...DEFAULT_ACTS];
 let ANNOUNCEMENTS = [];
 let dismissedAnnouncements = {};
@@ -3611,6 +3641,14 @@ onAuthStateChanged(auth, async user => {
     showLoader(false);
     showApp();
     if (typeof refreshSettingsSubLabelsCRM === 'function') refreshSettingsSubLabelsCRM();
+    // On native: fire RC setup (non-blocking) then gate the app if not subscribed.
+    if (isNativeEarly) {
+      setupRevenueCat(user.uid).then(() => {
+        if (userPlan !== 'pro') openPaywall('upgrade');
+      }).catch(() => {
+        if (userPlan !== 'pro') openPaywall('upgrade');
+      });
+    }
     // Nylas: provide the token getter and mount the connect UI (idempotent,
     // no-op until nylas-email.js + the container are present). Lives in the
     // always-rendered settings panel, so mounting here (not on screen-show)
@@ -3912,7 +3950,7 @@ async function initUser() {
       phone: profile.phone || '',
       company: profile.company || '',
       industry: profile.industry || '',
-      plan: 'pro',
+      plan: 'free',
       planStatus: 'beta',
       weeklyGoal: 150,
       createdAt: new Date().toISOString(),
@@ -4312,6 +4350,11 @@ window.goToScorecard = async function() {
 // Opens a Stripe-hosted checkout session for the chosen plan. 60-day free trial.
 window.startUpgrade = async function(plan) {
   try {
+    if (isNativeEarly) {
+      // On native: open the RevenueCat IAP paywall — no external Stripe links allowed.
+      openPaywall('upgrade');
+      return;
+    }
     if (!currentUser || currentUser.isAnonymous) {
       window._pendingTrialPlan = plan;
       showToast('⚠️ Sign in first to start your trial');
@@ -4379,11 +4422,19 @@ window._initialScreen = (function() {
 // ── BILLING ROW (Settings) ──
 // Click handler that routes to checkout (if no subscription) or portal (if active).
 window.onBillingRowClick = function() {
-  // userPlan is the in-memory mirror of users/{uid}.plan
+  if (isNativeEarly) {
+    if (userPlan === 'pro') {
+      if (confirm('Your subscription is active. Would you like to restore purchases on this device?')) {
+        iosRestorePurchases();
+      }
+    } else {
+      openPaywall('upgrade');
+    }
+    return;
+  }
   if (userPlan === 'scorecard' || userPlan === 'pro') {
     openBillingPortal();
   } else {
-    // No subscription — start a checkout for the Pro plan (CRM users are upgrading)
     startUpgrade('pro');
   }
 };
@@ -5247,6 +5298,12 @@ function refreshBillingRow() {
   const txt = document.getElementById('settings-billing-text');
   const sub = document.getElementById('settings-billing-sub');
   if (!txt || !sub) return;
+  if (isNativeEarly) {
+    // Apple compliance — no prices, no "subscribe" marketing copy
+    txt.textContent = 'Account';
+    sub.textContent = userPlan === 'pro' ? 'CRM · active' : 'Subscription required';
+    return;
+  }
   if (userPlan === 'pro') {
     txt.textContent = 'Scorecard CRM';
     sub.textContent = 'Manage subscription · $25/mo';
@@ -5263,6 +5320,10 @@ window.refreshBillingRow = refreshBillingRow;
 // ── STRIPE CUSTOMER PORTAL ──
 window.openBillingPortal = async function() {
   try {
+    if (isNativeEarly) {
+      showToast('Manage your subscription through the App Store.');
+      return;
+    }
     if (!currentUser || currentUser.isAnonymous) {
       showToast('⚠️ Sign in first');
       return;
@@ -5281,6 +5342,240 @@ window.openBillingPortal = async function() {
   } catch (e) {
     console.error('[openBillingPortal] failed:', e);
     showToast('⚠️ ' + (e.message || 'Could not open portal'));
+  }
+};
+
+// ================================================================
+// REVENUECAT — Apple IAP via @revenuecat/purchases-capacitor
+// Mirrors the scorecard's RC implementation for the CRM product.
+// Product: com.impactleadershipgroup.swh.crm.monthly ($25/mo)
+// Entitlement keys: 'crm' or 'pro'
+// ================================================================
+let _rcConfigured    = false;
+let _rcLoadedPackage = null;
+let _rcLoadError     = null;
+let _rcOfferingsLoaded = false;
+let _syncingSubscription = false;
+
+function showSyncingPaywall() {
+  _syncingSubscription = true;
+  const modal = document.getElementById('crm-paywall-modal');
+  if (modal) modal.classList.add('open');
+  const landing = document.getElementById('cpw-landing');
+  if (landing) landing.style.display = 'none';
+  const syncing = document.getElementById('cpw-syncing');
+  if (syncing) syncing.style.display = 'flex';
+}
+function hideSyncingPaywall() {
+  _syncingSubscription = false;
+  const syncing = document.getElementById('cpw-syncing');
+  if (syncing) syncing.style.display = 'none';
+}
+
+function setIAPButtonState(state, label) {
+  const btn = document.getElementById('crm-iap-btn');
+  if (!btn) return;
+  const lbl = document.getElementById('crm-iap-btn-label');
+  const sub = document.getElementById('crm-iap-btn-sub');
+  if (state === 'ready') {
+    btn.disabled = false; btn.style.opacity = '1'; btn.style.cursor = 'pointer';
+    if (lbl) lbl.textContent = label || 'Start free trial';
+    if (sub) sub.textContent = 'Free for 60 days, then $24.99/month. Cancel anytime.';
+  } else if (state === 'loading') {
+    btn.disabled = true; btn.style.opacity = '0.6'; btn.style.cursor = 'default';
+    if (lbl) lbl.textContent = 'Loading…';
+    if (sub) sub.textContent = '';
+  } else {
+    btn.disabled = true; btn.style.opacity = '0.45'; btn.style.cursor = 'default';
+    if (lbl) lbl.textContent = label || 'Unavailable';
+    if (sub) sub.textContent = '';
+  }
+}
+
+window.openPaywall = function(reason) {
+  const modal = document.getElementById('crm-paywall-modal');
+  if (!modal) return;
+  modal.classList.add('open');
+  const landing = document.getElementById('cpw-landing');
+  const syncing = document.getElementById('cpw-syncing');
+  if (landing) landing.style.display = 'block';
+  if (syncing) syncing.style.display = 'none';
+  if (isNativeEarly) loadRCOfferings().catch(() => {});
+};
+window.closePaywall = function() {
+  const modal = document.getElementById('crm-paywall-modal');
+  if (modal) modal.classList.remove('open');
+};
+
+async function setupRevenueCat(uid) {
+  if (!isNativeEarly) return;
+  if (_rcConfigured) {
+    try { const P = window.Capacitor.Plugins.Purchases; await P.logIn({ appUserID: uid }); } catch(_) {}
+    await reconcileEntitlementsFromRC().catch(() => {});
+    return;
+  }
+  if (!REVENUECAT_CRM_IOS_KEY || REVENUECAT_CRM_IOS_KEY.startsWith('TODO')) {
+    console.warn('[RC] CRM iOS key not configured — IAP disabled');
+    return;
+  }
+  try {
+    const Purchases = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Purchases;
+    if (!Purchases) { console.warn('[RC] Purchases plugin missing'); return; }
+    await withTimeout(Purchases.configure({ apiKey: REVENUECAT_CRM_IOS_KEY, appUserID: uid || null }), 6000, 'RC.configure');
+    _rcConfigured = true;
+    console.log('[RC] configured for CRM');
+    await reconcileEntitlementsFromRC().catch(() => {});
+  } catch(e) {
+    console.warn('[RC] setup failed (non-fatal):', e && e.message);
+  }
+}
+
+async function reconcileEntitlementsFromRC() {
+  if (!_rcConfigured) return false;
+  try {
+    const Purchases = window.Capacitor.Plugins.Purchases;
+    const { customerInfo } = await withTimeout(Purchases.getCustomerInfo(), 8000, 'RC.getCustomerInfo');
+    const active = customerInfo && customerInfo.entitlements && customerInfo.entitlements.active;
+    if (!active) return false;
+    const has = k => Object.prototype.hasOwnProperty.call(active, k);
+    if (!(has('crm') || has('pro') || has('scorecard'))) return false;
+    userPlan = 'pro';
+    if (currentUser && !currentUser.isAnonymous) {
+      try {
+        await setDoc(doc(db, 'users', currentUser.uid), { plan: 'pro', subscriptionStatus: 'active', updatedAt: new Date().toISOString() }, { merge: true });
+      } catch(fsErr) { console.warn('[RC] Firestore sync failed:', fsErr.message); }
+    }
+    if (typeof refreshBillingRow === 'function') setTimeout(refreshBillingRow, 0);
+    console.log('[RC] CRM entitlement confirmed — plan=pro');
+    return true;
+  } catch(e) {
+    console.warn('[RC] entitlement check failed:', e && e.message);
+    return false;
+  }
+}
+
+async function loadRCOfferings() {
+  if (!isNativeEarly) return;
+  setIAPButtonState('loading');
+  const Purchases = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Purchases;
+  if (!Purchases) { setIAPButtonState('error', 'Plugin missing'); return; }
+  if (!_rcConfigured) {
+    try {
+      const uid = currentUser && !currentUser.isAnonymous ? currentUser.uid : null;
+      await Purchases.configure({ apiKey: REVENUECAT_CRM_IOS_KEY, appUserID: uid || null });
+      _rcConfigured = true;
+    } catch(e) {
+      setIAPButtonState('error', 'Setup failed');
+      _rcLoadError = 'configure failed: ' + (e.message || e);
+      return;
+    }
+  }
+  try {
+    async function fetchOfferings() {
+      const raw = await Purchases.getOfferings();
+      if (!raw) return null;
+      return raw.offerings !== undefined ? raw.offerings : raw;
+    }
+    let offerings = await fetchOfferings();
+    if (!offerings || !offerings.current) {
+      await new Promise(r => setTimeout(r, 2000));
+      offerings = await fetchOfferings();
+    }
+    if (!offerings || !offerings.current) { setIAPButtonState('error', 'No offerings'); return; }
+    const pkgs = offerings.current.availablePackages || [];
+    if (pkgs.length === 0) { setIAPButtonState('error', 'No products'); return; }
+    const pkg = pkgs.find(p => {
+      const id = (p.identifier || '').toLowerCase();
+      const prod = (p.product && p.product.identifier || '').toLowerCase();
+      return id.includes('crm') || prod.includes('crm') || id === '$rc_monthly';
+    }) || pkgs[0];
+    _rcLoadedPackage = pkg;
+    _rcOfferingsLoaded = true;
+    _rcLoadError = null;
+    const price = (pkg.product && pkg.product.priceString) || '$24.99';
+    const hasIntro = !!(pkg.product && pkg.product.introPrice);
+    setIAPButtonState('ready', hasIntro ? 'Start 60-day free trial' : `Subscribe — ${price}/mo`);
+    console.log('[RC] CRM package ready:', pkg.identifier, price);
+  } catch(e) {
+    _rcLoadError = 'getOfferings failed: ' + (e.message || e);
+    setIAPButtonState('error', 'Load failed');
+  }
+}
+
+window.iosPurchase = async function() {
+  if (!isNativeEarly) { showToast('IAP only on iOS'); return; }
+  if (!_rcLoadedPackage) {
+    await loadRCOfferings();
+    if (!_rcLoadedPackage) { showToast('⚠️ ' + (_rcLoadError || 'Subscription not available')); return; }
+  }
+  const Purchases = window.Capacitor.Plugins.Purchases;
+  let purchaseCustomerInfo = null;
+  let alreadyOwned = false;
+  try {
+    showToast('⏳ Opening Apple purchase…');
+    const result = await Purchases.purchasePackage({ aPackage: _rcLoadedPackage });
+    purchaseCustomerInfo = result && result.customerInfo;
+  } catch(purchaseErr) {
+    const code = String((purchaseErr && (purchaseErr.code || purchaseErr.underlyingErrorCode)) || '');
+    const msg  = String((purchaseErr && purchaseErr.message) || '');
+    if (purchaseErr && (purchaseErr.userCancelled === true || code === 'PURCHASE_CANCELLED' || code === '1')) return;
+    const isAlreadyOwned = code === 'PRODUCT_ALREADY_PURCHASED' || code === '7' || msg.toLowerCase().includes('already');
+    if (!isAlreadyOwned) { showToast('⚠️ ' + (msg || 'Purchase failed')); return; }
+    alreadyOwned = true;
+  }
+  showSyncingPaywall();
+  let hardTimeoutFired = false;
+  const hardTimeout = setTimeout(() => {
+    hardTimeoutFired = true;
+    _syncingSubscription = false;
+    hideSyncingPaywall();
+    showToast('⚠️ Could not verify — please close and reopen the app.');
+    openPaywall('upgrade');
+  }, 13000);
+  try {
+    let confirmed = false;
+    if (purchaseCustomerInfo) {
+      const active = purchaseCustomerInfo.entitlements && purchaseCustomerInfo.entitlements.active;
+      const has = k => active && Object.prototype.hasOwnProperty.call(active, k);
+      if (has('crm') || has('pro')) confirmed = await reconcileEntitlementsFromRC();
+    }
+    if (!confirmed && !hardTimeoutFired) confirmed = await reconcileEntitlementsFromRC();
+    for (let i = 1; i <= 4 && !confirmed && !hardTimeoutFired; i++) {
+      await new Promise(r => setTimeout(r, 1500));
+      confirmed = await reconcileEntitlementsFromRC();
+    }
+    if (hardTimeoutFired) return;
+    clearTimeout(hardTimeout);
+    hideSyncingPaywall();
+    if (confirmed) {
+      showToast(alreadyOwned ? '✅ Subscription verified!' : '✅ Subscription active!');
+      setTimeout(() => { closePaywall(); showApp && showApp(); }, 600);
+    } else {
+      try { await Purchases.restorePurchases(); confirmed = await reconcileEntitlementsFromRC(); } catch(_) {}
+      if (confirmed) {
+        showToast('✅ Subscription restored!');
+        setTimeout(() => { closePaywall(); showApp && showApp(); }, 600);
+      } else {
+        showToast('⚠️ Could not verify — please close and reopen the app.');
+        openPaywall('upgrade');
+      }
+    }
+  } finally {
+    clearTimeout(hardTimeout);
+    _syncingSubscription = false;
+  }
+};
+
+window.iosRestorePurchases = async function() {
+  if (!isNativeEarly) return;
+  if (!_rcConfigured) { showToast('Purchases not ready'); return; }
+  try {
+    const Purchases = window.Capacitor.Plugins.Purchases;
+    await Purchases.restorePurchases();
+    const confirmed = await reconcileEntitlementsFromRC();
+    showToast(confirmed ? '✅ Purchases restored' : '⚠️ No active subscription found');
+  } catch(e) {
+    showToast('⚠️ ' + (e.message || 'Could not restore'));
   }
 };
 
@@ -12062,6 +12357,56 @@ window.onSendToMyLolaSubmit = async function() {
     <div style="padding:12px 20px 16px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:8px;align-items:center;">
       <button class="tb-btn" onclick="closeGradeModal()">Not now</button>
       <button id="grade-modal-confirm-btn" class="tb-btn" style="display:none;font-weight:700;" onclick="confirmExistingGrade()">Confirm Grade</button>
+    </div>
+  </div>
+</div>
+<!-- ── IAP PAYWALL MODAL (native iOS only) ─────────────────────── -->
+<div id="crm-paywall-modal">
+  <div class="cpw-sheet">
+    <div class="cpw-handle"></div>
+
+    <!-- SYNCING: shown while RC reconcile is in progress after purchase -->
+    <div id="cpw-syncing" style="display:none;flex-direction:column;align-items:center;justify-content:center;padding:48px 24px;text-align:center;min-height:300px;">
+      <div style="font-size:44px;margin-bottom:20px;">⏳</div>
+      <div style="font-family:'DM Sans',sans-serif;font-size:19px;font-weight:700;color:#fff;margin-bottom:10px;">Syncing your subscription…</div>
+      <div style="font-family:'DM Sans',sans-serif;font-size:14px;color:rgba(255,255,255,0.5);line-height:1.6;">Verifying with Apple. This only takes a moment.</div>
+    </div>
+
+    <!-- LANDING -->
+    <div id="cpw-landing">
+      <div style="display:flex;justify-content:center;margin-bottom:14px;">
+        <img src="/assets/swh-logo-dark.svg" onerror="this.style.display='none'" style="width:56px;height:56px;border-radius:14px;" alt="SWH">
+      </div>
+      <div style="font-family:'Playfair Display',serif;font-size:24px;font-weight:900;text-align:center;line-height:1.2;color:#fff;margin-bottom:8px;">Full CRM access</div>
+      <div style="font-size:13px;color:rgba(255,255,255,0.6);text-align:center;line-height:1.6;margin-bottom:20px;">Track contacts, manage your pipeline, and build stronger relationships.</div>
+
+      <div style="display:flex;flex-direction:column;gap:9px;margin-bottom:20px;">
+        <div style="display:flex;align-items:center;gap:10px;font-size:13px;color:rgba(255,255,255,0.85);"><span style="color:#EC1825;font-weight:800;">✓</span> Contact management &amp; follow-up queue</div>
+        <div style="display:flex;align-items:center;gap:10px;font-size:13px;color:rgba(255,255,255,0.85);"><span style="color:#EC1825;font-weight:800;">✓</span> Pipeline &amp; deal tracking</div>
+        <div style="display:flex;align-items:center;gap:10px;font-size:13px;color:rgba(255,255,255,0.85);"><span style="color:#EC1825;font-weight:800;">✓</span> Team activity reports</div>
+        <div style="display:flex;align-items:center;gap:10px;font-size:13px;color:rgba(255,255,255,0.85);"><span style="color:#EC1825;font-weight:800;">✓</span> Lola AI coaching &amp; daily digest</div>
+      </div>
+
+      <!-- IAP subscribe button — enabled by loadRCOfferings() -->
+      <button id="crm-iap-btn" onclick="iosPurchase()" disabled
+        style="width:100%;padding:18px 20px;background:linear-gradient(135deg,#EC1825,#a3101a);border:none;border-radius:14px;font-family:'DM Sans',sans-serif;cursor:default;text-align:left;display:flex;align-items:center;gap:14px;box-shadow:0 4px 18px rgba(236,24,37,0.35);opacity:0.6;box-sizing:border-box;">
+        <div style="font-size:24px;">⚡</div>
+        <div style="flex:1;">
+          <div id="crm-iap-btn-label" style="font-size:15px;font-weight:800;color:#fff;">Loading…</div>
+          <div id="crm-iap-btn-sub" style="font-size:12px;color:rgba(255,255,255,0.9);line-height:1.4;margin-top:2px;"></div>
+        </div>
+        <div style="color:#fff;font-size:18px;font-weight:800;">→</div>
+      </button>
+
+      <button onclick="iosRestorePurchases()" style="width:100%;margin-top:10px;background:transparent;border:none;font-size:12px;font-weight:600;color:rgba(255,255,255,0.5);cursor:pointer;padding:8px;text-decoration:underline;">Restore purchases</button>
+
+      <div style="margin-top:14px;text-align:center;font-size:11px;color:rgba(255,255,255,0.3);line-height:1.6;">
+        By subscribing you agree to our
+        <a href="https://stopwastinghandshakes.com/terms" target="_blank" style="color:rgba(255,255,255,0.5);text-decoration:underline;">Terms of Use</a>
+        and
+        <a href="https://stopwastinghandshakes.com/privacy" target="_blank" style="color:rgba(255,255,255,0.5);text-decoration:underline;">Privacy Policy</a>.
+        Subscription auto-renews monthly unless cancelled.
+      </div>
     </div>
   </div>
 </div>
