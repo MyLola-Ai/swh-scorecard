@@ -3834,9 +3834,23 @@ window.doLogin = async () => {
       showToast('Step 2: idToken=' + (result?.credential?.idToken ? 'YES' : 'NO') + ' user=' + (result?.user?.uid || 'null'));
       const idToken = result && result.credential && result.credential.idToken;
       if (!idToken) throw new Error('No idToken in credential');
-      showToast('Step 3: calling signInWithCredential…');
+      showToast('Step 3: testing network to googleapis…');
+      const _ctrl = new AbortController();
+      const _tid = setTimeout(() => _ctrl.abort(), 6000);
+      try {
+        const _r = await fetch('https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=INVALID', {
+          method: 'POST', headers: {'Content-Type':'application/json'}, body: '{}', signal: _ctrl.signal
+        });
+        clearTimeout(_tid);
+        showToast('Network OK: HTTP ' + _r.status + ' — now calling signInWithCredential…');
+      } catch(_ne) {
+        clearTimeout(_tid);
+        showToast('Network: ' + (_ne.name === 'AbortError' ? 'TIMEOUT after 6s' : _ne.message));
+        throw _ne;
+      }
+      showToast('Step 4: calling signInWithCredential…');
       const userCred = await signInWithCredential(auth, GoogleAuthProvider.credential(idToken));
-      showToast('Step 4: done! uid=' + (userCred?.user?.uid || 'null'));
+      showToast('Step 5: done! uid=' + (userCred?.user?.uid || 'null'));
     } else {
       await signInWithPopup(auth, provider);
     }
