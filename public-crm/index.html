@@ -975,14 +975,18 @@ html,body{height:100%;font-family:'DM Sans',sans-serif;background:var(--bg);colo
 </div>
 
 <!-- ════ LOADER ════ Brand spinner: rotating red arrows + static SWH overlay -->
-<div id="loader" style="display:flex;position:fixed;inset:0;z-index:400;background:var(--navy-d);flex-direction:column;align-items:center;justify-content:center;gap:22px;">
-  <div style="position:relative;width:104px;height:104px;display:flex;align-items:center;justify-content:center;">
-    <img src="assets/swh/swh-spinner.png" alt="" aria-hidden="true" style="position:absolute;inset:0;width:100%;height:100%;object-fit:contain;animation:spin 1.4s linear infinite;transform-origin:50% 50%;">
-    <div style="position:relative;z-index:1;font-family:'Anton','Archivo Black','Helvetica Neue',sans-serif;font-weight:400;font-size:30px;letter-spacing:0.02em;color:#fff;text-transform:uppercase;">SWH</div>
+<div id="loader" style="display:flex;position:fixed;inset:0;z-index:400;background:#1a1a1a;flex-direction:column;align-items:center;justify-content:center;gap:22px;">
+  <div class="swh-spin-wrap">
+    <img class="swh-monogram" src="images/swh-monogram-dark.png" alt="" draggable="false">
+    <img class="swh-arrows"   src="images/swh-arrow-mark-dark.png" alt="" draggable="false">
   </div>
-  <div style="color:rgba(255,255,255,0.5);font-size:13px;">Loading your CRM…</div>
+  <div style="color:rgba(255,255,255,0.55);font-size:13px;font-family:-apple-system,sans-serif;letter-spacing:0.04em;">Loading…</div>
 </div>
-<style>@keyframes spin{to{transform:rotate(360deg);}}
+<style>
+  .swh-spin-wrap{position:relative;width:120px;height:120px;flex-shrink:0;}
+  .swh-monogram,.swh-arrows{position:absolute;top:0;left:0;width:120px;height:120px;display:block;}
+  .swh-arrows{-webkit-animation:swh-spin 1.8s linear infinite;animation:swh-spin 1.8s linear infinite;transform-origin:center center;}
+  @keyframes swh-spin{to{transform:rotate(360deg);}}
   /* ===== Powered by Lola — per official Brand Package v1.0 ===== */
   .lola-badge{display:inline-flex;align-items:center;gap:9px;padding:6px 0;
     font-family:'Space Grotesk','Inter',system-ui,-apple-system,sans-serif;
