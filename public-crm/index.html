@@ -36,6 +36,7 @@
 ════════════════════════════════════════ */
 :root {
   --navy:#1a1a1a; --navy-l:#2d2d2d; --navy-d:#111111;
+  --chrome-bg:#1a1a1a;
   --gold:#E63946; --gold-l:#ff6b6b; --gold-d:#cc2936;
   --bg:#F4F4F5; --card:#FFFFFF; --text:#1a1a1a; --muted:#6B7280;
   --border:#E4E4E7; --green:#5A8A6A; --red:#E63946;
@@ -55,10 +56,28 @@ html.dark-theme {
   --navy:#f2f2f7;
   --navy-l:rgba(235,235,245,0.6);
   --navy-d:#111111;
+  --chrome-bg:#3a3a3c;
   --shadow:0 2px 16px rgba(0,0,0,0.55);
   --shadow-lg:0 8px 40px rgba(0,0,0,0.8);
 }
 html.dark-theme body { color-scheme: dark; }
+/* Dark mode: navy flips to light for text — fix structural backgrounds that must stay dark */
+html.dark-theme .mobile-topbar,
+html.dark-theme .bottom-nav { background:#1a1a1a !important; }
+html.dark-theme .toast { background:#2c2c2e !important; }
+html.dark-theme .ctx-header,
+html.dark-theme .preview-head { background:#1c1c1e !important; }
+html.dark-theme .kpi.navy,
+html.dark-theme .cd-hero,
+html.dark-theme .day-hero { background:linear-gradient(135deg,#1c1c1e,#111) !important; border-color:transparent !important; }
+html.dark-theme .filter-chip.active,
+html.dark-theme .pt-btn.active,
+html.dark-theme .ctx-chip:hover,
+html.dark-theme .ctx-chip.selected,
+html.dark-theme .ref-dir-btn.active,
+html.dark-theme .hist-toggle.active { background:var(--chrome-bg) !important; border-color:#48484a !important; }
+html.dark-theme #ios-install-banner { background:#1a1a1a !important; }
+html.dark-theme .week-hero-card { background:#1c1c1e !important; }
 
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
 html,body{height:100%;font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);}
@@ -4803,7 +4822,7 @@ window.setCrmMdTab = function(tab) {
   ['history','activities','schedule'].forEach(t => {
     document.getElementById('crm-md-panel-' + t).style.display = t === tab ? 'block' : 'none';
     const btn = document.getElementById('crm-md-tab-' + t);
-    btn.style.background = t === tab ? 'var(--navy)' : 'transparent';
+    btn.style.background = t === tab ? 'var(--chrome-bg)' : 'transparent';
     btn.style.color      = t === tab ? '#fff'        : 'var(--muted)';
   });
   if (tab === 'activities') renderCrmMdActRows();
@@ -8639,7 +8658,7 @@ function renderHistory(view='week') {
 
     // 1. Hero card
     html += `<div style="padding:0 16px 14px;">
-      <div style="background:var(--navy);border-radius:18px;padding:22px 20px;">
+      <div class="week-hero-card" style="background:var(--navy);border-radius:18px;padding:22px 20px;">
         <div style="font-size:10px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:rgba(255,255,255,0.35);margin-bottom:6px;">This Week · ${dateRange}</div>
         <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px;">
           <div style="font-family:'Playfair Display',serif;font-size:64px;font-weight:900;color:#fff;line-height:1;">${grand}</div>
@@ -12058,7 +12077,7 @@ window.onSendToMyLolaOppClick = function(btn, value) {
     b.style.color = 'var(--text)';
   });
   btn.classList.add('selected');
-  btn.style.background = 'var(--navy)';
+  btn.style.background = 'var(--chrome-bg)';
   btn.style.color = '#fff';
   btn.dataset.selected = '1';
   const overlay = document.getElementById('send-mylola-overlay');
