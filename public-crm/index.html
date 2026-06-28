@@ -11,7 +11,15 @@
 <title>SWH CRM — Stop Wasting Handshakes</title>
 <link rel="icon" href="assets/swh/swh-lockup-light.png">
 <link rel="manifest" href="/manifest.json">
-<meta name="theme-color" content="#0A2540">
+<meta name="theme-color" content="#0A2540" id="meta-theme-color">
+<!-- Anti-flash: apply saved theme class before first paint -->
+<script>
+(function(){
+  var s=localStorage.getItem('swh_crm_theme')||'system';
+  var dark=(s==='dark')||(s==='system'&&window.matchMedia&&window.matchMedia('(prefers-color-scheme:dark)').matches);
+  if(dark)document.documentElement.classList.add('dark-theme');
+})();
+</script>
 <meta property="og:title" content="SWH CRM — Stop Wasting Handshakes">
 <meta property="og:description" content="The networking CRM built on the 8-Step Follow-Through System. Track contacts, log activities, and turn handshakes into referral partners.">
 <meta property="og:image" content="https://swh-crm.web.app/assets/swh/swh-lockup-light.png">
@@ -36,6 +44,22 @@
   --shadow-lg:0 8px 40px rgba(0,0,0,0.14);
   --sidebar-w:240px;
 }
+
+/* ── DARK THEME OVERRIDES ── */
+html.dark-theme {
+  --bg:#000000;
+  --card:#1c1c1e;
+  --text:#f2f2f7;
+  --muted:#8e8e93;
+  --border:#38383a;
+  --navy:#f2f2f7;
+  --navy-l:rgba(235,235,245,0.6);
+  --navy-d:#111111;
+  --shadow:0 2px 16px rgba(0,0,0,0.55);
+  --shadow-lg:0 8px 40px rgba(0,0,0,0.8);
+}
+html.dark-theme body { color-scheme: dark; }
+
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
 html,body{height:100%;font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);}
 ::-webkit-scrollbar{width:5px;}
@@ -1665,7 +1689,12 @@ html,body{height:100%;font-family:'DM Sans',sans-serif;background:var(--bg);colo
                   </div>
                 </div>
 
-                <div style="font-size:10px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:var(--muted);margin-bottom:9px;">Account</div>
+                <div style="font-size:10px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:var(--muted);margin-bottom:9px;">Appearance</div>
+                <div class="settings-card">
+                  <div class="settings-row" onclick="openThemeSheet()"><div class="sr-left"><div class="sr-icon">🌓</div><div><div class="sr-text">Theme</div><div class="sr-sub" id="settings-theme-sub">System (follows device)</div></div></div><div class="sr-arrow">›</div></div>
+                </div>
+
+                <div style="font-size:10px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:var(--muted);margin-bottom:9px;margin-top:18px;">Account</div>
                 <div class="settings-card">
                   <div class="settings-row"><div class="sr-left"><div class="sr-icon">👤</div><div><div class="sr-text" id="settings-name">Loading…</div><div class="sr-sub" id="settings-email">Account</div></div></div></div>
                   <div class="settings-row" id="settings-billing-row" onclick="onBillingRowClick()"><div class="sr-left"><div class="sr-icon">💳</div><div><div class="sr-text" id="settings-billing-text">Subscription</div><div class="sr-sub" id="settings-billing-sub">Loading plan…</div></div></div><div class="sr-arrow">›</div></div>
@@ -2525,6 +2554,16 @@ html,body{height:100%;font-family:'DM Sans',sans-serif;background:var(--bg);colo
   body[data-lola-locked="1"] .lola-fab,
   body:not([data-lola-locked="0"]) .lola-fab { display: none; }
 
+  /* Theme picker sheet */
+  #theme-sheet { display:none;position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,0.5);align-items:flex-end;justify-content:center; }
+  #theme-sheet.open { display:flex; }
+  .ts-inner { background:var(--card);border-radius:22px 22px 0 0;width:100%;max-width:480px;padding:20px 0 max(24px,env(safe-area-inset-bottom));box-sizing:border-box; }
+  .ts-title { font-size:13px;font-weight:700;color:var(--muted);text-align:center;padding:0 20px 14px;border-bottom:1px solid var(--border);letter-spacing:0.04em;text-transform:uppercase; }
+  .ts-opt { display:flex;align-items:center;justify-content:space-between;padding:16px 20px;cursor:pointer;border-bottom:1px solid var(--border);font-family:'DM Sans',sans-serif;font-size:16px;color:var(--text);transition:background 0.12s; }
+  .ts-opt:last-child { border-bottom:none; }
+  .ts-opt:hover { background:var(--bg); }
+  .ts-chk { color:var(--gold);font-weight:800;font-size:18px;width:20px;text-align:right; }
+
   /* Native/web visibility helpers */
   .native-only { display: none !important; }
   .native-platform .native-only { display: revert !important; }
@@ -3108,6 +3147,85 @@ function withTimeout(promise, ms, label) {
   ]);
 }
 
+// ── THEME MANAGEMENT ──────────────────────────────────────────────────────────
+const THEME_PREF_KEY = 'swh_crm_theme'; // 'light' | 'dark' | 'system'
+let _themePref = localStorage.getItem(THEME_PREF_KEY) || 'system';
+const _sysDarkMQ = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)');
+
+function _isDarkActive() {
+  if (_themePref === 'dark') return true;
+  if (_themePref === 'light') return false;
+  return !!(_sysDarkMQ && _sysDarkMQ.matches);
+}
+
+function applyTheme(pref) {
+  if (pref) _themePref = pref;
+  const dark = _isDarkActive();
+  document.documentElement.classList.toggle('dark-theme', dark);
+  // Sync <meta name="theme-color"> so the browser chrome matches
+  const mc = document.getElementById('meta-theme-color');
+  if (mc) mc.content = dark ? '#000000' : '#0A2540';
+  // Update iOS status bar icon style
+  if (isNativeEarly) {
+    try {
+      const SB = window.Capacitor?.Plugins?.StatusBar;
+      if (SB) SB.setStyle({ style: dark ? 'LIGHT' : 'DARK' }).catch(() => {});
+    } catch(_) {}
+  }
+  // Refresh the settings label
+  const sub = document.getElementById('settings-theme-sub');
+  if (sub) sub.textContent = { light: 'Light', dark: 'Dark', system: 'System (follows device)' }[_themePref] || 'System';
+}
+
+async function saveThemePref(pref) {
+  applyTheme(pref);
+  localStorage.setItem(THEME_PREF_KEY, pref);
+  try {
+    const Prefs = window.Capacitor?.Plugins?.Preferences;
+    if (Prefs) await Prefs.set({ key: THEME_PREF_KEY, value: pref });
+  } catch(_) {}
+}
+
+async function loadThemePref() {
+  let pref = null;
+  try {
+    const Prefs = window.Capacitor?.Plugins?.Preferences;
+    if (Prefs) {
+      const { value } = await Prefs.get({ key: THEME_PREF_KEY });
+      if (value) pref = value;
+    }
+  } catch(_) {}
+  applyTheme(pref || localStorage.getItem(THEME_PREF_KEY) || 'system');
+}
+
+// Re-apply when the OS switches modes (only matters in 'system' pref)
+if (_sysDarkMQ?.addEventListener) {
+  _sysDarkMQ.addEventListener('change', () => { if (_themePref === 'system') applyTheme(); });
+}
+
+window.openThemeSheet = function() {
+  const current = _themePref;
+  const sheet = document.getElementById('theme-sheet');
+  if (!sheet) return;
+  // Mark active option
+  ['light','dark','system'].forEach(v => {
+    const el = document.getElementById('theme-opt-' + v);
+    if (el) el.style.fontWeight = (v === current) ? '800' : '600';
+    const chk = document.getElementById('theme-chk-' + v);
+    if (chk) chk.textContent = (v === current) ? '✓' : '';
+  });
+  sheet.classList.add('open');
+};
+window.closeThemeSheet = function() {
+  const sheet = document.getElementById('theme-sheet');
+  if (sheet) sheet.classList.remove('open');
+};
+window.selectTheme = function(pref) {
+  saveThemePref(pref);
+  closeThemeSheet();
+};
+// ── /THEME MANAGEMENT ─────────────────────────────────────────────────────────
+
 const firebaseConfig = {
   apiKey: "AIzaSyBnENHc4CqQSqparmGvGdvqUlzNV0mlhyk",
   authDomain: "swh-scoreboard.firebaseapp.com",
@@ -3641,6 +3759,7 @@ onAuthStateChanged(auth, async user => {
     showLoader(false);
     showApp();
     if (typeof refreshSettingsSubLabelsCRM === 'function') refreshSettingsSubLabelsCRM();
+    loadThemePref(); // sync theme from Capacitor Preferences after auth resolves
     // On native: fire RC setup (non-blocking) then gate the app if not subscribed.
     if (isNativeEarly) {
       setupRevenueCat(user.uid).then(() => {
@@ -12360,6 +12479,25 @@ window.onSendToMyLolaSubmit = async function() {
     </div>
   </div>
 </div>
+<!-- ── THEME PICKER SHEET ──────────────────────────────────────── -->
+<div id="theme-sheet" onclick="if(event.target===this)closeThemeSheet()">
+  <div class="ts-inner">
+    <div class="ts-title">Appearance</div>
+    <div class="ts-opt" onclick="selectTheme('light')">
+      <span id="theme-opt-light">☀️ &nbsp;Light</span>
+      <span class="ts-chk" id="theme-chk-light"></span>
+    </div>
+    <div class="ts-opt" onclick="selectTheme('dark')">
+      <span id="theme-opt-dark">🌙 &nbsp;Dark</span>
+      <span class="ts-chk" id="theme-chk-dark"></span>
+    </div>
+    <div class="ts-opt" onclick="selectTheme('system')">
+      <span id="theme-opt-system">📱 &nbsp;System (follows device)</span>
+      <span class="ts-chk" id="theme-chk-system"></span>
+    </div>
+  </div>
+</div>
+
 <!-- ── IAP PAYWALL MODAL (native iOS only) ─────────────────────── -->
 <div id="crm-paywall-modal">
   <div class="cpw-sheet">
