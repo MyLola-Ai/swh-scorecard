@@ -25,7 +25,7 @@
       "presentationOptions": ["badge", "sound", "alert"]
     },
     "FirebaseAuthentication": {
-      "skipNativeAuth": false,
+      "skipNativeAuth": true,
       "providers": ["google.com", "apple.com"]
     },
     "StatusBar": {

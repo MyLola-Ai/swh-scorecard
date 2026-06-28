@@ -3830,8 +3830,11 @@ window.doLogin = async () => {
     if (btn) btn.textContent = 'Signing in…';
     if (_fbPlugin) {
       const result = await _fbPlugin.signInWithGoogle();
-      const idToken = result && result.credential && result.credential.idToken;
-      if (!idToken) throw new Error('No ID token returned from Google sign-in');
+      const u = result && result.user;
+      if (!u || !u.uid) throw new Error('Google sign-in did not return a user');
+      const tok = await _fbPlugin.getIdToken({ forceRefresh: false });
+      const idToken = tok && tok.token;
+      if (!idToken) throw new Error('Could not get ID token');
       await signInWithCredential(auth, GoogleAuthProvider.credential(idToken));
     } else {
       await signInWithPopup(auth, provider);
@@ -3839,8 +3842,8 @@ window.doLogin = async () => {
   } catch(e) {
     console.error('Google sign-in error:', e);
     resetBtn();
-    if (e && e.message && e.message.includes('cancelled')) return;
-    showToast('⚠️ Login failed. Please try again.');
+    if (e && e.message && (e.message.includes('cancelled') || e.message.includes('cancel'))) return;
+    showToast('⚠️ ' + (e && (e.code || e.message) ? (e.code || e.message).slice(0,80) : 'Login failed'));
   }
 };
 
@@ -3851,10 +3854,13 @@ window.doAppleLogin = async () => {
     if (btn) btn.textContent = 'Signing in…';
     if (_fbPlugin) {
       const result = await _fbPlugin.signInWithApple();
-      const idToken = result && result.credential && result.credential.idToken;
+      const u = result && result.user;
+      if (!u || !u.uid) throw new Error('Apple sign-in did not return a user');
+      const tok = await _fbPlugin.getIdToken({ forceRefresh: false });
+      const idToken = tok && tok.token;
+      if (!idToken) throw new Error('Could not get ID token');
       const nonce = result && result.credential && result.credential.nonce;
-      if (!idToken) throw new Error('No ID token returned from Apple sign-in');
-      const appleCredential = new OAuthProvider('apple.com').credential({ idToken, rawNonce: nonce });
+      const appleCredential = new OAuthProvider('apple.com').credential({ idToken: result.credential.idToken, rawNonce: nonce });
       await signInWithCredential(auth, appleCredential);
     } else {
       showToast('Apple sign-in is only available in the app.');
@@ -3862,8 +3868,8 @@ window.doAppleLogin = async () => {
   } catch(e) {
     console.error('Apple sign-in error:', e);
     if (btn) btn.textContent = 'Sign in with Apple';
-    if (e && e.message && e.message.includes('cancelled')) return;
-    showToast('⚠️ Apple sign-in failed. Please try again.');
+    if (e && e.message && (e.message.includes('cancelled') || e.message.includes('cancel'))) return;
+    showToast('⚠️ ' + (e && (e.code || e.message) ? (e.code || e.message).slice(0,80) : 'Apple sign-in failed'));
   }
 };
 
