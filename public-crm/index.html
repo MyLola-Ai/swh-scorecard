@@ -197,7 +197,7 @@ html,body{height:100%;font-family:'DM Sans',sans-serif;background:var(--bg);colo
   /* Mobile topbar */
   .mobile-topbar{
     background:var(--navy);
-    padding:52px 24px 22px;
+    padding:calc(env(safe-area-inset-top,0px) + 20px) 24px 22px;
     flex-shrink:0;position:relative;overflow:hidden;
   }
   .mobile-topbar::after{
@@ -265,7 +265,7 @@ html,body{height:100%;font-family:'DM Sans',sans-serif;background:var(--bg);colo
   .screen-body .content-pad{padding:20px 24px;}
 
   /* Dashboard mobile spacing */
-  #screen-dashboard .dash-grid{padding:36px 24px 0;gap:14px;margin-bottom:0;}
+  #screen-dashboard .dash-grid{padding:0 24px 0;gap:14px;margin-bottom:0;}
   #screen-dashboard .dash-main{padding:32px 24px 56px;}
   #screen-dashboard .hero-card{margin-bottom:32px;}
 }
@@ -1305,7 +1305,7 @@ html,body{height:100%;font-family:'DM Sans',sans-serif;background:var(--bg);colo
 
       <!-- ════ DASHBOARD ════ -->
       <div id="screen-dashboard" class="screen active">
-        <div style="flex:1;overflow-y:auto;padding-bottom:160px;-webkit-overflow-scrolling:touch;">
+        <div style="flex:1;overflow-y:auto;padding-top:calc(env(safe-area-inset-top,0px) + 20px);padding-bottom:160px;-webkit-overflow-scrolling:touch;">
         <div id="announcements-banner" style="display:none;margin:20px 0 0;"></div>
         <div class="dash-grid">
           <div class="kpi navy" id="dash-kpi-1" onclick="showScreen('log',document.querySelectorAll('.mob-nav-btn')[2])"><div class="kpi-ey">Lead Points</div><div class="kpi-val">—</div></div>
