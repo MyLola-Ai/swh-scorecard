@@ -225,8 +225,8 @@ html,body{height:100%;font-family:'DM Sans',sans-serif;background:var(--bg);colo
 
   /* FAB */
   .fab{
-    position:fixed;bottom:88px;right:16px;
-    width:48px;height:48px;border-radius:50%;
+    position:fixed;bottom:100px;right:20px;
+    width:52px;height:52px;border-radius:50%;
     background:linear-gradient(135deg,var(--gold),var(--gold-d));
     border:none;cursor:pointer;
     display:flex;align-items:center;justify-content:center;
@@ -260,8 +260,9 @@ html,body{height:100%;font-family:'DM Sans',sans-serif;background:var(--bg);colo
   .screen-body .content-pad{padding:20px 24px;}
 
   /* Dashboard mobile spacing */
-  #screen-dashboard .dash-grid{padding:20px 24px 0;gap:12px;margin-bottom:0;}
-  #screen-dashboard .dash-main{padding:16px 24px 40px;}
+  #screen-dashboard .dash-grid{padding:36px 24px 0;gap:14px;margin-bottom:0;}
+  #screen-dashboard .dash-main{padding:32px 24px 56px;}
+  #screen-dashboard .hero-card{margin-bottom:32px;}
 }
 
 /* ════════════════════════════════════════
@@ -290,15 +291,15 @@ html,body{height:100%;font-family:'DM Sans',sans-serif;background:var(--bg);colo
    SHARED COMPONENTS
 ════════════════════════════════════════ */
 .card{background:var(--card);border-radius:var(--radius);border:1.5px solid var(--border);box-shadow:var(--shadow);}
-.card-hdr{padding:20px 22px 0;display:flex;align-items:center;justify-content:space-between;}
+.card-hdr{padding:22px 28px 0;display:flex;align-items:center;justify-content:space-between;}
 .card-title{font-family:'Playfair Display',serif;font-size:15px;font-weight:700;}
-.card-body{padding:16px 22px 24px;}
+.card-body{padding:16px 28px 28px;}
 
-.kpi{background:var(--card);border-radius:var(--radius);border:1.5px solid var(--border);padding:22px 20px;box-shadow:var(--shadow);transition:transform 0.15s,box-shadow 0.15s;}
+.kpi{background:var(--card);border-radius:var(--radius);border:1.5px solid var(--border);padding:26px 22px 24px;box-shadow:var(--shadow);transition:transform 0.15s,box-shadow 0.15s;}
 .kpi:hover{transform:translateY(-2px);box-shadow:var(--shadow-lg);}
-.kpi-ey{font-size:10px;font-weight:700;letter-spacing:0.11em;text-transform:uppercase;color:var(--muted);margin-bottom:10px;}
+.kpi-ey{font-size:10px;font-weight:700;letter-spacing:0.11em;text-transform:uppercase;color:var(--muted);margin-bottom:12px;}
 .kpi-val{font-family:'Playfair Display',serif;font-size:32px;font-weight:900;color:var(--navy);line-height:1;}
-.kpi-sub{font-size:11px;color:var(--muted);margin-top:10px;}
+.kpi-sub{font-size:11px;color:var(--muted);margin-top:12px;line-height:1.4;}
 .kpi.gold{background:linear-gradient(135deg,#fffbf0,#fff7e0);border-color:rgba(230,57,70,0.4);}
 .kpi.gold .kpi-val{color:var(--gold-d);}
 .kpi.navy{background:linear-gradient(135deg,var(--navy),var(--navy-l));border-color:transparent;}
@@ -332,19 +333,19 @@ html,body{height:100%;font-family:'DM Sans',sans-serif;background:var(--bg);colo
 ════════════════════════════════════════ */
 .hero-card{
   background:linear-gradient(145deg,var(--navy) 0%,var(--navy-l) 60%,#1e3a5f 100%);
-  border-radius:var(--radius);padding:28px 24px;
+  border-radius:var(--radius);padding:34px 28px 30px;
   position:relative;overflow:hidden;
-  box-shadow:var(--shadow-lg);margin-bottom:20px;
+  box-shadow:var(--shadow-lg);margin-bottom:0;
 }
 .hero-card::before{content:'';position:absolute;top:-50px;right:-50px;width:200px;height:200px;background:rgba(230,57,70,0.08);border-radius:50%;}
 .hero-card::after{content:'';position:absolute;bottom:-40px;left:-20px;width:130px;height:130px;background:rgba(230,57,70,0.04);border-radius:50%;}
-.hero-ey{font-size:10px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:rgba(255,255,255,0.38);margin-bottom:10px;position:relative;z-index:1;}
-.hero-pts{font-family:'Playfair Display',serif;font-size:64px;font-weight:900;color:#fff;line-height:1;position:relative;z-index:1;}
-.hero-sub{font-size:13px;color:rgba(255,255,255,0.5);margin-top:12px;position:relative;z-index:1;}
-.hero-div{height:1px;background:rgba(255,255,255,0.1);margin:24px 0;position:relative;z-index:1;}
-.hero-stats{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:16px;position:relative;z-index:1;}
+.hero-ey{font-size:10px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:rgba(255,255,255,0.38);margin-bottom:12px;position:relative;z-index:1;}
+.hero-pts{font-family:'Playfair Display',serif;font-size:68px;font-weight:900;color:#fff;line-height:1;position:relative;z-index:1;}
+.hero-sub{font-size:13px;color:rgba(255,255,255,0.5);margin-top:14px;position:relative;z-index:1;}
+.hero-div{height:1px;background:rgba(255,255,255,0.1);margin:28px 0;position:relative;z-index:1;}
+.hero-stats{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;position:relative;z-index:1;padding-bottom:4px;}
 .hs-val{font-family:'Playfair Display',serif;font-size:24px;font-weight:900;color:#fff;text-align:center;}
-.hs-lbl{font-size:9px;text-transform:uppercase;letter-spacing:0.07em;color:rgba(255,255,255,0.38);text-align:center;margin-top:6px;}
+.hs-lbl{font-size:9px;text-transform:uppercase;letter-spacing:0.06em;color:rgba(255,255,255,0.38);text-align:center;margin-top:7px;line-height:1.4;word-break:break-word;}
 
 .right-col{display:flex;flex-direction:column;gap:14px;}
 
@@ -1294,11 +1295,11 @@ html,body{height:100%;font-family:'DM Sans',sans-serif;background:var(--bg);colo
               <div class="hero-pts">—</div>
               <div class="hero-sub">Loading…</div>
             </div>
-            <div class="card" style="margin-bottom:20px;">
+            <div class="card" style="margin-bottom:32px;">
               <div class="card-hdr"><div class="card-title">Today's Activity</div><div id="dash-today-pts" style="font-family:'Playfair Display',serif;font-size:18px;font-weight:700;color:var(--gold);">0 pts</div></div>
-              <div class="card-body" id="dash-today"></div>
+              <div class="card-body" style="padding-top:20px;padding-bottom:32px;" id="dash-today"></div>
             </div>
-            <div class="card" style="margin-bottom:20px;">
+            <div class="card" style="margin-bottom:32px;">
               <div class="card-hdr"><div class="card-title">Activity Mix This Week</div></div>
               <div class="card-body" id="dash-mix"></div>
             </div>
@@ -6045,9 +6046,9 @@ function renderDashboard() {
     <div class="hero-ey">Week in Review</div>
     <div class="hero-pts">${weekPts}</div>
     <div class="hero-sub">lead points this week · ${goalPct}% of ${weeklyGoal}pt goal</div>
-    <div style="display:flex;gap:18px;margin-top:16px;font-size:11px;color:rgba(255,255,255,0.6);">
-      <div><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#5A8A6A;margin-right:5px;vertical-align:middle;"></span><strong style="color:#fff;">${weekPts}</strong> Lead · future business</div>
-      <div><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#60A5FA;margin-right:5px;vertical-align:middle;"></span><strong style="color:#fff;">${weekLagPts}</strong> Lag · current results</div>
+    <div style="display:flex;gap:20px;margin-top:20px;font-size:12px;color:rgba(255,255,255,0.6);">
+      <div><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#5A8A6A;margin-right:6px;vertical-align:middle;"></span><strong style="color:#fff;">${weekPts}</strong> Lead · future business</div>
+      <div><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#60A5FA;margin-right:6px;vertical-align:middle;"></span><strong style="color:#fff;">${weekLagPts}</strong> Lag · current results</div>
     </div>
     <div class="hero-div"></div>
     <div class="hero-stats">
