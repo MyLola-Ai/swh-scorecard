@@ -72,6 +72,7 @@ html.dark-theme .bottom-nav { background:#1E1E1E !important; }
 html.dark-theme .toast { background:#2c2c2e !important; }
 html.dark-theme .ctx-header,
 html.dark-theme .preview-head { background:#1E1E1E !important; }
+html.dark-theme .hero-card { background:linear-gradient(145deg,#1C1C26 0%,#141418 60%,#0f1018 100%) !important; }
 html.dark-theme .kpi.navy,
 html.dark-theme .cd-hero,
 html.dark-theme .day-hero { background:linear-gradient(135deg,#242424,#181818) !important; border-color:transparent !important; }
@@ -7477,7 +7478,7 @@ function buildExpandDetail(c) {
         <select style="flex:1;padding:9px;border:1.5px solid var(--border);border-radius:9px;font-family:'DM Sans',sans-serif;font-size:13px;" onchange="updateContactStatus('${c.id}',this.value)">
           ${STATUS_VALUES.map(s=>`<option value="${s}" ${resolveStatus(c)===s?'selected':''}>${statusMeta(s).emoji} ${statusMeta(s).label}</option>`).join('')}
         </select>
-        <button onclick="openEditContact('${c.id}')" style="padding:9px 14px;border:1.5px solid var(--border);border-radius:9px;background:#fff;font-size:12px;font-weight:600;color:var(--navy);cursor:pointer;">Edit</button>
+        <button onclick="openEditContact('${c.id}')" style="padding:9px 14px;border:1.5px solid var(--border);border-radius:9px;background:var(--card);font-size:12px;font-weight:600;color:var(--text);cursor:pointer;">Edit</button>
         <button onclick="deleteContact('${c.id}')" style="padding:9px 14px;border:1.5px solid #fecaca;border-radius:9px;background:#fff4f4;font-size:12px;font-weight:600;color:var(--red);cursor:pointer;">Remove</button>
       </div>
     </div>
