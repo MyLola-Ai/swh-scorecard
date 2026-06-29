@@ -2644,7 +2644,7 @@ html,body{height:100%;font-family:'DM Sans',sans-serif;background:var(--bg);colo
   .lola-panel.open { transform: translateX(0); }
   .lola-panel-hdr {
     display: flex; align-items: center; gap: 12px;
-    padding: 18px 18px 14px; border-bottom: 1px solid rgba(255,255,255,0.08);
+    padding: calc(env(safe-area-inset-top,0px) + 18px) 18px 14px; border-bottom: 1px solid rgba(255,255,255,0.08);
     background: linear-gradient(180deg, #1a1530 0%, #0f1117 100%);
   }
   .lola-panel-orb {
