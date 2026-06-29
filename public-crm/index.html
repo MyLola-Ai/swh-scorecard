@@ -2529,6 +2529,10 @@ html,body{height:100%;font-family:'DM Sans',sans-serif;background:var(--bg);colo
   @media (max-width: 767px) {
     .lola-fab {
       bottom: calc(70px + max(env(safe-area-inset-bottom, 0px), 12px));
+      transition: bottom 0.35s cubic-bezier(0.34,1.4,0.64,1), transform .18s ease, box-shadow .18s ease;
+    }
+    body.save-bar-up .lola-fab {
+      bottom: calc(136px + max(env(safe-area-inset-bottom, 0px), 12px));
     }
   }
   .lola-fab:hover { transform: scale(1.06); box-shadow: 0 10px 32px rgba(91,91,214,0.55); }
@@ -6992,7 +6996,7 @@ function updateTotals() {
   const mp=document.getElementById('mob-pts'); if(mp) mp.textContent=displayPts;
   const ma=document.getElementById('mob-acts'); if(ma) ma.textContent=displayActs;
   const msb=document.getElementById('mob-save-bar'),msp=document.getElementById('mob-save-pts');
-  if(msb){if(pts>0){msb.style.display='flex';msb.classList.add('show');if(msp)msp.textContent=pts+' pts logged';}else{msb.classList.remove('show');setTimeout(()=>{if(msb)msb.style.display='none';},400);}}
+  if(msb){if(pts>0){msb.style.display='flex';msb.classList.add('show');document.body.classList.add('save-bar-up');if(msp)msp.textContent=pts+' pts logged';}else{msb.classList.remove('show');document.body.classList.remove('save-bar-up');setTimeout(()=>{if(msb)msb.style.display='none';},400);}}
   const dp=document.getElementById('desk-pts'); if(dp) dp.textContent=displayPts;
   const da=document.getElementById('desk-acts'); if(da) da.textContent=displayActs;
   // Update sidebar week stats — drive tier/goal off LEAD points only
