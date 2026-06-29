@@ -3120,15 +3120,6 @@ html,body{height:100%;font-family:'DM Sans',sans-serif;background:var(--bg);colo
 // ═══════════════════════════════════════════════════
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getAuth, GoogleAuthProvider, OAuthProvider, signInWithPopup, signInWithCredential, signOut, onAuthStateChanged,
-  createUserWithEmailAndPassword, signInWithEmailAndPassword, sendPasswordResetEmail, updateProfile,
-  signInWithCustomToken, setPersistence, browserLocalPersistence, inMemoryPersistence }
-  from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-import {
-  getFirestore, doc, getDoc, setDoc, addDoc, updateDoc, deleteDoc,
-  collection, getDocs, orderBy, query, where, limit, serverTimestamp, Timestamp, onSnapshot,
-  writeBatch
-} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 import { getFunctions, httpsCallable }
   from "https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js";
 
@@ -3259,11 +3250,209 @@ const firebaseConfig = {
 };
 
 const firebaseApp = initializeApp(firebaseConfig);
-const auth = getAuth(firebaseApp);
-const db = getFirestore(firebaseApp);
 const functions = getFunctions(firebaseApp);
-const provider = new GoogleAuthProvider();
-window._getToken = () => auth.currentUser?.getIdToken();
+
+const FIREBASE_WEB_API_KEY = firebaseConfig.apiKey;
+const CRM_FUNCTIONS_BASE = 'https://us-central1-swh-scoreboard.cloudfunctions.net';
+
+const NativeAPI = {
+  isReady: false, uid: null, email: null, displayName: null, photoURL: null,
+  idToken: null, refreshToken: null, expiresAt: 0, provider: null,
+  _fbAuth() { return window.Capacitor?.Plugins?.FirebaseAuthentication || null; },
+  async _prefs() { return window.Capacitor?.Plugins?.Preferences || null; },
+  async _save() {
+    const P = await this._prefs();
+    if (!P) return;
+    if (this.idToken) {
+      await P.set({ key: 'nativeAuth', value: JSON.stringify({ uid: this.uid, email: this.email, displayName: this.displayName, photoURL: this.photoURL, provider: this.provider, idToken: this.idToken, refreshToken: this.refreshToken, expiresAt: this.expiresAt }) });
+    } else { await P.remove({ key: 'nativeAuth' }); }
+  },
+  async loadFromStorage() {
+    const fb = this._fbAuth();
+    if (fb) {
+      try {
+        const { user } = await fb.getCurrentUser();
+        if (user && user.uid) {
+          const tok = await fb.getIdToken({ forceRefresh: false });
+          this.uid = user.uid; this.email = user.email || ''; this.displayName = user.displayName || ''; this.photoURL = user.photoURL || '';
+          this.idToken = tok.token; this.refreshToken = null; this.expiresAt = Date.now() + 50 * 60 * 1000;
+          const pid = user.providerData?.[0]?.providerId || '';
+          this.provider = pid === 'google.com' ? 'google' : pid === 'apple.com' ? 'apple' : 'native';
+          this.isReady = true; await this._save(); return true;
+        }
+      } catch(e) { console.warn('[NativeAPI] getCurrentUser failed:', e.message); }
+    }
+    try {
+      const P = await this._prefs(); if (!P) return false;
+      const { value } = await P.get({ key: 'nativeAuth' }); if (!value) return false;
+      const d = JSON.parse(value);
+      this.uid = d.uid; this.email = d.email; this.displayName = d.displayName || ''; this.photoURL = d.photoURL || '';
+      this.idToken = d.idToken; this.refreshToken = d.refreshToken; this.expiresAt = d.expiresAt || 0; this.provider = d.provider || 'email';
+      this.isReady = !!this.idToken; return this.isReady;
+    } catch(e) { console.warn('[NativeAPI] loadFromStorage failed:', e); return false; }
+  },
+  async signInWithGoogle() {
+    const fb = this._fbAuth(); if (!fb) throw new Error('Native auth plugin not available');
+    const result = await fb.signInWithGoogle();
+    const u = result?.user; if (!u || !u.uid) throw new Error('Google sign-in did not return a user');
+    const tok = await fb.getIdToken({ forceRefresh: false });
+    this.uid = u.uid; this.email = u.email || ''; this.displayName = u.displayName || ''; this.photoURL = u.photoURL || '';
+    this.idToken = tok.token; this.refreshToken = null; this.expiresAt = Date.now() + 50 * 60 * 1000;
+    this.provider = 'google'; this.isReady = true; await this._save();
+  },
+  async signInWithApple() {
+    const fb = this._fbAuth(); if (!fb) throw new Error('Native auth plugin not available');
+    const result = await fb.signInWithApple();
+    const u = result?.user; if (!u || !u.uid) throw new Error('Apple sign-in did not return a user');
+    const tok = await fb.getIdToken({ forceRefresh: false });
+    this.uid = u.uid; this.email = u.email || ''; this.displayName = u.displayName || ''; this.photoURL = u.photoURL || '';
+    this.idToken = tok.token; this.refreshToken = null; this.expiresAt = Date.now() + 50 * 60 * 1000;
+    this.provider = 'apple'; this.isReady = true; await this._save();
+  },
+  async signIn(email, password) {
+    const res = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${FIREBASE_WEB_API_KEY}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password, returnSecureToken: true }) });
+    const data = await res.json();
+    if (!res.ok) { const msg = data.error?.message || 'Sign in failed'; throw new Error(({ 'EMAIL_NOT_FOUND': 'No account with that email', 'INVALID_PASSWORD': 'Email or password is incorrect', 'INVALID_LOGIN_CREDENTIALS': 'Email or password is incorrect', 'USER_DISABLED': 'This account is disabled', 'TOO_MANY_ATTEMPTS_TRY_LATER': 'Too many attempts — try again later' })[msg] || msg); }
+    this.uid = data.localId; this.email = data.email; this.displayName = data.displayName || ''; this.photoURL = data.photoUrl || '';
+    this.idToken = data.idToken; this.refreshToken = data.refreshToken; this.expiresAt = Date.now() + (parseInt(data.expiresIn) || 3600) * 1000;
+    this.provider = 'email'; this.isReady = true; await this._save();
+  },
+  async signUp(email, password, displayName) {
+    const res = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=${FIREBASE_WEB_API_KEY}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password, displayName: displayName || '', returnSecureToken: true }) });
+    const data = await res.json();
+    if (!res.ok) { const msg = data.error?.message || 'Sign up failed'; throw new Error(({ 'EMAIL_EXISTS': 'An account already exists with that email.', 'INVALID_EMAIL': 'Email looks invalid', 'WEAK_PASSWORD : Password should be at least 6 characters': 'Password must be at least 6 characters' })[msg] || msg); }
+    this.uid = data.localId; this.email = data.email; this.displayName = displayName || data.displayName || ''; this.photoURL = '';
+    this.idToken = data.idToken; this.refreshToken = data.refreshToken; this.expiresAt = Date.now() + (parseInt(data.expiresIn) || 3600) * 1000;
+    this.provider = 'email'; this.isReady = true; await this._save();
+  },
+  async sendPasswordReset(email) {
+    const res = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key=${FIREBASE_WEB_API_KEY}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ requestType: 'PASSWORD_RESET', email }) });
+    if (!res.ok) { const data = await res.json().catch(() => ({})); throw new Error(data.error?.message || 'Could not send reset email'); }
+  },
+  async signOut() {
+    const fb = this._fbAuth(); if (fb) { try { await fb.signOut(); } catch(_) {} }
+    this.uid = this.email = this.idToken = this.refreshToken = null; this.expiresAt = 0; this.isReady = false; this.provider = null;
+    await this._save();
+  },
+  async _refreshIfNeeded() {
+    if (Date.now() < this.expiresAt - 60000) return;
+    if (this.provider === 'google' || this.provider === 'apple' || this.provider === 'native') {
+      const fb = this._fbAuth(); if (!fb) throw new Error('Native auth plugin not available');
+      try { const tok = await fb.getIdToken({ forceRefresh: true }); this.idToken = tok.token; this.expiresAt = Date.now() + 50 * 60 * 1000; await this._save(); return; }
+      catch(e) { await this.signOut(); throw new Error('Session expired — please sign in again'); }
+    }
+    if (!this.refreshToken) throw new Error('Not signed in');
+    const res = await fetch(`https://securetoken.googleapis.com/v1/token?key=${FIREBASE_WEB_API_KEY}`, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'grant_type=refresh_token&refresh_token=' + encodeURIComponent(this.refreshToken) });
+    if (!res.ok) { await this.signOut(); throw new Error('Session expired — please sign in again'); }
+    const d = await res.json(); this.idToken = d.id_token; this.refreshToken = d.refresh_token; this.expiresAt = Date.now() + (parseInt(d.expires_in) || 3600) * 1000; this.uid = d.user_id || this.uid;
+    await this._save();
+  },
+  async call(fnName, body, opts) {
+    await this._refreshIfNeeded();
+    const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), opts?.timeout || 15000);
+    try {
+      const res = await fetch(`${CRM_FUNCTIONS_BASE}/${fnName}`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${this.idToken}` }, body: JSON.stringify(body || {}), signal: ctrl.signal });
+      clearTimeout(t);
+      if (!res.ok) { const err = await res.json().catch(() => ({})); if (res.status === 401) { await this.signOut(); throw new Error(err.error || 'Session expired'); } throw new Error(err.error || `HTTP ${res.status}`); }
+      return res.json();
+    } catch(e) { clearTimeout(t); if (e.name === 'AbortError') throw new Error('Request timed out'); throw e; }
+  }
+};
+window.NativeAPI = NativeAPI;
+
+// ── FIRESTORE REST WRAPPER ─────────────────────────────────────────────────
+const _FS_BASE = `https://firestore.googleapis.com/v1/projects/${firebaseConfig.projectId}/databases/(default)/documents`;
+function _fsToValue(v) {
+  if (v === null || v === undefined) return { nullValue: null };
+  if (typeof v === 'boolean') return { booleanValue: v };
+  if (typeof v === 'number') return Number.isInteger(v) ? { integerValue: String(v) } : { doubleValue: v };
+  if (typeof v === 'string') return { stringValue: v };
+  if (v instanceof Date) return { timestampValue: v.toISOString() };
+  if (v?._fsServerTimestamp) return { timestampValue: new Date().toISOString() };
+  if (Array.isArray(v)) return { arrayValue: { values: v.map(_fsToValue) } };
+  if (typeof v === 'object') return { mapValue: { fields: _fsToFields(v) } };
+  return { stringValue: String(v) };
+}
+function _fsToFields(obj) { const f = {}; for (const [k, v] of Object.entries(obj || {})) { if (v !== undefined) f[k] = _fsToValue(v); } return f; }
+function _fsFromValue(v) {
+  if (!v) return null;
+  if ('nullValue' in v) return null;
+  if ('booleanValue' in v) return v.booleanValue;
+  if ('integerValue' in v) return parseInt(v.integerValue);
+  if ('doubleValue' in v) return v.doubleValue;
+  if ('stringValue' in v) return v.stringValue;
+  if ('timestampValue' in v) { const d = new Date(v.timestampValue); d.toDate = () => d; return d; }
+  if ('arrayValue' in v) return (v.arrayValue.values || []).map(_fsFromValue);
+  if ('mapValue' in v) return _fsFromFields(v.mapValue.fields);
+  return null;
+}
+function _fsFromFields(fields) { const obj = {}; for (const [k, v] of Object.entries(fields || {})) obj[k] = _fsFromValue(v); return obj; }
+function _fsDocSnap(name, fields) {
+  const id = name ? name.split('/').pop() : null;
+  const data = _fsFromFields(fields || {});
+  return { id, ref: { id, _path: name?.replace(_FS_BASE + '/', '') || '' }, exists: () => !!fields, data: () => ({ ...data }), get: f => data[f], metadata: { hasPendingWrites: false } };
+}
+function _fsQSnap(docs) { return { docs, size: docs.length, empty: !docs.length, forEach: fn => docs.forEach(fn) }; }
+async function _fsReq(method, path, body) {
+  await NativeAPI._refreshIfNeeded();
+  const url = path.startsWith('http') ? path : `${_FS_BASE}/${path}`;
+  const opts = { method, headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${NativeAPI.idToken}` } };
+  if (body) opts.body = JSON.stringify(body);
+  const r = await fetch(url, opts);
+  if (r.status === 204) return null;
+  if (r.status === 404) return null;
+  if (!r.ok) { const err = await r.json().catch(() => ({})); throw new Error(err.error?.message || `Firestore ${r.status}`); }
+  return r.json();
+}
+const db = { _projectId: firebaseConfig.projectId };
+function collection(dbOrRef, ...segs) { const base = dbOrRef._path || ''; const path = base ? [base, ...segs].join('/') : segs.join('/'); return { _type: 'collection', _path: path }; }
+function doc(dbOrRef, ...segs) { const base = dbOrRef._path || ''; const path = base ? [base, ...segs].join('/') : segs.join('/'); return { _type: 'doc', _path: path }; }
+async function getDoc(ref) { const d = await _fsReq('GET', ref._path).catch(e => { if (e.message?.includes('NOT_FOUND') || e.message?.includes('404')) return null; throw e; }); if (!d) return _fsDocSnap(null, null); return _fsDocSnap(d.name, d.fields); }
+async function getDocs(qOrRef) { if (qOrRef._type === 'query') return _fsRunQuery(qOrRef); const d = await _fsReq('GET', `${qOrRef._path}?pageSize=1000`); return _fsQSnap((d?.documents || []).map(doc => _fsDocSnap(doc.name, doc.fields))); }
+async function addDoc(ref, data) { const d = await _fsReq('POST', ref._path, { fields: _fsToFields(data) }); return { id: d.name.split('/').pop(), _path: d.name.replace(_FS_BASE + '/', '') }; }
+async function setDoc(ref, data, opts) {
+  if (opts?.merge) { const mask = Object.keys(data).map(k => `updateMask.fieldPaths=${encodeURIComponent(k)}`).join('&'); await _fsReq('PATCH', `${ref._path}?${mask}`, { fields: _fsToFields(data) }); }
+  else { await _fsReq('PATCH', ref._path, { fields: _fsToFields(data) }); }
+}
+async function updateDoc(ref, data) { const mask = Object.keys(data).map(k => `updateMask.fieldPaths=${encodeURIComponent(k)}`).join('&'); await _fsReq('PATCH', `${ref._path}?${mask}`, { fields: _fsToFields(data) }); }
+async function deleteDoc(ref) { await _fsReq('DELETE', ref._path); }
+function query(ref, ...cs) { return { _type: 'query', _collPath: ref._path, _constraints: cs }; }
+function where(field, op, value) { return { _type: 'where', field, op, value }; }
+function orderBy(field, dir = 'asc') { return { _type: 'orderBy', field, dir }; }
+function limit(n) { return { _type: 'limit', n }; }
+function serverTimestamp() { return { _fsServerTimestamp: true }; }
+function increment(n) { return n; }
+function Timestamp(s, ns) { this.seconds = s; this.nanoseconds = ns || 0; }
+Timestamp.now = () => { const d = new Date(); d.toDate = () => d; return d; };
+function writeBatch() { const ops = []; return { set(r,d,o){ops.push({t:'set',r,d,o});}, update(r,d){ops.push({t:'upd',r,d});}, delete(r){ops.push({t:'del',r});}, async commit(){ for(const o of ops){ if(o.t==='set') await setDoc(o.r,o.d,o.o); else if(o.t==='upd') await updateDoc(o.r,o.d); else await deleteDoc(o.r); } } }; }
+function onSnapshot(ref, callback) {
+  (async () => { try { if (ref._type === 'doc') callback(await getDoc(ref)); else callback(await getDocs(ref)); } catch(e) { console.warn('[onSnapshot]', e); } })();
+  return () => {};
+}
+async function _fsRunQuery(qRef) {
+  const parts = qRef._collPath.split('/'); const collId = parts.pop(); const parentPath = parts.join('/');
+  const sq = { from: [{ collectionId: collId }] };
+  const filters = [], orders = [];
+  for (const c of qRef._constraints) {
+    if (c._type === 'where') { const opMap = { '==': 'EQUAL', '!=': 'NOT_EQUAL', '<': 'LESS_THAN', '<=': 'LESS_THAN_OR_EQUAL', '>': 'GREATER_THAN', '>=': 'GREATER_THAN_OR_EQUAL', 'array-contains': 'ARRAY_CONTAINS', 'in': 'IN', 'not-in': 'NOT_IN', 'array-contains-any': 'ARRAY_CONTAINS_ANY' }; filters.push({ fieldFilter: { field: { fieldPath: c.field }, op: opMap[c.op] || 'EQUAL', value: _fsToValue(c.value) } }); }
+    else if (c._type === 'orderBy') { orders.push({ field: { fieldPath: c.field }, direction: c.dir === 'desc' ? 'DESCENDING' : 'ASCENDING' }); }
+    else if (c._type === 'limit') { sq.limit = c.n; }
+  }
+  if (filters.length === 1) sq.where = filters[0];
+  else if (filters.length > 1) sq.where = { compositeFilter: { op: 'AND', filters } };
+  if (orders.length) sq.orderBy = orders;
+  const url = parentPath ? `${_FS_BASE}/${parentPath}:runQuery` : `${_FS_BASE}:runQuery`;
+  await NativeAPI._refreshIfNeeded();
+  const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${NativeAPI.idToken}` }, body: JSON.stringify({ structuredQuery: sq }) });
+  const results = await r.json();
+  return _fsQSnap((Array.isArray(results) ? results : []).filter(r => r.document).map(r => _fsDocSnap(r.document.name, r.document.fields)));
+}
+
+function _makeCrmUser(api) {
+  if (!api.isReady) return null;
+  return { uid: api.uid, email: api.email, displayName: api.displayName || '', photoURL: api.photoURL || '', isAnonymous: false, providerData: [{ providerId: api.provider === 'google' ? 'google.com' : api.provider === 'apple' ? 'apple.com' : 'password' }], getIdToken: async (f) => { if (f) await NativeAPI._refreshIfNeeded(); return NativeAPI.idToken; } };
+}
+window._getToken = () => currentUser?.getIdToken();
 
 // ── MyAppointment.AI state ──
 // Populated by loadApptData() via getApptData Cloud Function.
@@ -3279,7 +3468,7 @@ let upcomingMeetings = [];
  * Fires after every successful SWH sign-in. Failure is non-fatal.
  */
 async function bridgeToMyAppointment() {
-  httpsCallable(functions, 'mintApptCustomToken')({}).catch(() => {});
+  NativeAPI.call('mintApptCustomToken', {}).catch(() => {});
   await loadApptData();
 }
 
@@ -3293,8 +3482,7 @@ window.openApptDashboard = function() {
 
 async function loadApptData() {
   try {
-    const fn = httpsCallable(functions, 'getApptData');
-    const { data } = await fn({});
+    const data = await NativeAPI.call('getApptData', {});
     apptUserSlug     = data.userSlug || '';
     apptBookingPages = data.bookingPages || [];
     upcomingMeetings = (data.meetings || []).map(m => ({
@@ -3715,176 +3903,113 @@ const daysBetween = (d1,d2) => Math.round((d2-d1)/(1000*60*60*24));
 const addDays = (dateStr, days) => { const d=new Date(dateStr+'T12:00:00'); d.setDate(d.getDate()+days); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
 
 // ── AUTH ──
-// Cross-product hand-off: if we arrived from the Scoreboard with
-// #signin=<customToken> in the URL, exchange it for a real Auth session
-// before the regular onAuthStateChanged listener wakes up. Token is hash-
-// only so it never reaches server logs / referers; we strip it from the
-// URL immediately so a page refresh can't try to re-consume it.
-//
-// SNAPSHOT the in-flight flag BEFORE consumption — onAuthStateChanged
-// fires with null first (network roundtrip pending), and without this
-// flag we'd briefly flash the login screen before the exchange completes
-// and the listener re-fires with the real user.
-window._xprodSigninInFlight = /[#&]signin=[^&]+/.test(window.location.hash || '');
-(async function consumeCrossProductToken() {
-  const h = window.location.hash || '';
-  const m = h.match(/[#&]signin=([^&]+)/);
-  if (!m) return;
-  const token = decodeURIComponent(m[1]);
-  try {
-    const cleanHash = h.replace(/[#&]signin=[^&]*/, '');
-    const url = window.location.pathname + window.location.search + (cleanHash && cleanHash !== '#' ? cleanHash : '');
-    window.history.replaceState({}, '', url);
-  } catch (_) {}
-  try {
-    await signInWithCustomToken(auth, token);
-    console.log('[cross-product] signed in via custom token');
-  } catch (e) {
-    console.warn('[cross-product] custom token exchange failed:', e.message);
-  } finally {
-    // Whether it succeeded or failed, the in-flight phase is over.
-    // onAuthStateChanged will fire with either the real user (success)
-    // or stay null (failure → user falls into the login screen).
-    window._xprodSigninInFlight = false;
+async function _onCrmSignedIn(user) {
+  currentUser = user;
+  showLoader(true);
+  bridgeToMyAppointment();
+  await initUser();
+  // If this user just signed in with Microsoft, try to auto-join a domain-matched team.
+  const isMSLogin = user.providerData?.some(p => p.providerId === 'microsoft.com');
+  if (isMSLogin) tryClaimMicrosoftTeam().catch(() => {});
+  await loadAllData();
+  showLoader(false);
+  showApp();
+  if (typeof refreshSettingsSubLabelsCRM === 'function') refreshSettingsSubLabelsCRM();
+  loadThemePref();
+  if (isNativeEarly) {
+    setupRevenueCat(user.uid).then(() => {
+      if (userPlan !== 'pro') openPaywall('upgrade');
+    }).catch(() => { if (userPlan !== 'pro') openPaywall('upgrade'); });
   }
-})();
+  if (window.SWHNylasEmail) {
+    SWHNylasEmail.config.getToken = () => currentUser?.getIdToken();
+    const nylasEl = document.getElementById('nylas-connect-mount');
+    if (nylasEl) SWHNylasEmail.mountConnect(nylasEl);
+  }
+  setDoc(doc(db, 'users', user.uid), { lastSeenAt: new Date().toISOString() }, { merge: true }).catch(() => {});
+  if (userPlan === 'pro') {
+    NativeAPI.call('enrollOnboardingDrip', {}).catch(() => {});
+  }
+}
 
 (async () => {
-  const _isNativeCap = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
-  const _fbPlugin = _isNativeCap && window.Capacitor.Plugins && window.Capacitor.Plugins.FirebaseAuthentication;
-  if (_isNativeCap) {
-    // Native: use inMemoryPersistence — the native plugin owns the real session
-    try { await setPersistence(auth, inMemoryPersistence); } catch(_) {}
-    // Try to restore an existing native session (Google/Apple signed in before)
-    if (_fbPlugin) {
-      try {
-        const { user } = await _fbPlugin.getCurrentUser();
-        if (user) {
-          // Session exists — show loader while onAuthStateChanged bridges the state
-          showLoader(true);
-          document.getElementById('login-screen').style.display = 'none';
-        }
-      } catch(_) {}
-    }
-  }
-onAuthStateChanged(auth, async user => {
-  if (user) {
-    currentUser = user;
-    showLoader(true);
-    // Silently bridge into myappointment-ai — fire-and-forget, non-fatal.
-    bridgeToMyAppointment();
-    await initUser();
-    // If this user just signed in with Microsoft, try to auto-join a domain-matched team.
-    // Run before loadAllData so the team state is correct on first load.
-    const isMSLogin = user.providerData?.some(p => p.providerId === 'microsoft.com');
-    if (isMSLogin) tryClaimMicrosoftTeam().catch(() => {});
-    await loadAllData();
-    showLoader(false);
-    showApp();
-    if (typeof refreshSettingsSubLabelsCRM === 'function') refreshSettingsSubLabelsCRM();
-    loadThemePref(); // sync theme from Capacitor Preferences after auth resolves
-    // On native: fire RC setup (non-blocking) then gate the app if not subscribed.
-    if (isNativeEarly) {
-      setupRevenueCat(user.uid).then(() => {
-        if (userPlan !== 'pro') openPaywall('upgrade');
-      }).catch(() => {
-        if (userPlan !== 'pro') openPaywall('upgrade');
-      });
-    }
-    // Nylas: provide the token getter and mount the connect UI (idempotent,
-    // no-op until nylas-email.js + the container are present). Lives in the
-    // always-rendered settings panel, so mounting here (not on screen-show)
-    // is safe regardless of the active screen.
-    if (window.SWHNylasEmail) {
-      SWHNylasEmail.config.getToken = () => auth.currentUser.getIdToken();
-      const nylasEl = document.getElementById('nylas-connect-mount');
-      if (nylasEl) SWHNylasEmail.mountConnect(nylasEl);
-    }
-    // Record when this user was last active in the CRM (used by team leads to see "last in CRM").
-    // Fire-and-forget — non-blocking, non-fatal.
-    setDoc(doc(db, 'users', user.uid), { lastSeenAt: new Date().toISOString() }, { merge: true }).catch(() => {});
-    // Enroll in onboarding drip (idempotent — no-ops if already enrolled or no CRM plan).
-    if (userPlan === 'pro') {
-      httpsCallable(functions, 'enrollOnboardingDrip')({}).catch(() => {});
+  if (isNativeEarly) {
+    const hasSession = await NativeAPI.loadFromStorage();
+    if (hasSession) {
+      showLoader(true);
+      document.getElementById('login-screen').style.display = 'none';
+      currentUser = _makeCrmUser(NativeAPI);
+      await _onCrmSignedIn(currentUser);
+    } else {
+      showLoader(false);
+      showLogin();
     }
   } else {
-    // If a cross-product token exchange is still in flight, hold the
-    // loader instead of flashing the login screen. The listener will
-    // fire again the moment the exchange resolves.
-    if (window._xprodSigninInFlight) {
-      showLoader(true);
-      return;
+    // Web browser: dynamic import Firebase Auth + use popup flow
+    const _fbAuthMod = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js");
+    const _auth = _fbAuthMod.getAuth(firebaseApp);
+    window._xprodSigninInFlight = /[#&]signin=[^&]+/.test(window.location.hash || '');
+    const _h = window.location.hash || '';
+    const _m = _h.match(/[#&]signin=([^&]+)/);
+    if (_m) {
+      const token = decodeURIComponent(_m[1]);
+      try { const clean = _h.replace(/[#&]signin=[^&]*/, ''); window.history.replaceState({}, '', window.location.pathname + window.location.search + (clean && clean !== '#' ? clean : '')); } catch(_) {}
+      try { await _fbAuthMod.signInWithCustomToken(_auth, token); } catch(e) { console.warn('[xprod]', e.message); }
+      finally { window._xprodSigninInFlight = false; }
     }
-    currentUser = null;
-    showLoader(false);
-    showLogin();
+    _fbAuthMod.onAuthStateChanged(_auth, async fbUser => {
+      if (fbUser) {
+        NativeAPI.isReady = true; NativeAPI.uid = fbUser.uid; NativeAPI.idToken = await fbUser.getIdToken(); NativeAPI.expiresAt = Date.now() + 50 * 60 * 1000;
+        const wrappedUser = { uid: fbUser.uid, email: fbUser.email, displayName: fbUser.displayName || '', photoURL: fbUser.photoURL || '', isAnonymous: fbUser.isAnonymous, providerData: fbUser.providerData || [], getIdToken: f => fbUser.getIdToken(f) };
+        await _onCrmSignedIn(wrappedUser);
+      } else {
+        if (window._xprodSigninInFlight) { showLoader(true); return; }
+        currentUser = null; showLoader(false); showLogin();
+      }
+    });
   }
-});
 })();
 
 window.doLogin = async () => {
-  const _fbPlugin = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.FirebaseAuthentication;
+  const _fbPlugin = window.Capacitor?.Plugins?.FirebaseAuthentication;
   const btn = document.getElementById('login-btn');
   const resetBtn = () => { if (btn) btn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>Continue with Google'; };
   try {
     if (btn) btn.textContent = 'Signing in…';
     if (_fbPlugin) {
-      showToast('Step 1: calling signInWithGoogle…');
-      const result = await _fbPlugin.signInWithGoogle();
-      showToast('Step 2: idToken=' + (result?.credential?.idToken ? 'YES' : 'NO') + ' user=' + (result?.user?.uid || 'null'));
-      const idToken = result && result.credential && result.credential.idToken;
-      if (!idToken) throw new Error('No idToken in credential');
-      showToast('Step 3: testing network to googleapis…');
-      const _ctrl = new AbortController();
-      const _tid = setTimeout(() => _ctrl.abort(), 6000);
-      try {
-        const _r = await fetch('https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=INVALID', {
-          method: 'POST', headers: {'Content-Type':'application/json'}, body: '{}', signal: _ctrl.signal
-        });
-        clearTimeout(_tid);
-        showToast('Network OK: HTTP ' + _r.status + ' — now calling signInWithCredential…');
-      } catch(_ne) {
-        clearTimeout(_tid);
-        showToast('Network: ' + (_ne.name === 'AbortError' ? 'TIMEOUT after 6s' : _ne.message));
-        throw _ne;
-      }
-      showToast('Step 4: calling signInWithCredential…');
-      const userCred = await signInWithCredential(auth, GoogleAuthProvider.credential(idToken));
-      showToast('Step 5: done! uid=' + (userCred?.user?.uid || 'null'));
+      await NativeAPI.signInWithGoogle();
+      currentUser = _makeCrmUser(NativeAPI);
+      await _onCrmSignedIn(currentUser);
     } else {
-      await signInWithPopup(auth, provider);
+      const { getAuth, GoogleAuthProvider, signInWithPopup } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js");
+      await signInWithPopup(getAuth(firebaseApp), new GoogleAuthProvider());
     }
   } catch(e) {
     console.error('Google sign-in error:', e);
     resetBtn();
-    if (e && e.message && (e.message.includes('cancelled') || e.message.includes('cancel'))) return;
-    showToast('⚠️ ' + (e && (e.code || e.message) ? (e.code || e.message).slice(0,80) : 'Login failed'));
+    if (e?.message?.toLowerCase().includes('cancel')) return;
+    showToast('⚠️ ' + (e?.code || e?.message || 'Login failed').slice(0, 80));
   }
 };
 
 window.doAppleLogin = async () => {
-  const _fbPlugin = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.FirebaseAuthentication;
+  const _fbPlugin = window.Capacitor?.Plugins?.FirebaseAuthentication;
   const btn = document.getElementById('apple-login-btn');
   try {
     if (btn) btn.textContent = 'Signing in…';
     if (_fbPlugin) {
-      const result = await _fbPlugin.signInWithApple();
-      const u = result && result.user;
-      if (!u || !u.uid) throw new Error('Apple sign-in did not return a user');
-      const tok = await _fbPlugin.getIdToken({ forceRefresh: false });
-      const idToken = tok && tok.token;
-      if (!idToken) throw new Error('Could not get ID token');
-      const nonce = result && result.credential && result.credential.nonce;
-      const appleCredential = new OAuthProvider('apple.com').credential({ idToken: result.credential.idToken, rawNonce: nonce });
-      await signInWithCredential(auth, appleCredential);
+      await NativeAPI.signInWithApple();
+      currentUser = _makeCrmUser(NativeAPI);
+      await _onCrmSignedIn(currentUser);
     } else {
       showToast('Apple sign-in is only available in the app.');
+      if (btn) btn.textContent = 'Sign in with Apple';
     }
   } catch(e) {
     console.error('Apple sign-in error:', e);
     if (btn) btn.textContent = 'Sign in with Apple';
-    if (e && e.message && (e.message.includes('cancelled') || e.message.includes('cancel'))) return;
-    showToast('⚠️ ' + (e && (e.code || e.message) ? (e.code || e.message).slice(0,80) : 'Apple sign-in failed'));
+    if (e?.message?.toLowerCase().includes('cancel')) return;
+    showToast('⚠️ ' + (e?.code || e?.message || 'Apple sign-in failed').slice(0, 80));
   }
 };
 
@@ -3987,16 +4112,16 @@ window.doEmailSignIn = async function() {
   if(!email || !password) { errEl.textContent='Please enter your email and password.'; errEl.style.display='block'; return; }
   try {
     errEl.style.display='none';
-    await signInWithEmailAndPassword(auth, email, password);
+    if (isNativeEarly) {
+      await NativeAPI.signIn(email, password);
+      currentUser = _makeCrmUser(NativeAPI);
+      await _onCrmSignedIn(currentUser);
+    } else {
+      const { getAuth, signInWithEmailAndPassword } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js");
+      await signInWithEmailAndPassword(getAuth(firebaseApp), email, password);
+    }
   } catch(e) {
-    const msgs = {
-      'auth/user-not-found': 'No account found with this email. Create an account above.',
-      'auth/wrong-password': 'Incorrect password. Try again or reset your password.',
-      'auth/invalid-email': 'Please enter a valid email address.',
-      'auth/too-many-requests': 'Too many attempts. Please wait a moment and try again.',
-      'auth/invalid-credential': 'Incorrect email or password. Please try again.',
-    };
-    errEl.textContent = msgs[e.code] || 'Sign in failed. Please try again.';
+    errEl.textContent = e.message || 'Sign in failed. Please try again.';
     errEl.style.display = 'block';
   }
 };
@@ -4031,20 +4156,22 @@ window.doEmailSignUp = async function() {
   if(!industry) { errEl.textContent='Please select your industry.'; errEl.style.display='block'; return; }
   try {
     errEl.style.display='none';
-    const cred = await createUserWithEmailAndPassword(auth, email, password);
-    // Update display name
-    await updateProfile(cred.user, { displayName: `${first} ${last}` });
-    // Force reload so displayName is available immediately
-    await cred.user.reload();
+    const displayName = `${first} ${last}`;
     // Store extra profile data — will be picked up by initUser
-    window._signupProfile = { phone, company, industry, displayName: `${first} ${last}` };
+    window._signupProfile = { phone, company, industry, displayName };
+    if (isNativeEarly) {
+      await NativeAPI.signUp(email, password, displayName);
+      currentUser = _makeCrmUser(NativeAPI);
+      await _onCrmSignedIn(currentUser);
+    } else {
+      const { getAuth, createUserWithEmailAndPassword, updateProfile } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js");
+      const _auth = getAuth(firebaseApp);
+      const cred = await createUserWithEmailAndPassword(_auth, email, password);
+      await updateProfile(cred.user, { displayName });
+      await cred.user.reload();
+    }
   } catch(e) {
-    const msgs = {
-      'auth/email-already-in-use': 'An account with this email already exists. Sign in instead.',
-      'auth/invalid-email': 'Please enter a valid email address.',
-      'auth/weak-password': 'Password is too weak. Use at least 8 characters.',
-    };
-    errEl.textContent = msgs[e.code] || 'Account creation failed. Please try again.';
+    errEl.textContent = e.message || 'Account creation failed. Please try again.';
     errEl.style.display = 'block';
   }
 };
@@ -4052,13 +4179,16 @@ window.doEmailSignUp = async function() {
 // ── FORGOT PASSWORD ──
 window.doForgotPassword = async function() {
   const email = document.getElementById('si-email')?.value?.trim();
-  if(!email) { showToast('⚠️ Enter your email address first'); return; }
+  if (!email) { showToast('Enter your email first'); return; }
   try {
-    await sendPasswordResetEmail(auth, email);
-    showToast('✅ Password reset email sent — check your inbox');
-  } catch(e) {
-    showToast('⚠️ Could not send reset email. Check your email address.');
-  }
+    if (isNativeEarly) {
+      await NativeAPI.sendPasswordReset(email);
+    } else {
+      const { getAuth, sendPasswordResetEmail } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js");
+      await sendPasswordResetEmail(getAuth(firebaseApp), email);
+    }
+    showToast('Password reset email sent');
+  } catch(e) { showToast('⚠️ ' + (e?.message || 'Could not send reset email')); }
 };
 
 
@@ -4106,7 +4236,8 @@ function _startCrmActListener(uid) {
 
 window.doLogout = async () => {
   if (_crmActUnsub) { _crmActUnsub(); _crmActUnsub = null; }
-  await signOut(auth);
+  try { await NativeAPI.signOut(); } catch(e) { console.warn('[logout]', e); }
+  currentUser = null;
   CONTACTS=[]; OPPORTUNITIES=[]; EVENTS=[]; history=[]; todayCounts={}; weekPts=0; weekLagPts=0;
   showLogin();
 };
@@ -9551,7 +9682,7 @@ async function addStepsToCalendar(contact) {
   }
   showToast('📅 Adding 8 steps to Google Calendar…');
   let token;
-  try { token = await auth.currentUser.getIdToken(); } catch(e) { showToast('⚠️ Sign-in required'); return; }
+  try { token = await currentUser?.getIdToken(); } catch(e) { showToast('⚠️ Sign-in required'); return; }
   let added = 0;
   for(let i = 0; i < STEP_NAMES.length; i++) {
     const dueDate = addDays(clockStart, STEP_SCHEDULE[i]);
@@ -9816,7 +9947,7 @@ window.toggleCalendarSync = async function(contactId) {
   if(!crmNylasConnected) { showToast('⚠️ Connect Google Calendar in Settings first'); return; }
   const btn = document.getElementById(`gcal-btn-${contactId}`);
   let token;
-  try { token = await auth.currentUser.getIdToken(); } catch(e) { showToast('⚠️ Sign-in required'); return; }
+  try { token = await currentUser?.getIdToken(); } catch(e) { showToast('⚠️ Sign-in required'); return; }
 
   if(c.calendarSynced && c.calendarEventIds?.length) {
     // STOP SYNC — delete via Nylas
