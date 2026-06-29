@@ -2612,16 +2612,22 @@ html,body{height:100%;font-family:'DM Sans',sans-serif;background:var(--bg);colo
   #capture-center-btn{
     position:absolute;top:-28px;left:-28px;
     width:56px;height:56px;border-radius:50%;
-    background:linear-gradient(145deg,#E63946,#C0392B);color:#fff;
-    font-size:26px;font-weight:300;line-height:1;
-    border:none;cursor:pointer;
-    box-shadow:0 4px 22px rgba(230,57,70,0.55);
+    background:linear-gradient(145deg,#1B2B4B,#0f1e36);color:#fff;
+    font-size:24px;line-height:1;
+    border:2px solid rgba(255,255,255,0.15);cursor:pointer;
+    box-shadow:0 4px 22px rgba(0,0,0,0.45);
     display:flex;align-items:center;justify-content:center;
-    transform:scale(0) rotate(-45deg);
+    transform:scale(0);
     transition:transform 0.32s cubic-bezier(0.34,1.56,0.64,1);
     -webkit-tap-highlight-color:transparent;
   }
-  #capture-overlay.open #capture-center-btn{transform:scale(1) rotate(0deg);}
+  #capture-center-btn::after{
+    content:'Scan Card';
+    position:absolute;top:calc(100% + 7px);left:50%;transform:translateX(-50%);
+    font-family:'DM Sans',sans-serif;font-size:10px;font-weight:700;
+    color:rgba(255,255,255,0.75);white-space:nowrap;letter-spacing:0.02em;
+  }
+  #capture-overlay.open #capture-center-btn{transform:scale(1);}
   .cap-more-btn{
     position:absolute;left:50%;transform:translateX(-50%);top:160px;
     background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);
@@ -2755,7 +2761,7 @@ html,body{height:100%;font-family:'DM Sans',sans-serif;background:var(--bg);colo
 <div id="capture-overlay" onclick="if(event.target===this)closeCapture()">
   <div id="capture-radial">
     <!-- items injected by openCapture() -->
-    <button id="capture-center-btn" onclick="closeCapture()">✕</button>
+    <button id="capture-center-btn" onclick="closeCapture();openCardScanner()">📷</button>
     <button class="cap-more-btn" onclick="openFullLog()">More…</button>
   </div>
 </div>
