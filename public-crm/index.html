@@ -192,7 +192,7 @@ html,body{height:100%;font-family:'DM Sans',sans-serif;background:var(--bg);colo
   /* Mobile topbar */
   .mobile-topbar{
     background:var(--navy);
-    padding:50px 18px 16px;
+    padding:52px 24px 22px;
     flex-shrink:0;position:relative;overflow:hidden;
   }
   .mobile-topbar::after{
@@ -214,18 +214,18 @@ html,body{height:100%;font-family:'DM Sans',sans-serif;background:var(--bg);colo
     position:fixed;bottom:0;left:0;right:0;
     background:var(--navy);
     display:flex;justify-content:space-around;align-items:center;
-    padding:8px 0 max(env(safe-area-inset-bottom,0px), 20px);
+    padding:10px 0 max(env(safe-area-inset-bottom,0px), 28px);
     border-top:1px solid rgba(255,255,255,0.07);z-index:50;
   }
-  .mob-nav-btn{display:flex;flex-direction:column;align-items:center;gap:3px;border:none;background:none;cursor:pointer;padding:4px 10px;}
-  .mob-nav-btn .ni{font-size:19px;line-height:1;color:rgba(255,255,255,0.35);}
-  .mob-nav-btn .nl{font-size:9px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:rgba(255,255,255,0.35);}
+  .mob-nav-btn{display:flex;flex-direction:column;align-items:center;gap:5px;border:none;background:none;cursor:pointer;padding:6px 12px;}
+  .mob-nav-btn .ni{font-size:21px;line-height:1;color:rgba(255,255,255,0.35);}
+  .mob-nav-btn .nl{font-size:10px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:rgba(255,255,255,0.35);}
   .mob-nav-btn.active .ni,.mob-nav-btn.active .nl{color:var(--gold);}
   .mob-badge{background:var(--red);border-radius:10px;padding:1px 5px;font-size:9px;font-weight:700;color:#fff;margin-left:2px;}
 
   /* FAB */
   .fab{
-    position:fixed;bottom:72px;right:16px;
+    position:fixed;bottom:88px;right:16px;
     width:48px;height:48px;border-radius:50%;
     background:linear-gradient(135deg,var(--gold),var(--gold-d));
     border:none;cursor:pointer;
@@ -254,10 +254,14 @@ html,body{height:100%;font-family:'DM Sans',sans-serif;background:var(--bg);colo
   .co-insights{grid-template-columns:1fr!important;}
 
   /* Mobile save bar */
-  .save-bar{bottom:70px!important;}
+  .save-bar{bottom:84px!important;}
 
   /* Mobile content padding */
-  .screen-body .content-pad{padding:12px 14px;}
+  .screen-body .content-pad{padding:20px 24px;}
+
+  /* Dashboard mobile spacing */
+  #screen-dashboard .dash-grid{padding:20px 24px 0;gap:12px;margin-bottom:0;}
+  #screen-dashboard .dash-main{padding:16px 24px 40px;}
 }
 
 /* ════════════════════════════════════════
@@ -286,15 +290,15 @@ html,body{height:100%;font-family:'DM Sans',sans-serif;background:var(--bg);colo
    SHARED COMPONENTS
 ════════════════════════════════════════ */
 .card{background:var(--card);border-radius:var(--radius);border:1.5px solid var(--border);box-shadow:var(--shadow);}
-.card-hdr{padding:16px 18px 0;display:flex;align-items:center;justify-content:space-between;}
+.card-hdr{padding:20px 22px 0;display:flex;align-items:center;justify-content:space-between;}
 .card-title{font-family:'Playfair Display',serif;font-size:15px;font-weight:700;}
-.card-body{padding:14px 18px 18px;}
+.card-body{padding:16px 22px 24px;}
 
-.kpi{background:var(--card);border-radius:var(--radius);border:1.5px solid var(--border);padding:18px;box-shadow:var(--shadow);transition:transform 0.15s,box-shadow 0.15s;}
+.kpi{background:var(--card);border-radius:var(--radius);border:1.5px solid var(--border);padding:22px 20px;box-shadow:var(--shadow);transition:transform 0.15s,box-shadow 0.15s;}
 .kpi:hover{transform:translateY(-2px);box-shadow:var(--shadow-lg);}
-.kpi-ey{font-size:10px;font-weight:700;letter-spacing:0.11em;text-transform:uppercase;color:var(--muted);margin-bottom:8px;}
+.kpi-ey{font-size:10px;font-weight:700;letter-spacing:0.11em;text-transform:uppercase;color:var(--muted);margin-bottom:10px;}
 .kpi-val{font-family:'Playfair Display',serif;font-size:32px;font-weight:900;color:var(--navy);line-height:1;}
-.kpi-sub{font-size:11px;color:var(--muted);margin-top:5px;}
+.kpi-sub{font-size:11px;color:var(--muted);margin-top:10px;}
 .kpi.gold{background:linear-gradient(135deg,#fffbf0,#fff7e0);border-color:rgba(230,57,70,0.4);}
 .kpi.gold .kpi-val{color:var(--gold-d);}
 .kpi.navy{background:linear-gradient(135deg,var(--navy),var(--navy-l));border-color:transparent;}
@@ -328,19 +332,19 @@ html,body{height:100%;font-family:'DM Sans',sans-serif;background:var(--bg);colo
 ════════════════════════════════════════ */
 .hero-card{
   background:linear-gradient(145deg,var(--navy) 0%,var(--navy-l) 60%,#1e3a5f 100%);
-  border-radius:var(--radius);padding:24px;
+  border-radius:var(--radius);padding:28px 24px;
   position:relative;overflow:hidden;
-  box-shadow:var(--shadow-lg);margin-bottom:16px;
+  box-shadow:var(--shadow-lg);margin-bottom:20px;
 }
 .hero-card::before{content:'';position:absolute;top:-50px;right:-50px;width:200px;height:200px;background:rgba(230,57,70,0.08);border-radius:50%;}
 .hero-card::after{content:'';position:absolute;bottom:-40px;left:-20px;width:130px;height:130px;background:rgba(230,57,70,0.04);border-radius:50%;}
-.hero-ey{font-size:10px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:rgba(255,255,255,0.38);margin-bottom:6px;position:relative;z-index:1;}
+.hero-ey{font-size:10px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:rgba(255,255,255,0.38);margin-bottom:10px;position:relative;z-index:1;}
 .hero-pts{font-family:'Playfair Display',serif;font-size:64px;font-weight:900;color:#fff;line-height:1;position:relative;z-index:1;}
-.hero-sub{font-size:13px;color:rgba(255,255,255,0.5);margin-top:5px;position:relative;z-index:1;}
-.hero-div{height:1px;background:rgba(255,255,255,0.1);margin:18px 0;position:relative;z-index:1;}
-.hero-stats{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px;position:relative;z-index:1;}
+.hero-sub{font-size:13px;color:rgba(255,255,255,0.5);margin-top:12px;position:relative;z-index:1;}
+.hero-div{height:1px;background:rgba(255,255,255,0.1);margin:24px 0;position:relative;z-index:1;}
+.hero-stats{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:16px;position:relative;z-index:1;}
 .hs-val{font-family:'Playfair Display',serif;font-size:24px;font-weight:900;color:#fff;text-align:center;}
-.hs-lbl{font-size:9px;text-transform:uppercase;letter-spacing:0.07em;color:rgba(255,255,255,0.38);text-align:center;margin-top:3px;}
+.hs-lbl{font-size:9px;text-transform:uppercase;letter-spacing:0.07em;color:rgba(255,255,255,0.38);text-align:center;margin-top:6px;}
 
 .right-col{display:flex;flex-direction:column;gap:14px;}
 
@@ -1276,7 +1280,7 @@ html,body{height:100%;font-family:'DM Sans',sans-serif;background:var(--bg);colo
       <!-- ════ DASHBOARD ════ -->
       <div id="screen-dashboard" class="screen active">
         <div style="flex:1;overflow-y:auto;padding-bottom:100px;-webkit-overflow-scrolling:touch;">
-        <div id="announcements-banner" style="display:none;margin:14px 18px 0;"></div>
+        <div id="announcements-banner" style="display:none;margin:20px 0 0;"></div>
         <div class="dash-grid">
           <div class="kpi navy" id="dash-kpi-1"><div class="kpi-ey">This Week's Points</div><div class="kpi-val">—</div></div>
           <div class="kpi gold" id="dash-kpi-2"><div class="kpi-ey">Weekly Goal</div><div class="kpi-val">—</div></div>
@@ -1290,11 +1294,11 @@ html,body{height:100%;font-family:'DM Sans',sans-serif;background:var(--bg);colo
               <div class="hero-pts">—</div>
               <div class="hero-sub">Loading…</div>
             </div>
-            <div class="card" style="margin-bottom:14px;">
+            <div class="card" style="margin-bottom:20px;">
               <div class="card-hdr"><div class="card-title">Today's Activity</div><div id="dash-today-pts" style="font-family:'Playfair Display',serif;font-size:18px;font-weight:700;color:var(--gold);">0 pts</div></div>
               <div class="card-body" id="dash-today"></div>
             </div>
-            <div class="card" style="margin-bottom:14px;">
+            <div class="card" style="margin-bottom:20px;">
               <div class="card-hdr"><div class="card-title">Activity Mix This Week</div></div>
               <div class="card-body" id="dash-mix"></div>
             </div>
@@ -6041,7 +6045,7 @@ function renderDashboard() {
     <div class="hero-ey">Week in Review</div>
     <div class="hero-pts">${weekPts}</div>
     <div class="hero-sub">lead points this week · ${goalPct}% of ${weeklyGoal}pt goal</div>
-    <div style="display:flex;gap:18px;margin-top:10px;font-size:11px;color:rgba(255,255,255,0.6);">
+    <div style="display:flex;gap:18px;margin-top:16px;font-size:11px;color:rgba(255,255,255,0.6);">
       <div><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#5A8A6A;margin-right:5px;vertical-align:middle;"></span><strong style="color:#fff;">${weekPts}</strong> Lead · future business</div>
       <div><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#60A5FA;margin-right:5px;vertical-align:middle;"></span><strong style="color:#fff;">${weekLagPts}</strong> Lag · current results</div>
     </div>
@@ -6065,13 +6069,13 @@ function renderDashboard() {
   const todayPtsEl = document.getElementById('dash-today-pts');
   if(todayEl) {
     if(!todayEntry || todayEntry.totalPts === 0) {
-      todayEl.innerHTML = `<div style="text-align:center;padding:12px;color:var(--muted);font-size:13px;">No activities logged today yet.<br><span style="font-size:12px;">Head to <strong>Log Activities</strong> to get started.</span></div>`;
+      todayEl.innerHTML = `<div style="text-align:center;padding:24px 16px;color:var(--muted);font-size:13px;">No activities logged today yet.<br><span style="font-size:12px;">Head to <strong>Log Activities</strong> to get started.</span></div>`;
       if(todayPtsEl) todayPtsEl.textContent = '0 pts';
     } else {
       if(todayPtsEl) todayPtsEl.textContent = `${todayEntry.totalPts} pts`;
       const items = Object.entries(todayEntry.breakdown || {}).map(([name, b]) =>
-        `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);">
-          <div style="font-size:18px;">${b.icon||'⭐'}</div>
+        `<div style="display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--border);">
+          <div style="font-size:20px;">${b.icon||'⭐'}</div>
           <div style="flex:1;font-size:13px;font-weight:500;">${name}</div>
           <div style="font-size:12px;color:var(--muted);">${b.count}x</div>
           <div style="font-size:13px;font-weight:700;color:var(--gold);">+${b.pts}pts</div>
@@ -6199,8 +6203,8 @@ function renderDashMix(weekHistory) {
   const sorted=Object.entries(catTotals).sort((a,b)=>b[1]-a[1]);
   el.innerHTML=sorted.length?sorted.map(([cat,pts])=>{
     const pct=Math.round((pts/total)*100);const color=CAT_COLORS[cat]||'#7A8BA0';
-    return `<div style="display:flex;align-items:center;gap:11px;margin-bottom:9px;"><div style="width:7px;height:7px;border-radius:50%;background:${color};flex-shrink:0;"></div><div style="font-size:13px;font-weight:600;width:155px;">${cat}</div><div style="flex:1;height:7px;background:var(--border);border-radius:4px;overflow:hidden;"><div style="height:100%;width:${pct}%;background:${color};border-radius:4px;"></div></div><div style="font-size:12px;font-weight:700;width:30px;text-align:right;">${pct}%</div></div>`;
-  }).join(''):'<div style="color:var(--muted);font-size:12px;text-align:center;padding:16px;">Log activities to see your mix</div>';
+    return `<div style="display:flex;align-items:center;gap:12px;margin-bottom:13px;"><div style="width:8px;height:8px;border-radius:50%;background:${color};flex-shrink:0;"></div><div style="font-size:13px;font-weight:600;width:155px;">${cat}</div><div style="flex:1;height:8px;background:var(--border);border-radius:4px;overflow:hidden;"><div style="height:100%;width:${pct}%;background:${color};border-radius:4px;"></div></div><div style="font-size:12px;font-weight:700;width:30px;text-align:right;">${pct}%</div></div>`;
+  }).join(''):'<div style="color:var(--muted);font-size:12px;text-align:center;padding:24px 16px;">Log activities to see your mix</div>';
 }
 
 function renderDashEventROI() {
