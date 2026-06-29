@@ -6429,7 +6429,7 @@ function renderDashboard() {
       co.innerHTML=`
         <div style="background:#f4fbf6;border-radius:9px;padding:11px;border-left:3px solid var(--green);"><div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--green);margin-bottom:3px;">💪 Strength</div><div style="font-size:12px;line-height:1.5;">${strength}</div></div>
         <div style="background:#fff8f7;border-radius:9px;padding:11px;border-left:3px solid var(--red);"><div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--red);margin-bottom:3px;">⚠️ Risk</div><div style="font-size:12px;line-height:1.5;">${risk}</div></div>
-        <div style="background:#f0f4ff;border-radius:9px;padding:11px;border-left:3px solid var(--blue);"><div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--blue);margin-bottom:3px;">🎯 Recommendation</div><div style="font-size:12px;line-height:1.5;">${rec}</div></div>`;
+        <div style="background:${document.documentElement.classList.contains('dark-theme')?'rgba(37,99,235,0.12)':'#f0f4ff'};border-radius:9px;padding:11px;border-left:3px solid var(--blue);"><div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--blue);margin-bottom:3px;">🎯 Recommendation</div><div style="font-size:12px;line-height:1.5;">${rec}</div></div>`;
     }
   }
 
@@ -8983,14 +8983,15 @@ function renderDashLeadLag(weekHistory) {
   if(!grand) { el.innerHTML='<div style="color:var(--muted);font-size:12px;text-align:center;padding:12px;">Log activities to see your lead vs lag split</div>'; return; }
   const leadPct = Math.round((totalLead/grand)*100);
   const lagPct = Math.round((totalLag/grand)*100);
+  const _dk = document.documentElement.classList.contains('dark-theme');
   el.innerHTML = `
     <div style="display:flex;gap:10px;margin-bottom:12px;">
-      <div style="flex:1;background:#f4fbf6;border-radius:10px;padding:12px;border-left:3px solid var(--green);">
+      <div style="flex:1;background:${_dk?'rgba(90,138,106,0.14)':'#f4fbf6'};border-radius:10px;padding:12px;border-left:3px solid var(--green);">
         <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--green);margin-bottom:3px;">Lead</div>
         <div style="font-family:'Playfair Display',serif;font-size:24px;font-weight:900;">${totalLead}</div>
         <div style="font-size:10px;color:var(--muted);">pts · activities you control</div>
       </div>
-      <div style="flex:1;background:#fef9f0;border-radius:10px;padding:12px;border-left:3px solid var(--gold);">
+      <div style="flex:1;background:${_dk?'rgba(230,57,70,0.1)':'#fef9f0'};border-radius:10px;padding:12px;border-left:3px solid var(--gold);">
         <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--gold-d);margin-bottom:3px;">Lag</div>
         <div style="font-family:'Playfair Display',serif;font-size:24px;font-weight:900;">${totalLag}</div>
         <div style="font-size:10px;color:var(--muted);">pts · results that follow</div>
@@ -9003,8 +9004,8 @@ function renderDashLeadLag(weekHistory) {
       <div style="font-size:11px;color:var(--green);font-weight:600;">Lead ${leadPct}%</div>
       <div style="font-size:11px;color:var(--gold-d);font-weight:600;">Lag ${lagPct}%</div>
     </div>
-    ${lagPct>50?'<div style="margin-top:10px;background:#fff8f7;border-radius:9px;padding:10px;font-size:12px;color:var(--red);border-left:3px solid var(--red);">⚠️ Over 60% of your points came from results. Without strong lead activity, your future pipeline will slow.</div>':''}
-    ${leadPct>=80&&grand>=50?'<div style="margin-top:10px;background:#f4fbf6;border-radius:9px;padding:10px;font-size:12px;color:var(--green);border-left:3px solid var(--green);">✅ Strong lead discipline — building the pipeline, not just harvesting it. This is sustainable growth.</div>':''}`;
+    ${lagPct>50?`<div style="margin-top:10px;background:${_dk?'rgba(192,57,43,0.1)':'#fff8f7'};border-radius:9px;padding:10px;font-size:12px;color:var(--red);border-left:3px solid var(--red);">⚠️ Over 60% of your points came from results. Without strong lead activity, your future pipeline will slow.</div>`:''}
+    ${leadPct>=80&&grand>=50?`<div style="margin-top:10px;background:${_dk?'rgba(90,138,106,0.12)':'#f4fbf6'};border-radius:9px;padding:10px;font-size:12px;color:var(--green);border-left:3px solid var(--green);">✅ Strong lead discipline — building the pipeline, not just harvesting it. This is sustainable growth.</div>`:''}`;
 }
 
 // ── LAST WEEK REPORT ──
@@ -9084,16 +9085,17 @@ function renderLastWeekReport() {
   else recommendation=`Aim for ${weeklyGoal} pts this week. ${Math.ceil(weeklyGoal/7)} pts/day gets you there — that is just 2-3 meaningful activities daily.`;
 
   const coachEl=document.getElementById('lwr-coaching');
-  if(coachEl) coachEl.innerHTML=[
-    {label:'Strength',icon:'💪',text:strength,color:'#5A8A6A',bg:'#f4fbf6'},
-    {label:'Risk',icon:'⚠️',text:risk,color:'#C0392B',bg:'#fff8f7'},
-    {label:'Recommendation',icon:'🎯',text:recommendation,color:'#4A7FB5',bg:'#f0f4ff'},
-    {label:"This Week's Identity",icon:tier.emoji,text:`"${tier.msg}"`,color:tier.color,bg:'rgba(26,26,26,0.04)'},
+  if(coachEl) { const _dk=document.documentElement.classList.contains('dark-theme');
+  coachEl.innerHTML=[
+    {label:'Strength',icon:'💪',text:strength,color:'#5A8A6A',bg:_dk?'rgba(90,138,106,0.13)':'#f4fbf6'},
+    {label:'Risk',icon:'⚠️',text:risk,color:'#C0392B',bg:_dk?'rgba(192,57,43,0.1)':'#fff8f7'},
+    {label:'Recommendation',icon:'🎯',text:recommendation,color:'#4A7FB5',bg:_dk?'rgba(74,127,181,0.12)':'#f0f4ff'},
+    {label:"This Week's Identity",icon:tier.emoji,text:`"${tier.msg}"`,color:tier.color,bg:_dk?'rgba(255,255,255,0.05)':'rgba(26,26,26,0.04)'},
   ].map(c=>`<div style="background:${c.bg};border-radius:12px;padding:14px 16px;border-left:3px solid ${c.color};">
     <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:${c.color};margin-bottom:4px;">${c.icon} ${c.label}</div>
     <div style="font-size:13px;color:var(--text);line-height:1.5;">${c.text}</div>
   </div>`).join('');
-}
+}}
 
 // ── HISTORY ──
 window.setHistView = function(view, btn) {
@@ -9267,11 +9269,12 @@ function renderHistory(view='week') {
       if(grand>=goal)rec=`Goal hit. Focus on quality — identify your 3 highest-potential contacts and deepen one today.`;
       else if(ptsLeft<=30)rec=`${ptsLeft} pts from your ${goal}-pt goal. One strong session closes it.`;
       else rec=`${Math.ceil(ptsLeft/Math.max(1,7-daysActive))} pts/day needed to hit ${goal} by Sunday. High-value activities only.`;
+      const _dk2=document.documentElement.classList.contains('dark-theme');
       const cards=[
-        {label:'STRENGTH',icon:'💪',text:strength,color:'#16a34a',bg:'#f0fdf4'},
-        ...(risk?[{label:'RISK',icon:'⚠️',text:risk,color:'#ca8a04',bg:'#fefce8'}]:[]),
-        {label:'RECOMMENDATION',icon:'🎯',text:rec,color:'#2563eb',bg:'#eff6ff'},
-        {label:"THIS WEEK'S IDENTITY",icon:tier.emoji,text:`"${tier.msg}"`,color:tier.color,bg:tier.color+'11'},
+        {label:'STRENGTH',icon:'💪',text:strength,color:'#16a34a',bg:_dk2?'rgba(22,163,74,0.12)':'#f0fdf4'},
+        ...(risk?[{label:'RISK',icon:'⚠️',text:risk,color:'#ca8a04',bg:_dk2?'rgba(202,138,4,0.11)':'#fefce8'}]:[]),
+        {label:'RECOMMENDATION',icon:'🎯',text:rec,color:'#2563eb',bg:_dk2?'rgba(37,99,235,0.12)':'#eff6ff'},
+        {label:"THIS WEEK'S IDENTITY",icon:tier.emoji,text:`"${tier.msg}"`,color:tier.color,bg:_dk2?tier.color+'22':tier.color+'11'},
       ].map(c=>`<div style="background:${c.bg};border-radius:12px;padding:13px 14px;border-left:3px solid ${c.color};">
         <div style="font-size:10px;font-weight:800;letter-spacing:0.1em;text-transform:uppercase;color:${c.color};margin-bottom:5px;">${c.icon} ${c.label}</div>
         <div style="font-size:13px;color:var(--text);line-height:1.5;">${c.text}</div>
@@ -9344,7 +9347,7 @@ function renderHistory(view='week') {
         <div style="height:6px;background:var(--border);border-radius:3px;overflow:hidden;">
           <div style="height:100%;width:${leadPct}%;background:var(--green);border-radius:3px;transition:width 0.5s;"></div>
         </div>
-        ${leadPct>=80?'<div style="background:#f0fdf4;border-radius:9px;padding:10px;margin-top:10px;font-size:12px;color:var(--green);border-left:3px solid var(--green);">✅ Strong lead activity. You are building the pipeline, not just harvesting it.</div>':''}
+        ${leadPct>=80?`<div style="background:${_dk2?'rgba(22,163,74,0.12)':'#f0fdf4'};border-radius:9px;padding:10px;margin-top:10px;font-size:12px;color:var(--green);border-left:3px solid var(--green);">✅ Strong lead activity. You are building the pipeline, not just harvesting it.</div>`:''}
       </div>
     </div></div>
     <div style="padding:0 16px 14px;"><div class="card">
