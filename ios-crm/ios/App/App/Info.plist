@@ -45,8 +45,13 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<!-- Disable per-VC status bar control so Info.plist default + JS setStyle() apply globally -->
 	<key>UIViewControllerBasedStatusBarAppearance</key>
-	<true/>
+	<false/>
+	<!-- Default to dark (black) icons — works on dashboard's light background.
+	     JS overrides this per-screen via StatusBar.setStyle(). -->
+	<key>UIStatusBarStyle</key>
+	<string>UIStatusBarStyleDarkContent</string>
 	<!-- Google Sign-In: REVERSED_CLIENT_ID must be registered as a URL scheme -->
 	<key>CFBundleURLTypes</key>
 	<array>
