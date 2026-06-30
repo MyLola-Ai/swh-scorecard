@@ -1,9 +1,7 @@
 import Capacitor
 
-class ViewController: CAPBridgeViewController {
-
-    // Auto-hide the Home Indicator after a moment of inactivity,
-    // matching the behavior of Instagram / Facebook / full-screen apps.
-    override var prefersHomeIndicatorAutoHidden: Bool { true }
-
-}
+// Subclass of CAPBridgeViewController kept here for future native customizations.
+// Home Indicator auto-hide is controlled via the SystemBars plugin from JS
+// (Capacitor's prefersHomeIndicatorAutoHidden is declared in an extension as
+// `override public`, which blocks re-overriding in subclasses outside the module).
+class ViewController: CAPBridgeViewController {}

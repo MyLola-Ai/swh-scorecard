@@ -3449,6 +3449,12 @@ function applyTheme(pref) {
         // Retry after bridge settles — initial call can fire before native is ready
         setTimeout(() => SB.setStyle({ style: _sbStyle }).catch(() => {}), 600);
       }
+      // Hide the Home Indicator pill via the built-in SystemBars plugin.
+      // CAPBridgeViewController.prefersHomeIndicatorAutoHidden delegates to
+      // CAPSystemBarsPlugin.hideHomeIndicator — setting it here makes the pill
+      // auto-fade after inactivity (same as Instagram / Facebook).
+      const SysBars = window.Capacitor?.Plugins?.SystemBars;
+      if (SysBars) SysBars.hide({ bar: 'NavigationBar' }).catch(() => {});
     } catch(_) {}
   }
   // Refresh the settings label
