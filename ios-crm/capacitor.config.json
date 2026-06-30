@@ -7,7 +7,7 @@
     "contentInset": "never",
     "limitsNavigationsToAppBoundDomains": false,
     "preferredContentMode": "mobile",
-    "backgroundColor": "#ffffff"
+    "backgroundColor": "#111111"
   },
   "server": {
     "iosScheme": "https",
@@ -17,7 +17,7 @@
     "SplashScreen": {
       "launchAutoHide": false,
       "launchShowDuration": 0,
-      "backgroundColor": "#ffffff",
+      "backgroundColor": "#111111",
       "showSpinner": false,
       "iosSpinnerStyle": "small"
     },
@@ -31,7 +31,7 @@
     "StatusBar": {
       "overlaysWebView": true,
       "style": "DARK",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#111111"
     }
   }
 }
