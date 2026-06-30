@@ -23,10 +23,12 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     // level instead — this fires before any VC appears, so UIKit's first
     // evaluation of the property already returns true (auto-hide enabled).
     private func patchHomeIndicator() {
-        guard
-            let cls = NSClassFromString("Capacitor.CAPBridgeViewController"),
-            let method = class_getInstanceMethod(cls, NSSelectorFromString("prefersHomeIndicatorAutoHidden"))
-        else { return }
+        // Use the Swift type directly — NSClassFromString("Capacitor.CAPBridgeViewController")
+        // can fail in SPM debug builds where the module prefix encoding differs from
+        // framework builds. The direct type reference is always reliable.
+        let cls: AnyClass = CAPBridgeViewController.self
+        let sel = NSSelectorFromString("prefersHomeIndicatorAutoHidden")
+        guard let method = class_getInstanceMethod(cls, sel) else { return }
         let alwaysHide: @convention(block) (AnyObject) -> Bool = { _ in true }
         method_setImplementation(method, imp_implementationWithBlock(alwaysHide as AnyObject))
     }
