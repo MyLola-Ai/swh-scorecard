@@ -2,6 +2,7 @@
   "appId": "com.impactleadershipgroup.swh.crm",
   "appName": "SWH CRM",
   "webDir": "../public-crm",
+  "backgroundColor": "#111111",
   "ios": {
     "scheme": "https",
     "contentInset": "never",

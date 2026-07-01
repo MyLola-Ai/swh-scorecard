@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="SWH CRM">
@@ -88,33 +88,8 @@ html.dark-theme .hist-toggle.active { background:var(--chrome-bg) !important; bo
 html.dark-theme #ios-install-banner { background:#1E1E1E !important; }
 html.dark-theme .week-hero-card { background:#242424 !important; }
 
-/* ── Login screen — light-mode overrides ── */
+/* ── Login screen — always dark (matches Scorecard; dark bg → white home indicator pill) ── */
 #login-logo-light { display:none; }
-html:not(.dark-theme) #login-screen { background:#f2f2f7 !important; }
-html:not(.dark-theme) #login-logo-dark { display:none !important; }
-html:not(.dark-theme) #login-logo-light { display:inline-block !important; }
-html:not(.dark-theme) .login-headline { color:#111 !important; }
-html:not(.dark-theme) .login-sub { color:rgba(0,0,0,0.45) !important; }
-html:not(.dark-theme) #login-screen label { color:rgba(0,0,0,0.5) !important; }
-html:not(.dark-theme) #login-screen input,
-html:not(.dark-theme) #login-screen select {
-  background:rgba(0,0,0,0.05) !important;
-  border-color:rgba(0,0,0,0.15) !important;
-  color:#111 !important;
-}
-html:not(.dark-theme) #login-screen input::placeholder { color:rgba(0,0,0,0.28) !important; }
-html:not(.dark-theme) .login-show-btn,
-html:not(.dark-theme) .login-forgot { color:rgba(0,0,0,0.4) !important; }
-html:not(.dark-theme) .login-or-line { background:rgba(0,0,0,0.1) !important; }
-html:not(.dark-theme) .login-or-text { color:rgba(0,0,0,0.35) !important; }
-html:not(.dark-theme) #login-btn,
-html:not(.dark-theme) #ms-login-btn { background:#fff !important; border-color:rgba(0,0,0,0.12) !important; color:#111 !important; }
-html:not(.dark-theme) .login-link-muted { color:rgba(0,0,0,0.45) !important; }
-html:not(.dark-theme) .login-link-bold { color:#111 !important; }
-html:not(.dark-theme) .login-step-label,
-html:not(.dark-theme) .login-step-sub,
-html:not(.dark-theme) .login-pw-hint { color:rgba(0,0,0,0.4) !important; }
-html:not(.dark-theme) .login-signup-sso { background:#e5e5ea !important; color:#111 !important; }
 /* Login theme toggle pills */
 .login-theme-btn {
   width:34px;height:34px;border-radius:9px;border:1.5px solid rgba(128,128,128,0.18);
@@ -126,7 +101,10 @@ html:not(.dark-theme) .login-signup-sso { background:#e5e5ea !important; color:#
 .login-theme-btn[data-active="1"] { background:rgba(128,128,128,0.15);border-color:rgba(128,128,128,0.38); }
 
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
-html,body{height:100%;font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);}
+html{height:100%;background:#111111;font-family:'DM Sans',sans-serif;color:var(--text);}
+body{height:100%;background:var(--bg);}
+/* Login screen — push all content above the home indicator safe area */
+#login-screen{padding-bottom:calc(env(safe-area-inset-bottom,0px) + 32px) !important;}
 ::-webkit-scrollbar{width:5px;}
 ::-webkit-scrollbar-track{background:transparent;}
 ::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px;}
@@ -1100,12 +1078,29 @@ html,body{height:100%;font-family:'DM Sans',sans-serif;background:var(--bg);colo
 <!-- ════ LOGIN ════ -->
 <div id="login-screen" style="display:none;position:fixed;inset:0;z-index:300;background:#111111;flex-direction:column;align-items:center;padding:0 24px;overflow-y:auto;">
 
-  <!-- Theme toggle — top-right, stays fixed within the overlay -->
-  <div style="position:absolute;top:calc(env(safe-area-inset-top,0px)+14px);right:12px;display:flex;gap:4px;z-index:5;">
+  <!-- Theme toggle — top set by JS probe (env() is unreliable inside position:fixed+overflow:auto containers in WebKit) -->
+  <div id="login-theme-toggle" style="position:fixed;top:80px;right:12px;display:flex;gap:4px;z-index:310;">
     <button id="lt-btn-light" onclick="saveThemePref('light')" class="login-theme-btn" data-active="0" title="Light">☀️</button>
     <button id="lt-btn-dark"  onclick="saveThemePref('dark')"  class="login-theme-btn" data-active="1" title="Dark">🌙</button>
     <button id="lt-btn-system" onclick="saveThemePref('system')" class="login-theme-btn" data-active="0" title="System">Auto</button>
   </div>
+  <script>
+  (function(){
+    var bar = document.getElementById('login-theme-toggle');
+    function posBar(){
+      // Probe env(safe-area-inset-top) by placing a fixed div at the document root level
+      // where env() reliably resolves against the viewport (not a scroll container)
+      var p = document.createElement('div');
+      p.style.cssText='position:fixed;top:env(safe-area-inset-top,0px);left:-9999px;width:1px;height:1px;pointer-events:none;visibility:hidden;';
+      document.documentElement.appendChild(p);
+      var safeTop = p.getBoundingClientRect().top;
+      document.documentElement.removeChild(p);
+      bar.style.top = Math.max(safeTop + 16, 80) + 'px';
+    }
+    posBar();
+    window.addEventListener('resize', posBar);
+  })();
+  </script>
 
   <!-- Hero -->
   <div style="width:100%;max-width:400px;text-align:center;padding-top:calc(env(safe-area-inset-top,0px) + 60px);padding-bottom:36px;">
@@ -1237,7 +1232,7 @@ html,body{height:100%;font-family:'DM Sans',sans-serif;background:var(--bg);colo
       </div>
     </div>
 
-  <div style="color:rgba(255,255,255,0.2);font-size:11px;text-align:center;margin-top:20px;padding-bottom:calc(env(safe-area-inset-bottom,0px) + 20px);">Open Beta · Free access · No credit card required</div>
+  <div style="color:rgba(255,255,255,0.2);font-size:11px;text-align:center;margin-top:20px;">Open Beta · Free access · No credit card required</div>
 </div>
 
 <!-- ════ TRIAL BANNER ════ -->
@@ -3409,6 +3404,16 @@ import { getFunctions, httpsCallable }
 const isNativeEarly = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
 const isNative = () => isNativeEarly;
 
+// Hide home indicator ONCE at startup (BNI-style: shows briefly on launch then auto-hides).
+// Called once here — NOT in applyTheme — so iOS gets one clean hide, not a repeated signal
+// that produces the ghost black pill.
+if (isNativeEarly) {
+  try {
+    const _SB = window.Capacitor?.Plugins?.SystemBars;
+    if (_SB) _SB.hide({ bar: 'NavigationBar' }).catch(() => {});
+  } catch(_) {}
+}
+
 // RevenueCat public API key for the SWH CRM iOS app.
 // Get from: RevenueCat dashboard → Apps → SWH CRM iOS → Public API key
 const REVENUECAT_CRM_IOS_KEY = 'appl_nbhmRDbmuarjSPcoHhkyQNdOBAL'; // TODO: replace with CRM-specific key
@@ -3449,14 +3454,7 @@ function applyTheme(pref) {
         // Retry after bridge settles — initial call can fire before native is ready
         setTimeout(() => SB.setStyle({ style: _sbStyle }).catch(() => {}), 600);
       }
-      // Hide the Home Indicator pill via the built-in SystemBars plugin.
-      // prefersHomeIndicatorAutoHidden → pill auto-fades after ~2s inactivity.
-      const _hidePill = () => {
-        const SB2 = window.Capacitor?.Plugins?.SystemBars;
-        if (SB2) SB2.hide({ bar: 'NavigationBar' }).catch(() => {});
-      };
-      _hidePill();
-      setTimeout(_hidePill, 600);
+      // Home indicator intentionally left visible — hiding it shows a ghost black pill instead.
     } catch(_) {}
   }
   // Refresh the settings label
