@@ -31,6 +31,11 @@
 <meta name="twitter:image" content="https://swh-crm.web.app/assets/swh/swh-lockup-light.png">
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=Space+Grotesk:wght@600;700&family=Anton&display=swap" rel="stylesheet">
 <style>
+/* Force dark native background — keeps iOS home indicator white (light bar, not black pill) */
+html, body { background: #111111; }
+body.login-active,
+body.login-active #login-screen { background: #111111 !important; }
+
 /* ════════════════════════════════════════
    DESIGN TOKENS
 ════════════════════════════════════════ */
@@ -104,7 +109,7 @@ html.dark-theme .week-hero-card { background:#242424 !important; }
 html{height:100%;background:#111111;font-family:'DM Sans',sans-serif;color:var(--text);}
 body{height:100%;background:var(--bg);}
 /* Login screen — push all content above the home indicator safe area */
-#login-screen{padding-bottom:calc(env(safe-area-inset-bottom,0px) + 32px) !important;}
+#login-screen{min-height:100dvh;background:#111111 !important;padding-bottom:calc(env(safe-area-inset-bottom,0px) + 48px) !important;}
 ::-webkit-scrollbar{width:5px;}
 ::-webkit-scrollbar-track{background:transparent;}
 ::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px;}
@@ -3404,15 +3409,6 @@ import { getFunctions, httpsCallable }
 const isNativeEarly = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
 const isNative = () => isNativeEarly;
 
-// Hide home indicator ONCE at startup (BNI-style: shows briefly on launch then auto-hides).
-// Called once here — NOT in applyTheme — so iOS gets one clean hide, not a repeated signal
-// that produces the ghost black pill.
-if (isNativeEarly) {
-  try {
-    const _SB = window.Capacitor?.Plugins?.SystemBars;
-    if (_SB) _SB.hide({ bar: 'NavigationBar' }).catch(() => {});
-  } catch(_) {}
-}
 
 // RevenueCat public API key for the SWH CRM iOS app.
 // Get from: RevenueCat dashboard → Apps → SWH CRM iOS → Public API key
@@ -4838,9 +4834,11 @@ function showLogin() {
   document.getElementById('loader').style.display = 'none';
   document.getElementById('login-screen').style.display = 'flex';
   document.getElementById('app-shell').style.display = 'none';
+  document.body.classList.add('login-active');
 }
 function showApp() {
   document.getElementById('login-screen').style.display = 'none';
+  document.body.classList.remove('login-active');
   if (userPlan !== 'pro') {
     document.getElementById('app-shell').style.display = 'none';
     document.getElementById('upgrade-screen').style.display = 'flex';
