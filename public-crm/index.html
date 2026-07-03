@@ -256,8 +256,10 @@ body{height:100%;min-height:100dvh;background:#111111;overscroll-behavior:none;}
     backdrop-filter:blur(20px) saturate(170%);
     -webkit-backdrop-filter:blur(20px) saturate(170%);
     display:flex;justify-content:space-around;align-items:center;
-    min-height:calc(74px + env(safe-area-inset-bottom,0px));
-    padding:8px 14px calc(env(safe-area-inset-bottom,0px) + 8px);
+    /* No fixed height — content + padding define it. Bottom padding is the
+       safe-area inset MINUS 10px so icons/labels sit down into the safe zone
+       like a native tab bar (min 8px when there's no inset, e.g. web). */
+    padding:6px 14px max(calc(env(safe-area-inset-bottom,0px) - 10px), 8px);
     border-radius:24px 24px 0 0;
     border:1px solid rgba(255,255,255,0.10);border-bottom:none;
     box-shadow:0 -8px 28px rgba(0,0,0,0.32),inset 0 1px 0 rgba(255,255,255,0.08);
@@ -278,7 +280,7 @@ body{height:100%;min-height:100dvh;background:#111111;overscroll-behavior:none;}
 
   /* FAB */
   .fab{
-    position:fixed;bottom:calc(92px + env(safe-area-inset-bottom,0px));right:24px;
+    position:fixed;bottom:calc(62px + env(safe-area-inset-bottom,0px));right:24px;
     width:52px;height:52px;border-radius:50%;
     background:linear-gradient(135deg,var(--gold),var(--gold-d));
     border:none;cursor:pointer;
@@ -307,7 +309,7 @@ body{height:100%;min-height:100dvh;background:#111111;overscroll-behavior:none;}
   .co-insights{grid-template-columns:1fr!important;}
 
   /* Mobile save bar */
-  .save-bar{bottom:calc(84px + env(safe-area-inset-bottom,0px))!important;}
+  .save-bar{bottom:calc(58px + env(safe-area-inset-bottom,0px))!important;}
 
   /* Mobile content padding */
   .screen-body .content-pad{padding:20px 24px;}
@@ -2610,15 +2612,15 @@ html.dark-theme .st-sect-head{color:rgba(255,255,255,.55);}
     cursor: pointer;
     transition: transform .15s cubic-bezier(.22,1,.36,1), box-shadow .15s;
   }
-  /* Mobile: clear the bottom-nav (which is ~70px tall including the iOS
-     safe-area inset). Adds 12px breathing room above the nav. */
+  /* Mobile: clear the content-height bottom-nav (~74px tall on device
+     including the reduced safe-area padding). ~22px breathing room. */
   @media (max-width: 767px) {
     .lola-fab {
-      bottom: calc(92px + env(safe-area-inset-bottom, 0px));
+      bottom: calc(62px + env(safe-area-inset-bottom, 0px));
       transition: bottom 0.35s cubic-bezier(0.34,1.4,0.64,1), transform .15s cubic-bezier(.22,1,.36,1), box-shadow .15s;
     }
     body.save-bar-up .lola-fab {
-      bottom: calc(136px + max(env(safe-area-inset-bottom, 0px), 12px));
+      bottom: calc(120px + max(env(safe-area-inset-bottom, 0px), 12px));
     }
   }
   .lola-fab:hover { transform: translateY(-2px); box-shadow: 0 18px 42px -8px rgba(10,10,10,0.5), 0 8px 16px -2px rgba(167,139,250,0.35); }
