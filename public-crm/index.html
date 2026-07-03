@@ -250,12 +250,12 @@ body{height:100%;min-height:100dvh;background:#111111;overscroll-behavior:none;}
   .screen-body::-webkit-scrollbar{display:none;}
 
   /* Bottom nav — iOS 26 Liquid Glass floating capsule.
-     Detached from the screen edge: hovers 10px above the safe area, fully
-     rounded, content scrolls beneath it. The home indicator lives BELOW
-     the capsule in the gap. */
+     Hovers just above the home indicator (like Mail/Music/Photos): a small
+     6px gap above the safe area — the float comes from transparency and
+     shadow, not vertical distance. Fully rounded, content scrolls beneath. */
   .bottom-nav{
     position:fixed;left:16px;right:16px;
-    bottom:calc(env(safe-area-inset-bottom,0px) + 17px);
+    bottom:calc(env(safe-area-inset-bottom,0px) + 6px);
     background:rgba(28,28,30,0.44);
     backdrop-filter:blur(30px) saturate(190%);
     -webkit-backdrop-filter:blur(30px) saturate(190%);
