@@ -22,7 +22,8 @@ class ViewController: CAPBridgeViewController {
         // color; this native dark view ensures it reads dark → renders white pill
         // (invisible against the dark nav background).
         let safeZone = UIView()
-        safeZone.backgroundColor = UIColor(red: 0.118, green: 0.118, blue: 0.118, alpha: 1)
+        // Match the rendered color of the CSS glass nav bar: rgba(28,28,44,0.76) over #111111 body ≈ rgb(25,25,38)
+        safeZone.backgroundColor = UIColor(red: 0.098, green: 0.098, blue: 0.149, alpha: 1)
         safeZone.isUserInteractionEnabled = false
         safeZone.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(safeZone)
