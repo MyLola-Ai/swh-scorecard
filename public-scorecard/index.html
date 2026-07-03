@@ -2189,7 +2189,7 @@
       document.querySelectorAll('.nav-item').forEach(b=>b.classList.remove('active'));
       const _hBtn = document.querySelectorAll('.nav-item')[2];
       if (_hBtn) _hBtn.classList.add('active');
-      showToast(totalPts===0 ? '✅ Day cleared.' : '✅ Day saved! Check Coaching for insights.');
+      if (totalPts===0) { showToast('✅ Day cleared.'); } else { flashSaved(); }
       sessionStorage.setItem('swh_coaching_updated','1');
       updateCoachingBadge();
       return;
@@ -2246,7 +2246,7 @@
     document.querySelectorAll('.nav-item').forEach(b=>b.classList.remove('active'));
     const _hBtn2 = document.querySelectorAll('.nav-item')[2];
     if (_hBtn2) _hBtn2.classList.add('active');
-    showToast(totalPts===0 ? '✅ Day cleared.' : '✅ Day saved! Check Coaching for insights.');
+    if (totalPts===0) { showToast('✅ Day cleared.'); } else { flashSaved(); }
     sessionStorage.setItem('swh_coaching_updated','1');
     updateCoachingBadge();
   };
@@ -3603,16 +3603,29 @@
   window.showSaveBar = function() {
     const onHome = document.getElementById('screen-home').classList.contains('active');
     if(!onHome){ return; }
-    let pts=0;
-    activities.forEach((act,i)=>{ pts+=(todayCounts[i]||0)*act.pts; });
+    let pts=0, actCount=0;
+    activities.forEach((act,i)=>{ const c=todayCounts[i]||0; pts+=c*act.pts; if(c>0) actCount++; });
     const bar = document.getElementById('save-bar');
     const ptsEl = document.getElementById('save-bar-pts');
     if(pts>0 || editingDate){
-      ptsEl.textContent = pts>0 ? `${pts} pts logged` : 'Clear day';
+      ptsEl.textContent = pts>0 ? `${actCount} ${actCount===1?'activity':'activities'} • ${pts} pts` : 'Clear day';
+      bar.classList.remove('saved');
       bar.classList.add('visible');
     } else {
       bar.classList.remove('visible');
     }
+  };
+
+  // Post-save confirmation: morph the capsule to "✓ Saved", hold a beat,
+  // then spring it away and restore the normal content for next time.
+  window.flashSaved = function() {
+    const bar = document.getElementById('save-bar');
+    if (!bar) return;
+    bar.classList.add('visible','saved');
+    setTimeout(() => {
+      bar.classList.remove('visible');
+      setTimeout(() => bar.classList.remove('saved'), 350);
+    }, 1400);
   };
 
   window.showLoader=(show)=>{document.getElementById('loader').style.display=show?'flex':'none';};
@@ -4132,11 +4145,28 @@
   /* FLOATING SAVE BAR */
   /* Save bar — bottom offset uses CSS var set by JS at runtime so it always clears
      the nav regardless of how tall the nav grows under Dynamic Type */
-  .save-bar{position:fixed;bottom:calc(var(--nav-height,62px) + env(safe-area-inset-bottom) + 12px);left:0;right:0;width:100%;max-width:430px;margin-left:auto;margin-right:auto;padding:12px 16px;display:flex;align-items:center;justify-content:space-between;background:var(--navy);border-top:2px solid var(--gold);z-index:45;transform:translateY(300%);transition:transform 0.35s cubic-bezier(0.34,1.56,0.64,1);box-shadow:0 -4px 24px rgba(27,46,75,0.25);box-sizing:border-box;}
-  .save-bar.visible{transform:translateY(0);}
-  .save-bar-pts{font-family:'Playfair Display',serif;font-size:18px;font-weight:700;color:#fff;}
-  .save-bar-btn{background:var(--gold);border:none;border-radius:12px;padding:10px 20px;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:700;color:var(--navy);cursor:pointer;white-space:nowrap;}
-  .save-bar-btn:active{opacity:0.9;}
+  /* Save bar — floating glass action capsule on the same layer as the nav.
+     Auto-appears only with unsaved changes; springs in/out; morphs to
+     "✓ Saved" via .saved after a successful save, then fades away. */
+  .save-bar{position:fixed;bottom:calc(var(--nav-height,62px) + env(safe-area-inset-bottom) + 16px);left:16px;right:16px;width:fit-content;max-width:398px;margin:0 auto;padding:8px 8px 8px 18px;display:flex;align-items:center;gap:14px;
+    background:rgba(255,255,255,0.48);
+    backdrop-filter:blur(30px) saturate(190%);
+    -webkit-backdrop-filter:blur(30px) saturate(190%);
+    border:0.5px solid rgba(255,255,255,0.60);
+    border-radius:999px;
+    box-shadow:0 20px 50px rgba(0,0,0,0.10),inset 0 1px 0 rgba(255,255,255,0.60);
+    z-index:45;box-sizing:border-box;
+    opacity:0;pointer-events:none;
+    transform:translateY(24px) scale(0.96);
+    transition:transform 0.35s cubic-bezier(0.34,1.56,0.64,1),opacity 0.22s ease;}
+  .save-bar.visible{transform:translateY(0) scale(1);opacity:1;pointer-events:auto;}
+  .save-bar-pts{font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;color:rgba(0,0,0,0.55);white-space:nowrap;}
+  .save-bar-btn{background:var(--gold);border:none;border-radius:999px;padding:9px 20px;font-family:'DM Sans',sans-serif;font-size:15px;font-weight:700;color:#fff;cursor:pointer;white-space:nowrap;box-shadow:inset 0 1px 0 rgba(255,255,255,0.25),0 2px 10px rgba(230,57,70,0.30);transition:transform .15s cubic-bezier(.34,1.56,.64,1);}
+  .save-bar-btn:active{transform:scale(0.97);}
+  .save-saved{display:none;font-family:'DM Sans',sans-serif;font-size:15px;font-weight:700;color:var(--green);white-space:nowrap;padding:6px 10px;}
+  .save-bar.saved{padding:8px 14px;}
+  .save-bar.saved .save-bar-pts,.save-bar.saved .save-bar-btn{display:none;}
+  .save-bar.saved .save-saved{display:block;}
   /* COACHING OVERLAY */
   .coaching-overlay{display:none;position:fixed;inset:0;z-index:500;background:var(--navy);flex-direction:column;overflow-y:auto;}
   .coaching-overlay.open{display:flex;}
@@ -4367,14 +4397,14 @@
        so it's fully off-screen (no red sliver peeking through). */
     .save-bar {
       left: calc(50% + 116px);
+      right: auto;
+      margin: 0;
       bottom: 24px;
-      transform: translateX(-50%) translateY(200px);
+      transform: translateX(-50%) translateY(24px) scale(0.96);
       max-width: 720px;
-      opacity: 0;
-      pointer-events: none;
     }
     .save-bar.visible {
-      transform: translateX(-50%) translateY(0) !important;
+      transform: translateX(-50%) translateY(0) scale(1) !important;
       opacity: 1 !important;
       pointer-events: auto !important;
     }
@@ -4580,8 +4610,9 @@
 
   <!-- FLOATING SAVE BAR - inside home screen only -->
   <div id="save-bar" class="save-bar">
-    <div class="save-bar-pts" id="save-bar-pts">0 pts logged</div>
+    <div class="save-bar-pts" id="save-bar-pts">Ready to save</div>
     <button class="save-bar-btn" onclick="submitToday()">Save ✓</button>
+    <div class="save-saved" id="save-saved">✓ Saved</div>
   </div>
 </div>
 
