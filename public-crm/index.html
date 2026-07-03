@@ -246,7 +246,9 @@ body{height:100%;min-height:100dvh;background:#111111;overscroll-behavior:none;}
   .icon-btn{width:34px;height:34px;border-radius:50%;background:rgba(255,255,255,0.12);backdrop-filter:blur(12px) saturate(180%);-webkit-backdrop-filter:blur(12px) saturate(180%);border:0.5px solid rgba(255,255,255,0.18);cursor:pointer;display:flex;align-items:center;justify-content:center;color:#fff;font-size:15px;}
 
   /* Mobile screen body */
-  .screen-body{flex:1;overflow-y:auto;padding-bottom:calc(120px + env(safe-area-inset-bottom,0px));background:var(--bg);overscroll-behavior-y:contain;}
+  /* Floating-layer rhythm: safe area → 4px → nav capsule (~62px) → 14px →
+     Ask Lola pill (~44px) → 24px → last scrollable content. */
+  .screen-body{flex:1;overflow-y:auto;padding-bottom:calc(148px + env(safe-area-inset-bottom,0px));background:var(--bg);overscroll-behavior-y:contain;}
   .screen-body::-webkit-scrollbar{display:none;}
 
   /* Bottom nav — iOS 26 Liquid Glass floating capsule.
@@ -2599,32 +2601,36 @@ html.dark-theme .st-sect-head{color:rgba(255,255,255,.55);}
 <style>
   .lola-fab {
     /* Standard "Ask Lola" launcher (platform-wide, 2026-07-03): dark pill
-       with mini pulsing orb + always-visible label. Replaces the orb-only
-       fab; same pattern as MyFlyers property pages + MyLoanIQ compare.
-       Desktop sits near the corner; on mobile (≤767px) the bottom-nav
-       covers bottom:0, so we bump up. The media-query override is below. */
+       with mini pulsing orb + always-visible label. CRM variant wears the
+       same Liquid Glass material as the floating nav capsule — a secondary
+       control on the same floating layer, not an independent widget. */
     position: fixed; bottom: 24px; right: 20px; z-index: 250;
     display: inline-flex; align-items: center; gap: 10px;
-    padding: 11px 18px 11px 13px; border: none; border-radius: 999px;
-    background: linear-gradient(180deg, #0A0A0A 0%, #14142A 100%);
+    padding: 11px 18px 11px 13px; border-radius: 999px;
+    background: rgba(20,20,42,0.55);
+    backdrop-filter: blur(30px) saturate(190%);
+    -webkit-backdrop-filter: blur(30px) saturate(190%);
+    border: 0.5px solid rgba(255,255,255,0.08);
     color: #fff; font-family: 'DM Sans', sans-serif; font-weight: 600;
     font-size: 13.5px; letter-spacing: 0.01em;
-    box-shadow: 0 12px 32px -8px rgba(10,10,10,0.4), 0 4px 12px -2px rgba(167,139,250,0.25);
+    box-shadow: 0 16px 40px rgba(0,0,0,0.28), 0 4px 12px -2px rgba(167,139,250,0.20), inset 0 1px 0 rgba(255,255,255,0.08);
     cursor: pointer;
     transition: transform .15s cubic-bezier(.22,1,.36,1), box-shadow .15s;
   }
-  /* Mobile: float ~20px above the Liquid Glass capsule nav (capsule top sits
-     at safe-area + 70px from the physical bottom). */
+  /* Mobile: docked to the floating-layer grid — right edge flush with the
+     nav capsule (right:16px), 14px above the capsule top (capsule top =
+     safe-area + ~66px). Relative spacing never changes while scrolling. */
   @media (max-width: 767px) {
     .lola-fab {
-      bottom: calc(98px + env(safe-area-inset-bottom, 0px));
+      bottom: calc(80px + env(safe-area-inset-bottom, 0px));
+      right: 16px;
       transition: bottom 0.35s cubic-bezier(0.34,1.4,0.64,1), transform .15s cubic-bezier(.22,1,.36,1), box-shadow .15s;
     }
     body.save-bar-up .lola-fab {
       bottom: calc(150px + max(env(safe-area-inset-bottom, 0px), 12px));
     }
   }
-  .lola-fab:hover { transform: translateY(-2px); box-shadow: 0 18px 42px -8px rgba(10,10,10,0.5), 0 8px 16px -2px rgba(167,139,250,0.35); }
+  .lola-fab:hover { transform: translateY(-2px); box-shadow: 0 20px 48px rgba(0,0,0,0.34), 0 6px 14px -2px rgba(167,139,250,0.28), inset 0 1px 0 rgba(255,255,255,0.08); }
   .lola-fab:active { transform: translateY(0); }
   .lola-fab-orb {
     width: 22px; height: 22px; border-radius: 50%; flex-shrink: 0;
