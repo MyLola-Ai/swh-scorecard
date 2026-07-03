@@ -17,13 +17,12 @@ class ViewController: CAPBridgeViewController {
             wv.scrollView.backgroundColor = .black
         }
 
-        // Pin a non-interactive dark UIView to the exact safe-area bottom zone.
-        // iOS 26 Liquid Glass samples the UIKit layer stack to pick the indicator
-        // color; this native dark view ensures it reads dark → renders white pill
-        // (invisible against the dark nav background).
+        // Pin a transparent UIView to the safe-area bottom zone.
+        // Transparent so the CSS glass nav renders through to the physical bottom
+        // with no native color blocking it. Stays in the UIKit hierarchy so
+        // overrideUserInterfaceStyle = .dark (set above) keeps the home indicator white.
         let safeZone = UIView()
-        // Match the rendered color of the CSS glass nav bar: rgba(28,28,44,0.76) over #111111 body ≈ rgb(25,25,38)
-        safeZone.backgroundColor = UIColor(red: 0.098, green: 0.098, blue: 0.149, alpha: 1)
+        safeZone.backgroundColor = UIColor.clear
         safeZone.isUserInteractionEnabled = false
         safeZone.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(safeZone)
