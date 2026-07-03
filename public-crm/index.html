@@ -2590,45 +2590,46 @@ html.dark-theme .st-sect-head{color:rgba(255,255,255,.55);}
      ════════════════════════════════════════════════════════════ -->
 <style>
   .lola-fab {
-    /* Desktop default: sit close to the bottom-right corner.
-       On mobile (≤767px) the bottom-nav covers bottom:0, so we bump up
-       to clear it. The media-query override is below. */
+    /* Standard "Ask Lola" launcher (platform-wide, 2026-07-03): dark pill
+       with mini pulsing orb + always-visible label. Replaces the orb-only
+       fab; same pattern as MyFlyers property pages + MyLoanIQ compare.
+       Desktop sits near the corner; on mobile (≤767px) the bottom-nav
+       covers bottom:0, so we bump up. The media-query override is below. */
     position: fixed; bottom: 24px; right: 20px; z-index: 250;
-    width: 56px; height: 56px; border-radius: 50%;
-    background: radial-gradient(circle at 32% 30%, #A78BFA 0%, #5B5BD6 55%, #1E3A8A 100%);
-    border: none; cursor: pointer;
-    box-shadow: 0 8px 28px rgba(91,91,214,0.34), 0 0 0 4px rgba(255,255,255,0.06);
-    display: flex; align-items: center; justify-content: center;
-    transition: transform .18s ease, box-shadow .18s ease;
+    display: inline-flex; align-items: center; gap: 10px;
+    padding: 11px 18px 11px 13px; border: none; border-radius: 999px;
+    background: linear-gradient(180deg, #0A0A0A 0%, #14142A 100%);
+    color: #fff; font-family: 'DM Sans', sans-serif; font-weight: 600;
+    font-size: 13.5px; letter-spacing: 0.01em;
+    box-shadow: 0 12px 32px -8px rgba(10,10,10,0.4), 0 4px 12px -2px rgba(167,139,250,0.25);
+    cursor: pointer;
+    transition: transform .15s cubic-bezier(.22,1,.36,1), box-shadow .15s;
   }
   /* Mobile: clear the bottom-nav (which is ~70px tall including the iOS
      safe-area inset). Adds 12px breathing room above the nav. */
   @media (max-width: 767px) {
     .lola-fab {
       bottom: calc(92px + env(safe-area-inset-bottom, 0px));
-      transition: bottom 0.35s cubic-bezier(0.34,1.4,0.64,1), transform .18s ease, box-shadow .18s ease;
+      transition: bottom 0.35s cubic-bezier(0.34,1.4,0.64,1), transform .15s cubic-bezier(.22,1,.36,1), box-shadow .15s;
     }
     body.save-bar-up .lola-fab {
       bottom: calc(136px + max(env(safe-area-inset-bottom, 0px), 12px));
     }
   }
-  .lola-fab:hover { transform: scale(1.06); box-shadow: 0 10px 32px rgba(91,91,214,0.41); }
-  .lola-fab:active { transform: scale(0.96); }
-  .lola-fab::after {
-    content: ""; position: absolute; top: 24%; left: 26%;
-    width: 30%; height: 30%; border-radius: 50%;
-    background: radial-gradient(circle, rgba(255,255,255,0.85) 0%, rgba(255,255,255,0) 70%);
-    filter: blur(1.5px);
+  .lola-fab:hover { transform: translateY(-2px); box-shadow: 0 18px 42px -8px rgba(10,10,10,0.5), 0 8px 16px -2px rgba(167,139,250,0.35); }
+  .lola-fab:active { transform: translateY(0); }
+  .lola-fab-orb {
+    width: 22px; height: 22px; border-radius: 50%; flex-shrink: 0;
+    background: radial-gradient(circle at 30% 30%, #A78BFA 0%, #1E3A8A 100%);
+    box-shadow: 0 0 0 0 rgba(167,139,250,0.5);
+    animation: lola-fab-pulse 1.8s ease-in-out infinite;
   }
-  .lola-fab-label {
-    position: absolute; right: 64px; top: 50%; transform: translateY(-50%);
-    background: #1a1a1a; color: #fff; font-family: 'DM Sans', sans-serif;
-    font-size: 12px; font-weight: 700; letter-spacing: 0.04em;
-    padding: 6px 10px; border-radius: 8px; white-space: nowrap;
-    opacity: 0; transition: opacity .15s ease; pointer-events: none;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+  @keyframes lola-fab-pulse {
+    0% { box-shadow: 0 0 0 0 rgba(167,139,250,0.5); }
+    70% { box-shadow: 0 0 0 10px rgba(167,139,250,0); }
+    100% { box-shadow: 0 0 0 0 rgba(167,139,250,0); }
   }
-  .lola-fab:hover .lola-fab-label { opacity: 1; }
+  .lola-fab-label { white-space: nowrap; }
 
   /* ── Capture Radial FAB ── */
   /* ── People Hub Sheet ── */
@@ -2897,6 +2898,7 @@ html.dark-theme .st-sect-head{color:rgba(255,255,255,.55);}
 </div>
 
 <button id="lola-fab" class="lola-fab" onclick="openLola()" title="Ask Lola" aria-label="Ask Lola">
+  <span class="lola-fab-orb" aria-hidden="true"></span>
   <span class="lola-fab-label">Ask Lola</span>
 </button>
 <div id="lola-panel" class="lola-panel" role="dialog" aria-label="Lola assistant">
@@ -3385,6 +3387,19 @@ html.dark-theme .st-sect-head{color:rgba(255,255,255,.55);}
 (function() {
   var _isNative = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
   if (!_isNative) return;
+  // iOS 26: let the home indicator auto-hide (fades after a moment of no touch)
+  // instead of sitting pinned over the Liquid Glass bottom nav. Flips the native
+  // flag behind CAPBridgeViewController.prefersHomeIndicatorAutoHidden via
+  // Capacitor's built-in SystemBars plugin. bar:'NavigationBar' targets ONLY
+  // the home indicator — the status bar stays visible.
+  function _hideHomeIndicator() {
+    try {
+      var sb = window.Capacitor.Plugins && window.Capacitor.Plugins.SystemBars;
+      if (sb && sb.hide) sb.hide({ bar: 'NavigationBar' });
+    } catch(_) {}
+  }
+  _hideHomeIndicator();
+  document.addEventListener('DOMContentLoaded', _hideHomeIndicator);
   // On native: show login screen immediately (don't wait for onAuthStateChanged)
   // and swap button visibility — Google+Apple use the native plugin, hide MS.
   document.addEventListener('DOMContentLoaded', function() {
