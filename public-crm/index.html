@@ -112,7 +112,7 @@ html{height:100%;min-height:100dvh;background:#111111;font-family:'DM Sans',sans
    Theme background lives on #app-shell, not body. */
 body{height:100%;min-height:100dvh;background:#111111;overscroll-behavior:none;}
 /* The native WKWebView is full-screen; reserve only content breathing room here. */
-#login-screen{min-height:100dvh;background:#111111 !important;padding-bottom:max(env(safe-area-inset-bottom,0px),16px) !important;}
+#login-screen{min-height:100dvh;background:#111111 !important;padding-bottom:calc(env(safe-area-inset-bottom,0px) + 48px) !important;}
 ::-webkit-scrollbar{width:5px;}
 ::-webkit-scrollbar-track{background:transparent;}
 ::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px;}
@@ -238,7 +238,7 @@ body{height:100%;min-height:100dvh;background:#111111;overscroll-behavior:none;}
   .icon-btn{width:34px;height:34px;border-radius:50%;background:rgba(255,255,255,0.1);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#fff;font-size:15px;}
 
   /* Mobile screen body */
-  .screen-body{flex:1;overflow-y:auto;padding-bottom:calc(74px + env(safe-area-inset-bottom,0px));background:var(--bg);overscroll-behavior-y:contain;}
+  .screen-body{flex:1;overflow-y:auto;padding-bottom:calc(72px + env(safe-area-inset-bottom,0px) + 24px);background:var(--bg);overscroll-behavior-y:contain;}
   .screen-body::-webkit-scrollbar{display:none;}
 
   /* Bottom nav */
@@ -246,7 +246,8 @@ body{height:100%;min-height:100dvh;background:#111111;overscroll-behavior:none;}
     position:fixed;bottom:0;left:0;right:0;
     background:var(--navy);
     display:flex;justify-content:space-around;align-items:center;
-    padding:10px 0 calc(env(safe-area-inset-bottom,0px) + 10px);
+    min-height:calc(72px + env(safe-area-inset-bottom,0px));
+    padding:10px 0 env(safe-area-inset-bottom,0px);
     border-top:1px solid rgba(255,255,255,0.07);z-index:50;
   }
   .mob-nav-btn{display:flex;flex-direction:column;align-items:center;gap:5px;border:none;background:none;cursor:pointer;padding:6px 12px;}
@@ -3403,12 +3404,6 @@ import { getFunctions, httpsCallable }
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         try { _cap.Plugins.SplashScreen.hide({ fadeOutDuration: 300 }); } catch (_) {}
-        // Hide the home indicator pill on iOS via the built-in CAPSystemBarsPlugin.
-        // NavigationBar = home indicator on iOS (no Android-style nav bar on iOS).
-        // Called once at startup — not on theme changes — to avoid ghost pills.
-        if (_platform === 'ios') {
-          try { _cap.Plugins.SystemBars?.hide({ bar: 'NavigationBar' }); } catch (_) {}
-        }
       });
     });
   }
