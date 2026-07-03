@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
 <title>SWH Scoreboard — Stop Wasting Handshakes</title>
 <meta property="og:title" content="Stop Wasting Handshakes">
-<meta property="og:description" content="Stop Wasting Handshakes. Start Building Momentum.">
+<meta property="og:description" content="A handshake is the starting point, not the finish line. Track the small kept commitments that build real relationships.">
 <meta property="og:image" content="https://swh-scoreboard.web.app/assets/swh/swh-lockup-light.png">
 <meta property="og:url" content="https://swh-scoreboard.web.app">
 <meta property="og:type" content="website">
@@ -396,11 +396,11 @@
 
   // ===== TIER SYSTEM (recalibrated) =====
   const TIERS = [
-    { name: "Getting Started",        min: 0,   max: 49,    color: "#16A34A", emoji: "🟢", msg: "You've taken the first step. Now build the habit." },
-    { name: "Active Networker",       min: 50,  max: 99,    color: "#2563EB", emoji: "🔵", msg: "You've earned your activity. Now earn your consistency." },
-    { name: "Consistent Connector",   min: 100, max: 149,   color: "#CD7F32", emoji: "🥉", msg: "You've earned the Bronze. Relationships are forming — keep going." },
-    { name: "Professional Networker", min: 150, max: 199,   color: "#9CA3AF", emoji: "🥈", msg: "You've earned the Silver. You're operating at a professional level." },
-    { name: "Master Networker",       min: 200, max: 99999, color: "#D4A847", emoji: "🥇", msg: "You've earned the Gold. You are the network." },
+    { name: "Getting Started",        min: 0,   max: 49,    color: "#16A34A", emoji: "🟢", msg: "The first step is taken. Trust is built in small kept commitments." },
+    { name: "Active Networker",       min: 50,  max: 99,    color: "#2563EB", emoji: "🔵", msg: "You're showing up. Now notice, remember, and respond." },
+    { name: "Consistent Connector",   min: 100, max: 149,   color: "#CD7F32", emoji: "🥉", msg: "Bronze earned. Relationships are built, not harvested. Keep building." },
+    { name: "Professional Networker", min: 150, max: 199,   color: "#9CA3AF", emoji: "🥈", msg: "Silver earned. You follow through when others fade away." },
+    { name: "Master Networker",       min: 200, max: 99999, color: "#D4A847", emoji: "🥇", msg: "Gold earned. Every handshake honored. You are the network." },
   ];
 
   // Growth-tagged activity names
@@ -3025,7 +3025,7 @@
       if(giveRefs>0&&receiveRefs>0) insights.push({icon:'🌐',text:`Referral flywheel active — you gave ${giveRefs} and received ${receiveRefs}. You are operating as a connector.`,type:'good'});
 
       // Tier coaching
-      if(tier.name==='Getting Started') insights.push({icon:'🚀',text:'Build a daily habit first — even 3–5 activities per day adds up to 100+ pts by week\'s end.',type:'neutral'});
+      if(tier.name==='Getting Started') insights.push({icon:'🚀',text:'Trust is built in small kept commitments. Even 3 to 5 activities a day adds up to 100+ pts by week\'s end.',type:'neutral'});
       if(weekPts>=150&&tier.name==='Master Networker') insights.push({icon:'🏆',text:'You hit Master Networker level this week. Maintain this to build compounding momentum.',type:'good'});
     }
 
@@ -4668,7 +4668,7 @@
   <div id="history-empty" style="display:none;text-align:center;padding:60px 20px;color:var(--text-muted);">
     <div style="font-size:48px;margin-bottom:12px;">📋</div>
     <div style="font-family:'Playfair Display',serif;font-size:18px;font-weight:700;margin-bottom:8px;">No history yet</div>
-    <div style="font-size:14px;">Save your first day to see it here.</div>
+    <div style="font-size:14px;">Every introduction is a seed. Save your first day to see it here.</div>
   </div>
   <div class="history-list" id="history-list"></div>
 </div>
