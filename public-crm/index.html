@@ -43,12 +43,12 @@ body.login-active #login-screen { background: #111111 !important; }
   --navy:#1a1a1a; --navy-l:#2d2d2d; --navy-d:#111111;
   --chrome-bg:#1a1a1a;
   --gold:#E63946; --gold-l:#ff6b6b; --gold-d:#cc2936;
-  --bg:#F4F4F5; --card:#FFFFFF; --text:#1a1a1a; --muted:#6B7280;
+  --bg:#F6F6F8; --card:#FFFFFF; --text:#1a1a1a; --muted:#6B7280;
   --border:#E4E4E7; --green:#5A8A6A; --red:#E63946;
   --blue:#2563EB; --bronze:#CD7F32; --silver:#9CA3AF;
   --radius:16px;
-  --shadow-sm:0 1px 3px rgba(0,0,0,0.05),0 2px 8px rgba(0,0,0,0.04);
-  --shadow:0 2px 12px rgba(0,0,0,0.07),0 1px 4px rgba(0,0,0,0.04);
+  --shadow-sm:0 1px 3px rgba(0,0,0,0.06),0 2px 8px rgba(0,0,0,0.04);
+  --shadow:0 2px 12px rgba(0,0,0,0.06),0 1px 4px rgba(0,0,0,0.04);
   --shadow-lg:0 8px 40px rgba(0,0,0,0.14);
   --shadow-hero:0 20px 56px rgba(0,0,0,0.22),0 4px 16px rgba(0,0,0,0.10);
   --sidebar-w:240px;
@@ -56,11 +56,11 @@ body.login-active #login-screen { background: #111111 !important; }
 
 /* ── DARK THEME OVERRIDES ── */
 html.dark-theme {
-  --bg:#111111;
-  --card:#1E1E1E;
+  --bg:#0B0B0C;
+  --card:#1A1A1D;
   --text:#f2f2f7;
   --muted:#8e8e93;
-  --border:rgba(255,255,255,0.09);
+  --border:rgba(255,255,255,.08);
   --navy:#f2f2f7;
   --navy-l:rgba(235,235,245,0.6);
   --navy-d:#111111;
@@ -224,7 +224,7 @@ body{height:100%;min-height:100dvh;background:#111111;overscroll-behavior:none;}
   /* Mobile topbar */
   .mobile-topbar{
     background:var(--navy);
-    padding:calc(env(safe-area-inset-top,0px) + 20px) 24px 22px;
+    padding:calc(env(safe-area-inset-top,0px) + 20px) 24px 26px;
     flex-shrink:0;position:relative;overflow:hidden;
   }
   .mobile-topbar::after{
@@ -232,7 +232,7 @@ body{height:100%;min-height:100dvh;background:#111111;overscroll-behavior:none;}
     width:130px;height:130px;background:rgba(230,57,70,0.08);border-radius:50%;
   }
   .mobile-topbar-row{display:flex;align-items:center;justify-content:space-between;position:relative;z-index:1;}
-  .mobile-topbar-title{font-family:'Playfair Display',serif;font-size:21px;font-weight:900;color:#fff;}
+  .mobile-topbar-title{font-family:'Playfair Display',serif;font-size:26px;font-weight:900;color:#fff;}
   .mobile-topbar-sub{font-size:11px;color:rgba(255,255,255,0.45);margin-top:2px;}
   .avatar-mob{width:40px;height:40px;border-radius:50%;background:var(--gold);display:flex;align-items:center;justify-content:center;font-family:'Playfair Display',serif;font-size:15px;font-weight:700;color:var(--navy);border:2px solid rgba(255,255,255,0.2);flex-shrink:0;}
   .icon-btn{width:34px;height:34px;border-radius:50%;background:rgba(255,255,255,0.1);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#fff;font-size:15px;}
@@ -587,15 +587,17 @@ html.dark-theme .ct-row.wasted{background:rgba(230,57,70,0.06);}
 /* ════════════════════════════════════════
    SETTINGS
 ════════════════════════════════════════ */
-.settings-card{background:var(--card);border-radius:var(--radius);border:1.5px solid var(--border);overflow:hidden;margin-bottom:14px;}
+.settings-card{background:var(--card);border-radius:var(--radius);border:1.5px solid var(--border);overflow:hidden;margin-bottom:16px;}
 .settings-row{display:flex;align-items:center;justify-content:space-between;padding:13px 16px;border-bottom:1px solid var(--border);cursor:pointer;transition:background 0.12s;}
 .settings-row:last-child{border-bottom:none;}
 .settings-row:hover{background:var(--bg);}
 .sr-left{display:flex;align-items:center;gap:11px;}
-.sr-icon{width:34px;height:34px;border-radius:9px;background:var(--bg);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;}
+.sr-icon{width:34px;height:34px;border-radius:9px;background:var(--bg);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;}
 .sr-text{font-size:14px;font-weight:600;}
 .sr-sub{font-size:11px;color:var(--muted);}
 .sr-arrow{color:var(--muted);}
+.st-sect-head{font-size:10px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:var(--muted);margin-bottom:10px;margin-top:20px;}
+html.dark-theme .st-sect-head{color:rgba(255,255,255,.55);}
 
 /* ════════════════════════════════════════
    COACHING OVERLAY
@@ -1075,14 +1077,14 @@ html.dark-theme .ct-row.wasted{background:rgba(230,57,70,0.06);}
   .lola-badge.on-dark .lola-name{color:#A78BFA;}
   .lola-orb{display:inline-block;width:14px;height:14px;border-radius:50%;
     background:radial-gradient(circle at 32% 30%, #A78BFA 0%, #5B5BD6 55%, #1E3A8A 100%);
-    box-shadow:inset -1.5px -2px 4px rgba(30,58,138,0.55), 0 0 8px rgba(167,139,250,0.35);
+    box-shadow:inset -1.5px -2px 4px rgba(30,58,138,0.55), 0 0 6px rgba(167,139,250,0.26);
     position:relative;
     animation:lola-breathe 3.4s ease-in-out infinite;}
   .lola-orb::after{content:"";position:absolute;top:24%;left:26%;width:30%;height:30%;border-radius:50%;
     background:radial-gradient(circle, rgba(255,255,255,0.55), transparent 70%);}
   @keyframes lola-breathe {
-    0%,100%{transform:scale(1);box-shadow:inset -1.5px -2px 4px rgba(30,58,138,0.55), 0 0 6px rgba(167,139,250,0.30);}
-    50%{transform:scale(1.06);box-shadow:inset -1.5px -2px 4px rgba(30,58,138,0.55), 0 0 14px rgba(167,139,250,0.55);}
+    0%,100%{transform:scale(1);box-shadow:inset -1.5px -2px 4px rgba(30,58,138,0.55), 0 0 4px rgba(167,139,250,0.22);}
+    50%{transform:scale(1.06);box-shadow:inset -1.5px -2px 4px rgba(30,58,138,0.55), 0 0 10px rgba(167,139,250,0.41);}
   }</style>
 
 <!-- ════ LOGIN ════ -->
@@ -1655,7 +1657,7 @@ html.dark-theme .ct-row.wasted{background:rgba(230,57,70,0.06);}
             <div class="more-layout">
               <div>
                 <!-- ===== EMAIL, CALENDAR & CONTACTS (NYLAS) ===== -->
-                <div style="font-size:10px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:var(--muted);margin-bottom:9px;">Email, Calendar &amp; Contacts</div>
+                <div class="st-sect-head" style="margin-top:0">Email, Calendar &amp; Contacts</div>
                 <div id="nylas-connect-mount" style="margin-bottom:14px;"></div>
                 <div class="settings-card">
                   <div class="settings-row" onclick="openCalendarTimeModal()"><div class="sr-left"><div class="sr-icon">⏰</div><div><div class="sr-text">Calendar Event Time</div><div class="sr-sub" id="settings-cal-time-sub">7:00 AM · 5 minutes</div></div></div><div class="sr-arrow">›</div></div>
@@ -1673,7 +1675,7 @@ html.dark-theme .ct-row.wasted{background:rgba(230,57,70,0.06);}
                   </div>
                 </div>
                 <!-- ===== SCHEDULING ===== -->
-                <div id="settings-scheduling-header" style="font-size:10px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:var(--muted);margin-bottom:9px;">Scheduling</div>
+                <div id="settings-scheduling-header" class="st-sect-head">Scheduling</div>
                 <div class="settings-card">
                   <div class="settings-row" onclick="showScreen('appointments',document.getElementById('nav-appointments'))">
                     <div class="sr-left">
@@ -1719,13 +1721,13 @@ html.dark-theme .ct-row.wasted{background:rgba(230,57,70,0.06);}
                   <div class="settings-row" onclick="openWeeklyEmailModal()"><div class="sr-left"><div class="sr-icon">✉️</div><div><div class="sr-text">Weekly Summary Email</div><div class="sr-sub" id="settings-weeklyemail-sub">Off</div></div></div><div class="sr-arrow">›</div></div>
                 </div>
                 <!-- ===== ACTIVITIES ===== -->
-                <div style="font-size:10px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:var(--muted);margin-bottom:9px;">Activities</div>
+                <div class="st-sect-head">Activities</div>
                 <div class="settings-card">
                   <div class="settings-row" onclick="openEditActivities()"><div class="sr-left"><div class="sr-icon">✏️</div><div><div class="sr-text">Edit Activities & Points</div><div class="sr-sub">Customize your scoreboard</div></div></div><div class="sr-arrow">›</div></div>
                   <div class="settings-row" onclick="resetActivitiesToDefault()"><div class="sr-left"><div class="sr-icon">🔄</div><div><div class="sr-text">Reset to Defaults</div><div class="sr-sub">Restore original SWH activities</div></div></div><div class="sr-arrow">›</div></div>
                 </div>
                 <!-- ===== FOLLOW-THROUGH PLAYBOOKS ===== -->
-                <div style="font-size:10px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:var(--muted);margin-bottom:9px;">Follow-Through Playbooks</div>
+                <div class="st-sect-head">Follow-Through Playbooks</div>
                 <div class="settings-card">
                   <div class="settings-row" onclick="openPlaybookManager()">
                     <div class="sr-left">
@@ -1749,7 +1751,7 @@ html.dark-theme .ct-row.wasted{background:rgba(230,57,70,0.06);}
                   </div>
                 </div>
                 <!-- ===== WASTED HANDSHAKE THRESHOLDS ===== -->
-                <div style="font-size:10px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:var(--muted);margin-bottom:9px;">Wasted Handshake Thresholds</div>
+                <div class="st-sect-head">Wasted Handshake Thresholds</div>
                 <div class="settings-card">
                   <div class="settings-row"><div class="sr-left"><div class="sr-icon">⚠️</div><div><div class="sr-text">Clock Never Started</div><div class="sr-sub">Flag after 48 hours</div></div></div></div>
                   <div class="settings-row"><div class="sr-left"><div class="sr-icon">📌</div><div><div class="sr-text">Stuck on Same Step</div><div class="sr-sub">Flag after 14 days</div></div></div></div>
@@ -1757,7 +1759,7 @@ html.dark-theme .ct-row.wasted{background:rgba(230,57,70,0.06);}
                   <div class="settings-row"><div class="sr-left"><div class="sr-icon">💼</div><div><div class="sr-text">Opportunity Stalled</div><div class="sr-sub">Flag after 30 days</div></div></div></div>
                 </div>
                 <!-- ===== DATA & IMPORT ===== -->
-                <div style="font-size:10px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:var(--muted);margin-bottom:9px;">Data & Import</div>
+                <div class="st-sect-head">Data &amp; Import</div>
                 <div class="settings-card">
                   <div class="settings-row" onclick="openImportModal()">
                     <div class="sr-left">
@@ -1773,7 +1775,7 @@ html.dark-theme .ct-row.wasted{background:rgba(230,57,70,0.06);}
               </div>
               <div>
                 <!-- ===== TEAM SECTION ===== -->
-                <div style="font-size:10px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:var(--muted);margin-bottom:9px;">Team</div>
+                <div class="st-sect-head">Team</div>
                 <div class="settings-card">
                   <!-- Shown when user is NOT on a team — invites them to start one -->
                   <div class="settings-row" id="crm-settings-team-create-row" onclick="openCrmTeamUpgrade()" style="display:flex;">
@@ -1811,12 +1813,12 @@ html.dark-theme .ct-row.wasted{background:rgba(230,57,70,0.06);}
                   </div>
                 </div>
 
-                <div style="font-size:10px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:var(--muted);margin-bottom:9px;">Appearance</div>
+                <div class="st-sect-head">Appearance</div>
                 <div class="settings-card">
                   <div class="settings-row" onclick="openThemeSheet()"><div class="sr-left"><div class="sr-icon">🌓</div><div><div class="sr-text">Theme</div><div class="sr-sub" id="settings-theme-sub">System (follows device)</div></div></div><div class="sr-arrow">›</div></div>
                 </div>
 
-                <div style="font-size:10px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:var(--muted);margin-bottom:9px;margin-top:18px;">Account</div>
+                <div class="st-sect-head">Account</div>
                 <div class="settings-card">
                   <div class="settings-row"><div class="sr-left"><div class="sr-icon">👤</div><div><div class="sr-text" id="settings-name">Loading…</div><div class="sr-sub" id="settings-email">Account</div></div></div></div>
                   <div class="settings-row" id="settings-billing-row" onclick="onBillingRowClick()"><div class="sr-left"><div class="sr-icon">💳</div><div><div class="sr-text" id="settings-billing-text">Subscription</div><div class="sr-sub" id="settings-billing-sub">Loading plan…</div></div></div><div class="sr-arrow">›</div></div>
@@ -2570,7 +2572,7 @@ html.dark-theme .ct-row.wasted{background:rgba(230,57,70,0.06);}
     width: 56px; height: 56px; border-radius: 50%;
     background: radial-gradient(circle at 32% 30%, #A78BFA 0%, #5B5BD6 55%, #1E3A8A 100%);
     border: none; cursor: pointer;
-    box-shadow: 0 8px 28px rgba(91,91,214,0.45), 0 0 0 4px rgba(255,255,255,0.06);
+    box-shadow: 0 8px 28px rgba(91,91,214,0.34), 0 0 0 4px rgba(255,255,255,0.06);
     display: flex; align-items: center; justify-content: center;
     transition: transform .18s ease, box-shadow .18s ease;
   }
@@ -2585,7 +2587,7 @@ html.dark-theme .ct-row.wasted{background:rgba(230,57,70,0.06);}
       bottom: calc(136px + max(env(safe-area-inset-bottom, 0px), 12px));
     }
   }
-  .lola-fab:hover { transform: scale(1.06); box-shadow: 0 10px 32px rgba(91,91,214,0.55); }
+  .lola-fab:hover { transform: scale(1.06); box-shadow: 0 10px 32px rgba(91,91,214,0.41); }
   .lola-fab:active { transform: scale(0.96); }
   .lola-fab::after {
     content: ""; position: absolute; top: 24%; left: 26%;
