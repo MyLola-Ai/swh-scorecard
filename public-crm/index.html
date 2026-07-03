@@ -73,8 +73,10 @@ html.dark-theme {
 html.dark-theme body { color-scheme: dark; }
 /* Dark mode: navy flips to light for text — override structural glass backgrounds */
 html.dark-theme .mobile-topbar { background:rgba(16,20,34,0.90) !important; }
-html.dark-theme .bottom-nav { background:rgba(28,28,44,0.76) !important; border-color:rgba(255,255,255,0.16) !important; border-bottom:none !important; }
-html:not(.dark-theme) .bottom-nav { background:rgba(255,255,255,0.78) !important; border:1px solid rgba(0,0,0,0.08) !important; border-bottom:none !important; box-shadow:0 -8px 32px rgba(0,0,0,0.12),inset 0 1px 0 rgba(255,255,255,0.75) !important; }
+html.dark-theme .bottom-nav { background:rgba(28,28,30,0.58) !important; border:1px solid rgba(255,255,255,0.10) !important; border-bottom:none !important; box-shadow:0 -8px 28px rgba(0,0,0,0.32),inset 0 1px 0 rgba(255,255,255,0.08) !important; }
+html.dark-theme .bottom-nav.scrolling { background:rgba(28,28,30,0.72) !important; }
+html:not(.dark-theme) .bottom-nav { background:rgba(255,255,255,0.52) !important; border:1px solid rgba(255,255,255,0.55) !important; border-bottom:none !important; box-shadow:0 -8px 28px rgba(0,0,0,0.10),inset 0 1px 0 rgba(255,255,255,0.70) !important; }
+html:not(.dark-theme) .bottom-nav.scrolling { background:rgba(255,255,255,0.68) !important; }
 html.dark-theme .toast { background:rgba(18,18,22,0.92) !important; }
 html.dark-theme .ctx-header { background:rgba(10,10,14,0.92) !important; }
 html.dark-theme .preview-head { background:rgba(10,10,14,0.92) !important; }
@@ -244,36 +246,39 @@ body{height:100%;min-height:100dvh;background:#111111;overscroll-behavior:none;}
   .icon-btn{width:34px;height:34px;border-radius:50%;background:rgba(255,255,255,0.12);backdrop-filter:blur(12px) saturate(180%);-webkit-backdrop-filter:blur(12px) saturate(180%);border:0.5px solid rgba(255,255,255,0.18);cursor:pointer;display:flex;align-items:center;justify-content:center;color:#fff;font-size:15px;}
 
   /* Mobile screen body */
-  .screen-body{flex:1;overflow-y:auto;padding-bottom:calc(100px + env(safe-area-inset-bottom,0px));background:var(--bg);overscroll-behavior-y:contain;}
+  .screen-body{flex:1;overflow-y:auto;padding-bottom:calc(96px + env(safe-area-inset-bottom,0px));background:var(--bg);overscroll-behavior-y:contain;}
   .screen-body::-webkit-scrollbar{display:none;}
 
   /* Bottom nav */
   .bottom-nav{
     position:fixed;bottom:0;left:16px;right:16px;
-    background:rgba(28,28,30,0.72);
-    backdrop-filter:blur(28px) saturate(180%);
-    -webkit-backdrop-filter:blur(28px) saturate(180%);
+    background:rgba(28,28,30,0.58);
+    backdrop-filter:blur(20px) saturate(170%);
+    -webkit-backdrop-filter:blur(20px) saturate(170%);
     display:flex;justify-content:space-around;align-items:center;
-    min-height:calc(76px + env(safe-area-inset-bottom,0px));
-    padding:10px 14px calc(env(safe-area-inset-bottom,0px) + 10px);
-    border-radius:28px 28px 0 0;
-    border:1px solid rgba(255,255,255,0.12);border-bottom:none;
-    box-shadow:0 -8px 32px rgba(0,0,0,0.35),inset 0 1px 0 rgba(255,255,255,0.10);
+    min-height:calc(74px + env(safe-area-inset-bottom,0px));
+    padding:8px 14px calc(env(safe-area-inset-bottom,0px) + 8px);
+    border-radius:24px 24px 0 0;
+    border:1px solid rgba(255,255,255,0.10);border-bottom:none;
+    box-shadow:0 -8px 28px rgba(0,0,0,0.32),inset 0 1px 0 rgba(255,255,255,0.08);
+    transition:background 0.3s ease;
     z-index:100;
   }
-  .mob-nav-btn{display:flex;flex-direction:column;align-items:center;gap:5px;border:none;background:none;cursor:pointer;padding:6px 8px;flex:1;}
-  .mob-nav-btn .ni{font-size:21px;line-height:1;color:rgba(255,255,255,0.35);}
-  .mob-nav-btn .nl{font-size:10px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:rgba(255,255,255,0.35);}
-  .mob-nav-btn.active .ni,.mob-nav-btn.active .nl{color:var(--gold);}
+  .mob-nav-btn{display:flex;flex-direction:column;align-items:center;gap:4px;border:none;background:none;cursor:pointer;padding:4px 8px;flex:1;}
+  .mob-nav-btn .ni{font-size:22px;line-height:1;color:rgba(255,255,255,0.55);}
+  .mob-nav-btn .nl{font-size:10px;line-height:1;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:rgba(255,255,255,0.55);opacity:0.75;}
+  .mob-nav-btn.active .ni,.mob-nav-btn.active .nl{color:var(--gold);opacity:1;}
   html:not(.dark-theme) .mob-nav-btn .ni,
-  html:not(.dark-theme) .mob-nav-btn .nl{color:rgba(0,0,0,0.40);}
+  html:not(.dark-theme) .mob-nav-btn .nl{color:rgba(0,0,0,0.50);}
   html:not(.dark-theme) .mob-nav-btn.active .ni,
-  html:not(.dark-theme) .mob-nav-btn.active .nl{color:#E63946;}
+  html:not(.dark-theme) .mob-nav-btn.active .nl{color:#E63946;opacity:1;}
+  .bottom-nav.scrolling{background:rgba(22,22,28,0.72);}
+  html:not(.dark-theme) .bottom-nav.scrolling{background:rgba(255,255,255,0.68);}
   .mob-badge{background:var(--red);border-radius:10px;padding:1px 5px;font-size:9px;font-weight:700;color:#fff;margin-left:2px;}
 
   /* FAB */
   .fab{
-    position:fixed;bottom:calc(96px + env(safe-area-inset-bottom,0px));right:24px;
+    position:fixed;bottom:calc(92px + env(safe-area-inset-bottom,0px));right:24px;
     width:52px;height:52px;border-radius:50%;
     background:linear-gradient(135deg,var(--gold),var(--gold-d));
     border:none;cursor:pointer;
@@ -2600,7 +2605,7 @@ html.dark-theme .st-sect-head{color:rgba(255,255,255,.55);}
      safe-area inset). Adds 12px breathing room above the nav. */
   @media (max-width: 767px) {
     .lola-fab {
-      bottom: calc(96px + env(safe-area-inset-bottom, 0px));
+      bottom: calc(92px + env(safe-area-inset-bottom, 0px));
       transition: bottom 0.35s cubic-bezier(0.34,1.4,0.64,1), transform .18s ease, box-shadow .18s ease;
     }
     body.save-bar-up .lola-fab {
@@ -13171,5 +13176,20 @@ window.onSendToMyLolaSubmit = async function() {
     </div>
   </div>
 </div>
+<script>
+(function(){
+  var nav = document.querySelector('.bottom-nav');
+  if(!nav) return;
+  var t;
+  function onScroll(){
+    nav.classList.add('scrolling');
+    clearTimeout(t);
+    t = setTimeout(function(){ nav.classList.remove('scrolling'); }, 150);
+  }
+  document.querySelectorAll('.screen-body').forEach(function(el){
+    el.addEventListener('scroll', onScroll, {passive:true});
+  });
+})();
+</script>
 </body>
 </html>
