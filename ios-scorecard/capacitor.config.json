@@ -1,6 +1,6 @@
 {
   "appId": "com.impactleadershipgroup.swh.scorecard",
-  "appName": "SWH Scorecard",
+  "appName": "The Scorecard",
   "webDir": "../public-scorecard",
   "ios": {
     "scheme": "SWH Scorecard",
