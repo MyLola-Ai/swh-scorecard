@@ -106,10 +106,13 @@ html.dark-theme .week-hero-card { background:#242424 !important; }
 .login-theme-btn[data-active="1"] { background:rgba(128,128,128,0.15);border-color:rgba(128,128,128,0.38); }
 
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
-html{height:100%;background:#111111;font-family:'DM Sans',sans-serif;color:var(--text);}
-body{height:100%;background:var(--bg);}
-/* Login screen — push all content above the home indicator safe area */
-#login-screen{min-height:100dvh;background:#111111 !important;padding-bottom:calc(env(safe-area-inset-bottom,0px) + 48px) !important;}
+html{height:100%;min-height:100dvh;background:#111111;font-family:'DM Sans',sans-serif;color:var(--text);}
+/* body stays #111111 always — WKWebView overscroll rubber-band paints from body;
+   a light body is what makes iOS see a light surface and render the black pill.
+   Theme background lives on #app-shell, not body. */
+body{height:100%;min-height:100dvh;background:#111111;overscroll-behavior:none;}
+/* The native WKWebView is full-screen; reserve only content breathing room here. */
+#login-screen{min-height:100dvh;background:#111111 !important;padding-bottom:max(env(safe-area-inset-bottom,0px),16px) !important;}
 ::-webkit-scrollbar{width:5px;}
 ::-webkit-scrollbar-track{background:transparent;}
 ::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px;}
@@ -119,7 +122,7 @@ body{height:100%;background:var(--bg);}
 ════════════════════════════════════════ */
 .app {
   display:flex;
-  height:100vh;
+  height:100dvh;
   overflow:hidden;
 }
 
@@ -197,13 +200,13 @@ body{height:100%;background:var(--bg);}
 ════════════════════════════════════════ */
 @media (max-width:767px) {
   html,body{overflow:hidden;}
-  .app{display:block;position:relative;height:100vh;}
+  .app{display:block;position:relative;height:100dvh;}
 
   /* Hide desktop chrome */
   .sidebar{display:none;}
   .topbar-desktop{display:none;}
   .content{padding:0;overflow:visible;}
-  .main{display:block;height:100vh;}
+  .main{display:block;height:100dvh;}
 
   /* Settings single column on mobile */
   .more-layout{grid-template-columns:1fr !important;}
@@ -235,7 +238,7 @@ body{height:100%;background:var(--bg);}
   .icon-btn{width:34px;height:34px;border-radius:50%;background:rgba(255,255,255,0.1);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#fff;font-size:15px;}
 
   /* Mobile screen body */
-  .screen-body{flex:1;overflow-y:auto;padding-bottom:100px;}
+  .screen-body{flex:1;overflow-y:auto;padding-bottom:calc(74px + env(safe-area-inset-bottom,0px));background:var(--bg);overscroll-behavior-y:contain;}
   .screen-body::-webkit-scrollbar{display:none;}
 
   /* Bottom nav */
@@ -243,7 +246,7 @@ body{height:100%;background:var(--bg);}
     position:fixed;bottom:0;left:0;right:0;
     background:var(--navy);
     display:flex;justify-content:space-around;align-items:center;
-    padding:10px 0 max(env(safe-area-inset-bottom,0px), 28px);
+    padding:10px 0 calc(env(safe-area-inset-bottom,0px) + 10px);
     border-top:1px solid rgba(255,255,255,0.07);z-index:50;
   }
   .mob-nav-btn{display:flex;flex-direction:column;align-items:center;gap:5px;border:none;background:none;cursor:pointer;padding:6px 12px;}
@@ -491,6 +494,7 @@ body{height:100%;background:var(--bg);}
 .ct-row:last-child{border-bottom:none;}
 .ct-row:hover{background:rgba(230,57,70,0.03);}
 .ct-row.wasted{background:#fff8f8;}
+html.dark-theme .ct-row.wasted{background:rgba(230,57,70,0.06);}
 .ct-hcell{font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--muted);padding:11px 0;}
 .ct-cell{padding:12px 0;font-size:13px;}
 
@@ -1358,7 +1362,7 @@ body{height:100%;background:var(--bg);}
             <div class="avatar-mob mob-avatar-btn" onclick="openProfile()" style="cursor:pointer;">?</div>
           </div>
         </div>
-        <div style="flex:1;overflow-y:auto;padding-bottom:160px;-webkit-overflow-scrolling:touch;">
+        <div style="flex:1;overflow-y:auto;padding-bottom:160px;background:var(--bg);overscroll-behavior-y:contain;">
         <div id="announcements-banner" style="display:none;margin:20px 0 0;"></div>
         <div class="dash-grid">
           <div class="kpi navy" id="dash-kpi-1" onclick="showScreen('log',document.querySelectorAll('.mob-nav-btn')[2])"><div class="kpi-ey">Lead Points</div><div class="kpi-val">—</div></div>
@@ -1630,7 +1634,7 @@ body{height:100%;background:var(--bg);}
             <div class="avatar-mob mob-avatar-btn" onclick="openProfile()" style="cursor:pointer;">?</div>
           </div>
         </div>
-        <div class="main-content" style="flex:1;overflow-y:auto;padding-bottom:100px;-webkit-overflow-scrolling:touch;">
+        <div class="main-content" style="flex:1;overflow-y:auto;padding-bottom:100px;background:var(--bg);overscroll-behavior-y:contain;">
           <div style="display:flex;gap:8px;padding:16px 16px 8px;overflow-x:auto;">
             <button class="hist-toggle active" onclick="setHistView('week',this)">This Week</button>
             <button class="hist-toggle" onclick="setHistView('month',this)">This Month</button>
@@ -2109,7 +2113,7 @@ body{height:100%;background:var(--bg);}
       <div class="ctx-field">
         <input class="ctx-input" id="tag-contact-search" type="text" placeholder="🔍 Search contacts by name or company…" oninput="filterTagContacts(this.value)" autocomplete="off">
       </div>
-      <div id="tag-contact-results" style="flex:1;overflow-y:auto;border:1.5px solid var(--border);border-radius:10px;background:#fff;max-height:50vh;"></div>
+      <div id="tag-contact-results" style="flex:1;overflow-y:auto;border:1.5px solid var(--border);border-radius:10px;background:var(--card);max-height:50vh;"></div>
     </div>
     <div class="ctx-footer">
       <button class="ctx-cancel" onclick="closeTagContactModal()" style="width:100%;">Cancel</button>
@@ -2409,7 +2413,7 @@ body{height:100%;background:var(--bg);}
 </div>
 
 <!-- ════ ICON PICKER POPOVER ════ -->
-<div id="icon-picker-popover" style="display:none;position:fixed;z-index:9999;background:#fff;border:1.5px solid var(--border);border-radius:14px;box-shadow:0 8px 32px rgba(0,0,0,0.18);padding:12px;width:280px;" onclick="event.stopPropagation()">
+<div id="icon-picker-popover" style="display:none;position:fixed;z-index:9999;background:var(--card);border:1.5px solid var(--border);border-radius:14px;box-shadow:0 8px 32px rgba(0,0,0,0.18);padding:12px;width:280px;" onclick="event.stopPropagation()">
   <div style="font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--muted);margin-bottom:8px;">Pick an Icon</div>
   <div id="icon-picker-grid" style="display:grid;grid-template-columns:repeat(8,1fr);gap:3px;max-height:260px;overflow-y:auto;"></div>
 </div>
@@ -3440,19 +3444,6 @@ function applyTheme(pref) {
   // Sync <meta name="theme-color"> so the browser chrome matches
   const mc = document.getElementById('meta-theme-color');
   if (mc) mc.content = dark ? '#000000' : '#0A2540';
-  // Update iOS status bar icon style
-  if (isNativeEarly) {
-    try {
-      const SB = window.Capacitor?.Plugins?.StatusBar;
-      if (SB) {
-        const _sbStyle = dark ? 'LIGHT' : 'DARK';
-        SB.setStyle({ style: _sbStyle }).catch(() => {});
-        // Retry after bridge settles — initial call can fire before native is ready
-        setTimeout(() => SB.setStyle({ style: _sbStyle }).catch(() => {}), 600);
-      }
-      // Home indicator intentionally left visible — hiding it shows a ghost black pill instead.
-    } catch(_) {}
-  }
   // Refresh the settings label
   const sub = document.getElementById('settings-theme-sub');
   if (sub) sub.textContent = { light: 'Light', dark: 'Dark', system: 'System (follows device)' }[_themePref] || 'System';
@@ -6251,18 +6242,6 @@ window.showScreen = function(name, btn) {
     todayCounts = todayEntry && todayEntry.counts ? { ...todayEntry.counts } : {};
     console.log('[showScreen/stale-clear] todayCounts set to=', JSON.stringify(todayCounts));
     ctxEntries = {};
-  }
-  // Status bar icon style: dark background screens use light (white) icons;
-  // dashboard has a light background and needs dark (black) icons to be readable.
-  if (window.Capacitor?.isNativePlatform?.()) {
-    try {
-      const SB = window.Capacitor?.Plugins?.StatusBar;
-      if (SB) {
-        const isDarkTheme = document.documentElement.classList.contains('dark-theme');
-        const lightBgScreen = name === 'dashboard' && !isDarkTheme;
-        SB.setStyle({ style: lightBgScreen ? 'DARK' : 'LIGHT' }).catch(() => {});
-      }
-    } catch(_) {}
   }
   document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
   const scr = document.getElementById('screen-'+name); if(scr) scr.classList.add('active');
