@@ -3403,6 +3403,12 @@ import { getFunctions, httpsCallable }
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         try { _cap.Plugins.SplashScreen.hide({ fadeOutDuration: 300 }); } catch (_) {}
+        // Hide the home indicator pill on iOS via the built-in CAPSystemBarsPlugin.
+        // NavigationBar = home indicator on iOS (no Android-style nav bar on iOS).
+        // Called once at startup — not on theme changes — to avoid ghost pills.
+        if (_platform === 'ios') {
+          try { _cap.Plugins.SystemBars?.hide({ bar: 'NavigationBar' }); } catch (_) {}
+        }
       });
     });
   }
