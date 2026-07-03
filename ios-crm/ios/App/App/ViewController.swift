@@ -1,5 +1,11 @@
 import Capacitor
 
-// Subclass of CAPBridgeViewController — do not set overrideUserInterfaceStyle here.
-// The window-level override in AppDelegate controls it for the whole hierarchy.
-class ViewController: CAPBridgeViewController {}
+class ViewController: CAPBridgeViewController {
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        // hideHomeIndicator is @objc on CAPBridgeViewController but not open for subclass
+        // override outside Capacitor's module. Set via KVC to reach the didSet observer,
+        // which calls setNeedsUpdateOfHomeIndicatorAutoHidden().
+        setValue(true, forKey: "hideHomeIndicator")
+    }
+}
