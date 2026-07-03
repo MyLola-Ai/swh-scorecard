@@ -73,7 +73,8 @@ html.dark-theme {
 html.dark-theme body { color-scheme: dark; }
 /* Dark mode: navy flips to light for text — override structural glass backgrounds */
 html.dark-theme .mobile-topbar { background:rgba(16,20,34,0.90) !important; }
-html.dark-theme .bottom-nav { background:rgba(28,28,44,0.76) !important; border-top-color:rgba(255,255,255,0.22) !important; }
+html.dark-theme .bottom-nav { background:rgba(28,28,44,0.76) !important; border-color:rgba(255,255,255,0.16) !important; border-bottom:none !important; }
+html:not(.dark-theme) .bottom-nav { background:rgba(255,255,255,0.78) !important; border:1px solid rgba(0,0,0,0.08) !important; border-bottom:none !important; box-shadow:0 -8px 32px rgba(0,0,0,0.12),inset 0 1px 0 rgba(255,255,255,0.75) !important; }
 html.dark-theme .toast { background:rgba(18,18,22,0.92) !important; }
 html.dark-theme .ctx-header { background:rgba(10,10,14,0.92) !important; }
 html.dark-theme .preview-head { background:rgba(10,10,14,0.92) !important; }
@@ -243,21 +244,22 @@ body{height:100%;min-height:100dvh;background:#111111;overscroll-behavior:none;}
   .icon-btn{width:34px;height:34px;border-radius:50%;background:rgba(255,255,255,0.12);backdrop-filter:blur(12px) saturate(180%);-webkit-backdrop-filter:blur(12px) saturate(180%);border:0.5px solid rgba(255,255,255,0.18);cursor:pointer;display:flex;align-items:center;justify-content:center;color:#fff;font-size:15px;}
 
   /* Mobile screen body */
-  .screen-body{flex:1;overflow-y:auto;padding-bottom:calc(72px + env(safe-area-inset-bottom,0px) + 24px);background:var(--bg);overscroll-behavior-y:contain;}
+  .screen-body{flex:1;overflow-y:auto;padding-bottom:calc(100px + env(safe-area-inset-bottom,0px));background:var(--bg);overscroll-behavior-y:contain;}
   .screen-body::-webkit-scrollbar{display:none;}
 
   /* Bottom nav */
   .bottom-nav{
-    position:fixed;bottom:0;left:0;right:0;
-    background:rgba(18,18,22,0.82);
-    backdrop-filter:blur(30px) saturate(200%);
-    -webkit-backdrop-filter:blur(30px) saturate(200%);
+    position:fixed;bottom:0;left:16px;right:16px;
+    background:rgba(28,28,30,0.72);
+    backdrop-filter:blur(28px) saturate(180%);
+    -webkit-backdrop-filter:blur(28px) saturate(180%);
     display:flex;justify-content:space-around;align-items:center;
-    min-height:calc(72px + env(safe-area-inset-bottom,0px));
-    padding:10px 0 env(safe-area-inset-bottom,0px);
-    border-top:0.5px solid rgba(255,255,255,0.14);
-    box-shadow:inset 0 0.5px 0 rgba(255,255,255,0.10);
-    z-index:50;
+    min-height:calc(76px + env(safe-area-inset-bottom,0px));
+    padding:10px 14px calc(env(safe-area-inset-bottom,0px) + 10px);
+    border-radius:28px 28px 0 0;
+    border:1px solid rgba(255,255,255,0.12);border-bottom:none;
+    box-shadow:0 -8px 32px rgba(0,0,0,0.35),inset 0 1px 0 rgba(255,255,255,0.10);
+    z-index:100;
   }
   .mob-nav-btn{display:flex;flex-direction:column;align-items:center;gap:5px;border:none;background:none;cursor:pointer;padding:6px 12px;}
   .mob-nav-btn .ni{font-size:21px;line-height:1;color:rgba(255,255,255,0.35);}
@@ -267,7 +269,7 @@ body{height:100%;min-height:100dvh;background:#111111;overscroll-behavior:none;}
 
   /* FAB */
   .fab{
-    position:fixed;bottom:calc(max(env(safe-area-inset-bottom,0px),28px) + 62px);right:24px;
+    position:fixed;bottom:calc(96px + env(safe-area-inset-bottom,0px));right:24px;
     width:52px;height:52px;border-radius:50%;
     background:linear-gradient(135deg,var(--gold),var(--gold-d));
     border:none;cursor:pointer;
@@ -296,7 +298,7 @@ body{height:100%;min-height:100dvh;background:#111111;overscroll-behavior:none;}
   .co-insights{grid-template-columns:1fr!important;}
 
   /* Mobile save bar */
-  .save-bar{bottom:84px!important;}
+  .save-bar{bottom:calc(84px + env(safe-area-inset-bottom,0px))!important;}
 
   /* Mobile content padding */
   .screen-body .content-pad{padding:20px 24px;}
@@ -2594,7 +2596,7 @@ html.dark-theme .st-sect-head{color:rgba(255,255,255,.55);}
      safe-area inset). Adds 12px breathing room above the nav. */
   @media (max-width: 767px) {
     .lola-fab {
-      bottom: calc(70px + max(env(safe-area-inset-bottom, 0px), 12px));
+      bottom: calc(96px + env(safe-area-inset-bottom, 0px));
       transition: bottom 0.35s cubic-bezier(0.34,1.4,0.64,1), transform .18s ease, box-shadow .18s ease;
     }
     body.save-bar-up .lola-fab {
