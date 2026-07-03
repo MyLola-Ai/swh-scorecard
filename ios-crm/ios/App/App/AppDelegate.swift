@@ -9,11 +9,6 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
         FirebaseApp.configure()
-        // Force dark home indicator — invisible on both dark (#1E1E1E) and light (#f2f2f7) navs.
-        // Must be set on the window after it exists; .light UIKit style → dark indicator.
-        DispatchQueue.main.async {
-            self.window?.overrideUserInterfaceStyle = .light
-        }
         return true
     }
 
