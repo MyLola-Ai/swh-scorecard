@@ -3836,11 +3836,11 @@ window.refreshApptData = async function() {
 
 // ── TIERS ──
 const TIERS = [
-  { name:'Getting Started',        min:0,   max:49,    color:'#16A34A', emoji:'🟢', msg:"You've taken the first step. Now build the habit." },
-  { name:'Active Networker',       min:50,  max:99,    color:'#2563EB', emoji:'🔵', msg:"You've earned your activity. Now earn your consistency." },
-  { name:'Consistent Connector',   min:100, max:149,   color:'#CD7F32', emoji:'🥉', msg:"Relationships are forming — keep going." },
-  { name:'Professional Networker', min:150, max:199,   color:'#9CA3AF', emoji:'🥈', msg:"You're operating at a professional level." },
-  { name:'Master Networker',       min:200, max:99999, color:'#E63946', emoji:'🥇', msg:"You are the network." },
+  { name:'Getting Started',        min:0,   max:49,    color:'#16A34A', emoji:'🟢', msg:"The first step is taken. Trust is built in small kept commitments." },
+  { name:'Active Networker',       min:50,  max:99,    color:'#2563EB', emoji:'🔵', msg:"You're showing up. Now notice, remember, and respond." },
+  { name:'Consistent Connector',   min:100, max:149,   color:'#CD7F32', emoji:'🥉', msg:"Bronze earned. Relationships are built, not harvested. Keep building." },
+  { name:'Professional Networker', min:150, max:199,   color:'#9CA3AF', emoji:'🥈', msg:"Silver earned. You follow through when others fade away." },
+  { name:'Master Networker',       min:200, max:99999, color:'#E63946', emoji:'🥇', msg:"Gold earned. Every handshake honored. You are the network." },
 ];
 const getTier = p => TIERS.find(t => p >= t.min && p <= t.max) || TIERS[0];
 const getNext = p => { const i = TIERS.findIndex(t => p >= t.min && p <= t.max); return i < TIERS.length-1 ? TIERS[i+1] : null; };
