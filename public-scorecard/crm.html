@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
 <title>SWH Scoreboard v18 — Stop Wasting Handshakes</title>
 <meta property="og:title" content="Stop Wasting Handshakes">
-<meta property="og:description" content="Stop Wasting Handshakes. Start Building Momentum.">
+<meta property="og:description" content="A handshake is the starting point, not the finish line. Track the small kept commitments that build real relationships.">
 <meta property="og:image" content="https://swh-scoreboard.web.app/assets/swh/swh-lockup-light.png">
 <meta property="og:url" content="https://swh-scoreboard.web.app">
 <meta property="og:type" content="website">
@@ -373,11 +373,11 @@
 
   // ===== TIER SYSTEM (recalibrated) =====
   const TIERS = [
-    { name: "Getting Started",        min: 0,   max: 49,    color: "#16A34A", emoji: "🟢", msg: "You've taken the first step. Now build the habit." },
-    { name: "Active Networker",       min: 50,  max: 99,    color: "#2563EB", emoji: "🔵", msg: "You've earned your activity. Now earn your consistency." },
-    { name: "Consistent Connector",   min: 100, max: 149,   color: "#CD7F32", emoji: "🥉", msg: "You've earned the Bronze. Relationships are forming — keep going." },
-    { name: "Professional Networker", min: 150, max: 199,   color: "#9CA3AF", emoji: "🥈", msg: "You've earned the Silver. You're operating at a professional level." },
-    { name: "Master Networker",       min: 200, max: 99999, color: "#D4A847", emoji: "🥇", msg: "You've earned the Gold. You are the network." },
+    { name: "Getting Started",        min: 0,   max: 49,    color: "#16A34A", emoji: "🟢", msg: "The first step is taken. Trust is built in small kept commitments." },
+    { name: "Active Networker",       min: 50,  max: 99,    color: "#2563EB", emoji: "🔵", msg: "You're showing up. Now notice, remember, and respond." },
+    { name: "Consistent Connector",   min: 100, max: 149,   color: "#CD7F32", emoji: "🥉", msg: "Bronze earned. Relationships are built, not harvested. Keep building." },
+    { name: "Professional Networker", min: 150, max: 199,   color: "#9CA3AF", emoji: "🥈", msg: "Silver earned. You follow through when others fade away." },
+    { name: "Master Networker",       min: 200, max: 99999, color: "#D4A847", emoji: "🥇", msg: "Gold earned. Every handshake honored. You are the network." },
   ];
 
   // Growth-tagged activity names
@@ -2697,7 +2697,7 @@
       insights.push({icon:'📋',text:'WEEKLY SUMMARY',type:'header'});
 
       // Strength
-      if(weekPts>=150&&tier.name==='Master Networker'||tier.name==='Network Leader') insights.push({icon:'💪',text:`Strength: You operated at ${tier.name} level this week — high consistency and strong presence.`,type:'good'});
+      if(weekPts>=150&&(tier.name==='Professional Networker'||tier.name==='Master Networker')) insights.push({icon:'💪',text:`Strength: You operated at ${tier.name} level this week — high consistency and strong presence.`,type:'good'});
       else if(followPct>30) insights.push({icon:'💪',text:'Strength: Strong follow through discipline — you\'re nurturing relationships consistently.',type:'good'});
       else if(meetPct>25) insights.push({icon:'💪',text:'Strength: High-value conversation activity is strong — face time is driving your network.',type:'good'});
       else if(weekPts>=100) insights.push({icon:'💪',text:'Strength: You maintained consistent activity this week. Keep the momentum.',type:'good'});
@@ -2729,7 +2729,7 @@
 
       // Tier coaching
       if(tier.name==='Getting Started') insights.push({icon:'🚀',text:'Build a daily habit first — even 3–5 activities per day adds up to 100+ pts by week\'s end.',type:'neutral'});
-      if(weekPts>=150&&tier.name==='Master Networker') insights.push({icon:'🏆',text:'You hit Master Networker level this week. Maintain this to build compounding momentum.',type:'good'});
+      if(weekPts>=150&&(tier.name==='Professional Networker'||tier.name==='Master Networker')) insights.push({icon:'🏆',text:`You hit ${tier.name} level this week. Maintain this to build compounding momentum.`,type:'good'});
     }
 
     document.getElementById('insights-list').innerHTML=insights.map(ins=>{
@@ -4607,17 +4607,17 @@
   <div class="modal">
     <div class="modal-handle"></div>
     <div class="modal-title">Networker Tiers</div>
-    <div style="font-size:13px;color:var(--text-muted);margin-bottom:16px;line-height:1.6;">Tiers reset every week. You don't control results — you control activity. Your tier reflects your effort, not your outcomes.</div>
+    <div style="font-size:13px;color:var(--text-muted);margin-bottom:16px;line-height:1.6;">Tiers reset every week. You don't control results, you control activity. Your tier reflects your effort, not your outcomes.</div>
     <div class="tiers-list">
-      <div class="tier-info-row"><div style="font-size:20px;">🟢</div><div><div class="tier-info-name">Getting Started</div><div class="tier-info-range">0–49 pts/week</div><div style="font-size:11px;color:var(--text-muted);margin-top:2px;">You've taken the first step. Now build the habit.</div></div></div>
-      <div class="tier-info-row"><div style="font-size:20px;">🔵</div><div><div class="tier-info-name">Active Networker</div><div class="tier-info-range">50–99 pts/week</div><div style="font-size:11px;color:var(--text-muted);margin-top:2px;">You've earned your activity. Now earn your consistency.</div></div></div>
-      <div class="tier-info-row"><div style="font-size:20px;">🥉</div><div><div class="tier-info-name">Consistent Connector</div><div class="tier-info-range">100–149 pts/week</div><div style="font-size:11px;color:var(--text-muted);margin-top:2px;">You've earned the Bronze. Relationships are forming — keep going.</div></div></div>
-      <div class="tier-info-row"><div style="font-size:20px;">🔴</div><div><div class="tier-info-name">Master Networker</div><div class="tier-info-range">150–199 pts/week</div><div style="font-size:11px;color:var(--text-muted);margin-top:2px;">Requires 2+ meetings, 10+ follow throughs, 2+ intros.</div></div></div>
-      <div class="tier-info-row"><div style="font-size:20px;">🥇</div><div><div class="tier-info-name">Master Networker</div><div class="tier-info-range">200+ pts/week</div><div style="font-size:11px;color:var(--text-muted);margin-top:2px;">You've earned the Gold. You are the network.</div></div></div>
+      <div class="tier-info-row"><div style="font-size:20px;">🟢</div><div><div class="tier-info-name">Getting Started</div><div class="tier-info-range">0–49 pts/week</div><div style="font-size:11px;color:var(--text-muted);margin-top:2px;">The first step is taken. Trust is built in small kept commitments.</div></div></div>
+      <div class="tier-info-row"><div style="font-size:20px;">🔵</div><div><div class="tier-info-name">Active Networker</div><div class="tier-info-range">50–99 pts/week</div><div style="font-size:11px;color:var(--text-muted);margin-top:2px;">You're showing up. Now notice, remember, and respond.</div></div></div>
+      <div class="tier-info-row"><div style="font-size:20px;">🥉</div><div><div class="tier-info-name">Consistent Connector</div><div class="tier-info-range">100–149 pts/week</div><div style="font-size:11px;color:var(--text-muted);margin-top:2px;">Bronze earned. Relationships are built, not harvested. Keep building.</div></div></div>
+      <div class="tier-info-row"><div style="font-size:20px;">🥈</div><div><div class="tier-info-name">Professional Networker</div><div class="tier-info-range">150–199 pts/week</div><div style="font-size:11px;color:var(--text-muted);margin-top:2px;">Silver earned. You follow through when others fade away.</div></div></div>
+      <div class="tier-info-row"><div style="font-size:20px;">🥇</div><div><div class="tier-info-name">Master Networker</div><div class="tier-info-range">200+ pts/week</div><div style="font-size:11px;color:var(--text-muted);margin-top:2px;">Gold earned. Every handshake honored. You are the network.</div></div></div>
     </div>
     <div style="background:var(--bg);border-radius:12px;padding:14px;margin-bottom:20px;">
       <div style="font-size:12px;font-weight:700;color:var(--navy);margin-bottom:6px;">What a 150–200 pt week looks like:</div>
-      <div style="font-size:12px;color:var(--text-muted);line-height:1.8;">4 meetings (20pts) · 15 conversations (45pts) · 20 follow throughs (20pts) · 2 events (6pts) · 3 intros (9pts) · 3 posts (9pts) · 4 opportunity convos (20pts)</div>
+      <div style="font-size:12px;color:var(--text-muted);line-height:1.8;">4 networking meetings (20pts) · 12 new contacts added (24pts) · 12 Good to Meet You follow throughs (60pts) · 8 FORMing conversations (40pts) · 2 one-on-ones (20pts) · 2 introductions (20pts) · 1 referral given (10pts) = 194 pts</div>
     </div>
     <button class="save-modal-btn" onclick="document.getElementById('tiers-modal').classList.remove('open')">Got It</button>
   </div>
