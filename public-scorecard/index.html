@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
-<title>SWH Scoreboard — Stop Wasting Handshakes</title>
+<title>SWH Scoreboard - Stop Wasting Handshakes</title>
 <meta property="og:title" content="Stop Wasting Handshakes">
 <meta property="og:description" content="A handshake is the starting point, not the finish line. Track the small kept commitments that build real relationships.">
 <meta property="og:image" content="https://swh-scoreboard.web.app/assets/swh/swh-lockup-light.png">
@@ -262,7 +262,7 @@
           'INVALID_PASSWORD': 'Email or password is incorrect',
           'INVALID_LOGIN_CREDENTIALS': 'Email or password is incorrect',
           'USER_DISABLED': 'This account is disabled',
-          'TOO_MANY_ATTEMPTS_TRY_LATER': 'Too many attempts — try again later'
+          'TOO_MANY_ATTEMPTS_TRY_LATER': 'Too many attempts. Try again later'
         })[msg] || msg;
         throw new Error(friendly);
       }
@@ -290,7 +290,7 @@
           'INVALID_EMAIL': 'Email looks invalid',
           'WEAK_PASSWORD : Password should be at least 6 characters': 'Password must be at least 6 characters',
           'OPERATION_NOT_ALLOWED': 'Email sign-up is not enabled',
-          'TOO_MANY_ATTEMPTS_TRY_LATER': 'Too many attempts — try again later',
+          'TOO_MANY_ATTEMPTS_TRY_LATER': 'Too many attempts. Try again later',
         })[msg] || msg;
         throw new Error(friendly);
       }
@@ -342,7 +342,7 @@
           return;
         } catch(e) {
           await this.signOut();
-          throw new Error('Session expired — please sign in again');
+          throw new Error('Session expired. Please sign in again');
         }
       }
       // Email/password session: use Firebase secure token endpoint
@@ -354,7 +354,7 @@
       });
       if (!res.ok) {
         await this.signOut();
-        throw new Error('Session expired — please sign in again');
+        throw new Error('Session expired. Please sign in again');
       }
       const data = await res.json();
       this.idToken = data.id_token;
@@ -617,7 +617,7 @@
         console.warn('[boot] getMe failed:', e.message);
         try { await NativeAPI.signOut(); } catch(_) {}
         showLoader(false);
-        showToast('⚠️ Session expired — please sign in again');
+        showToast('⚠️ Session expired. Please sign in again');
         showNativeSignIn();
         return;
       }
@@ -746,7 +746,7 @@
     document.getElementById('topbar-name').textContent = 'Demo Mode';
     document.getElementById('settings-name').textContent = 'Demo Mode';
     const subEl = document.getElementById('settings-name-sub');
-    if (subEl) subEl.textContent = 'Sample data — sign in to track your real activity';
+    if (subEl) subEl.textContent = 'Sample data. Sign in to track your real activity';
     const signInRow = document.getElementById('settings-signin-row');
     const signOutRow = document.getElementById('settings-signout-row');
     if (signInRow) signInRow.style.display = 'flex';
@@ -872,7 +872,7 @@
       document.getElementById('paywall-success').style.display = 'block';
     } catch(e) {
       console.error('[waitlist] failed:', e);
-      const msg = e.name === 'AbortError' ? 'Request timed out — check your connection' : (e.message || 'unknown');
+      const msg = e.name === 'AbortError' ? 'Request timed out. Check your connection' : (e.message || 'unknown');
       showToast('⚠️ Could not save: ' + msg);
       btn.disabled = false; btn.textContent = 'Get early access';
     }
@@ -931,7 +931,7 @@
       if (/cancel|popup-closed/i.test(msg) || /auth\/cancelled-popup-request/i.test(code)) {
         // user cancelled — silent
       } else if (/operation-not-allowed/i.test(code)) {
-        showToast('Apple sign-in not yet enabled on web — use Google or email/password.');
+        showToast('Apple sign-in not yet enabled on web. Use Google or email/password.');
       } else {
         showToast('⚠️ ' + msg);
       }
@@ -1001,7 +1001,7 @@
       const code = e.code || '';
       let msg = e.message || 'Sign in failed';
       if (code === 'auth/invalid-credential' || code === 'auth/wrong-password' || code === 'auth/user-not-found') msg = 'Email or password is incorrect';
-      else if (code === 'auth/too-many-requests') msg = 'Too many attempts — try again later';
+      else if (code === 'auth/too-many-requests') msg = 'Too many attempts. Try again later';
       showToast('⚠️ ' + msg);
       btn.disabled = false; btn.textContent = 'Sign in';
     }
@@ -1088,7 +1088,7 @@
       if (code === 'auth/email-already-in-use') msg = 'An account already exists with that email. Try signing in instead.';
       else if (code === 'auth/weak-password') msg = 'Password must be at least 6 characters';
       else if (code === 'auth/invalid-email') msg = 'Email looks invalid';
-      else if (code === 'auth/network-request-failed') msg = 'Network error — check your connection';
+      else if (code === 'auth/network-request-failed') msg = 'Network error. Check your connection';
       showToast('⚠️ ' + msg);
       btn.disabled = false; btn.textContent = 'Create account →';
     }
@@ -1123,7 +1123,7 @@
     const name = (currentUser?.displayName || 'there').split(' ')[0];
     const headlineEl = document.getElementById('sc-upgrade-headline');
     const subheadEl = document.getElementById('sc-upgrade-subhead');
-    if (headlineEl) headlineEl.textContent = `Hey ${name} — choose your plan`;
+    if (headlineEl) headlineEl.textContent = `Hey ${name}, choose your plan`;
     if (subheadEl) subheadEl.textContent = 'Two ways to stop wasting handshakes. Start with the Scorecard or go all-in with the full CRM.';
   }
 
@@ -1540,7 +1540,7 @@
     const pluginLabel = Purchases ? '✅ found' : '❌ missing';
 
     if (!Purchases) {
-      _rcLoadError = 'window.Capacitor.Plugins.Purchases is null — plugin not in build';
+      _rcLoadError = 'window.Capacitor.Plugins.Purchases is null (plugin not in build)';
       console.error('[RC]', _rcLoadError);
       updateRCDebugPanel({ plugin: pluginLabel, error: _rcLoadError });
       setIAPButtonState('error', 'Plugin missing');
@@ -1599,7 +1599,7 @@
       }
 
       if (!offerings) {
-        _rcLoadError = 'getOfferings() returned null after retry — confirm RC project has offerings configured';
+        _rcLoadError = 'getOfferings() returned null after retry. Confirm RC project has offerings configured';
         console.error('[RC]', _rcLoadError);
         updateRCDebugPanel({ plugin: pluginLabel, configured: true, error: _rcLoadError });
         setIAPButtonState('error', 'Offerings null');
@@ -1615,7 +1615,7 @@
       console.log('[RC] current offering:', current ? current.identifier : 'NULL');
 
       if (!current) {
-        _rcLoadError = 'offerings.current is null — no offering is marked as default in RC dashboard';
+        _rcLoadError = 'offerings.current is null (no offering is marked as default in RC dashboard)';
         console.error('[RC]', _rcLoadError);
         const allIds = offerings.all ? Object.keys(offerings.all).join(', ') : 'none';
         console.log('[RC] available offering IDs:', allIds);
@@ -1631,7 +1631,7 @@
       ));
 
       if (pkgs.length === 0) {
-        _rcLoadError = 'availablePackages is empty — product not approved in App Store Connect or not attached to offering';
+        _rcLoadError = 'availablePackages is empty (product not approved in App Store Connect or not attached to offering)';
         console.error('[RC]', _rcLoadError);
         updateRCDebugPanel({ plugin: pluginLabel, configured: true, offeringsLoaded: true,
           offeringId: current.identifier, packageCount: 0, error: _rcLoadError });
@@ -1651,7 +1651,7 @@
 
       const price    = (pkg.product && pkg.product.priceString) || '$9.99';
       const hasIntro = !!(pkg.product && pkg.product.introPrice);
-      const btnLabel = hasIntro ? 'Start 60-day free trial' : `Subscribe — ${price}/mo`;
+      const btnLabel = hasIntro ? 'Start 60-day free trial' : `Subscribe (${price}/mo)`;
 
       updateRCDebugPanel({ plugin: pluginLabel, configured: true, offeringsLoaded: true,
         offeringId: current.identifier, packageCount: pkgs.length,
@@ -1716,7 +1716,7 @@
       console.warn('[RC] 13s hard timeout fired — forcing cleanup');
       _syncingSubscription = false;
       hideSyncingPaywall();
-      showToast('⚠️ Could not verify — please close and reopen the app.');
+      showToast('⚠️ Could not verify. Please close and reopen the app.');
       openPaywall('upgrade');
     }, 13000);
 
@@ -1788,7 +1788,7 @@
         }, 600);
       } else {
         console.warn('[RC] all verification paths exhausted');
-        showToast('⚠️ Could not verify — please close and reopen the app.');
+        showToast('⚠️ Could not verify. Please close and reopen the app.');
         openPaywall('upgrade');
       }
     } finally {
@@ -1883,7 +1883,7 @@
       showToast('Account deleted');
     } catch (e) {
       console.error('[deleteAccount]', e);
-      showToast('⚠️ ' + (e.message || 'Could not delete account — contact support'));
+      showToast('⚠️ ' + (e.message || 'Could not delete account. Contact support'));
     }
   };
 
@@ -2109,9 +2109,9 @@
     } catch (e) {
       console.error('[saveTodayCounts] FAILED for', k, '—', e.code || e.message, e);
       const msg = e.message === 'write-timeout-6s'
-        ? 'Save timed out — check connection and retry'
+        ? 'Save timed out. Check connection and retry'
         : e.code === 'permission-denied'
-          ? 'Permission denied — try signing out + back in'
+          ? 'Permission denied. Try signing out + back in'
           : (e.message || 'Unknown error');
       if (typeof showToast === 'function') showToast('⚠️ Save failed: ' + msg);
     }
@@ -2873,7 +2873,7 @@
     },0);
     const masterQualified = weekPts>=200 && weekMeetings>=2 && weekFollowups>=10 && weekIntros>=2;
     const masterNote = weekPts>=150 && !masterQualified ?
-      `<div class="master-note">⚠️ 150+ pts but not fully qualified — need ${Math.max(0,2-weekMeetings)} more meeting${weekMeetings<2?'s':''}, ${Math.max(0,10-weekFollowups)} more follow through${weekFollowups<10?'s':''}, ${Math.max(0,2-weekIntros)} more intro${weekIntros<2?'s':''}</div>` : '';
+      `<div class="master-note">⚠️ 150+ pts but not fully qualified. Need ${Math.max(0,2-weekMeetings)} more meeting${weekMeetings<2?'s':''}, ${Math.max(0,10-weekFollowups)} more follow through${weekFollowups<10?'s':''}, ${Math.max(0,2-weekIntros)} more intro${weekIntros<2?'s':''}</div>` : '';
 
     document.getElementById('tier-card').innerHTML=`
       <div class="tier-top">
@@ -2962,7 +2962,7 @@
 
   function renderGrowthCard(growthRatio, grand, weekPts) {
     let growthColor, growthStatus, growthMsg;
-    if(growthRatio>=15){ growthColor='#5A8A6A'; growthStatus='🟢 Healthy Growth'; growthMsg="You're not just staying busy — you're growing while you build."; }
+    if(growthRatio>=15){ growthColor='#5A8A6A'; growthStatus='🟢 Healthy Growth'; growthMsg="You're not just staying busy. You're growing while you build."; }
     else if(growthRatio>=5){ growthColor='#D4A847'; growthStatus='🟡 Low Growth'; growthMsg="You're active, but most time is spent maintaining, not growing."; }
     else { growthColor='#C0392B'; growthStatus='🔴 No Growth'; growthMsg="You're working in your business, not on yourself."; }
 
@@ -2995,24 +2995,24 @@
       insights.push({icon:'📋',text:'WEEKLY SUMMARY',type:'header'});
 
       // Strength
-      if(weekPts>=150&&(tier.name==='Professional Networker'||tier.name==='Master Networker')) insights.push({icon:'💪',text:`Strength: You operated at ${tier.name} level this week — high consistency and strong presence.`,type:'good'});
-      else if(followPct>30) insights.push({icon:'💪',text:'Strength: Strong follow through discipline — you\'re nurturing relationships consistently.',type:'good'});
-      else if(meetPct>25) insights.push({icon:'💪',text:'Strength: High-value conversation activity is strong — face time is driving your network.',type:'good'});
+      if(weekPts>=150&&(tier.name==='Professional Networker'||tier.name==='Master Networker')) insights.push({icon:'💪',text:`Strength: You operated at ${tier.name} level this week. High consistency and strong presence.`,type:'good'});
+      else if(followPct>30) insights.push({icon:'💪',text:'Strength: Strong follow through discipline. You\'re nurturing relationships consistently.',type:'good'});
+      else if(meetPct>25) insights.push({icon:'💪',text:'Strength: High-value conversation activity is strong. Face time is driving your network.',type:'good'});
       else if(weekPts>=100) insights.push({icon:'💪',text:'Strength: You maintained consistent activity this week. Keep the momentum.',type:'good'});
       else insights.push({icon:'💪',text:'Strength: You showed up. Every activity logged is a step forward.',type:'good'});
 
       // Risk
       if(lagRatio>50) insights.push({icon:'⚠️',text:'Risk: Most of your points came from results, not activity. Future pipeline may slow down.',type:'warn'});
-      else if(eventPct>20&&followPct<10) insights.push({icon:'⚠️',text:'Risk: You\'re meeting people but not continuing the conversation — follow through gap detected.',type:'warn'});
-      else if(weekPts<50) insights.push({icon:'⚠️',text:'Risk: Low activity this week — fewer opportunities usually follow.',type:'warn'});
+      else if(eventPct>20&&followPct<10) insights.push({icon:'⚠️',text:'Risk: You\'re meeting people but not continuing the conversation. Follow through gap detected.',type:'warn'});
+      else if(weekPts<50) insights.push({icon:'⚠️',text:'Risk: Low activity this week. Fewer opportunities usually follow.',type:'warn'});
       else if(growthRatio<5&&grand>=50) insights.push({icon:'⚠️',text:'Risk: No growth-focused activity logged. Without development, performance can plateau.',type:'warn'});
-      else insights.push({icon:'⚠️',text:'Risk: Watch your follow through activity — it\'s the easiest thing to let slip.',type:'neutral'});
+      else insights.push({icon:'⚠️',text:'Risk: Watch your follow through activity. It\'s the easiest thing to let slip.',type:'neutral'});
 
       // Recommendation
       if(introPct<5&&filtered.length>3) insights.push({icon:'🎯',text:'Recommendation: Look for 2–3 introductions you can make this week. Connecting others builds leverage.',type:'neutral'});
       else if(followPct<15) insights.push({icon:'🎯',text:'Recommendation: Increase follow through activity. Every conversation without follow through is a missed connection.',type:'neutral'});
-      else if(meetPct<5) insights.push({icon:'🎯',text:'Recommendation: Schedule at least 2 in-person meetings next week — face time drives deeper relationships.',type:'neutral'});
-      else insights.push({icon:'🎯',text:'Recommendation: Stay consistent — your current activity mix is building real momentum.',type:'neutral'});
+      else if(meetPct<5) insights.push({icon:'🎯',text:'Recommendation: Schedule at least 2 in-person meetings next week. Face time drives deeper relationships.',type:'neutral'});
+      else insights.push({icon:'🎯',text:'Recommendation: Stay consistent. Your current activity mix is building real momentum.',type:'neutral'});
 
       // Imbalance detection
       if(lagRatio>50) insights.push({icon:'🔴',text:'Most of your points came from results, not activity. Focus on conversations, follow through, and relationship building.',type:'warn'});
@@ -3021,9 +3021,9 @@
 
       // Referral coaching
       if(giveRefs===0&&filtered.length>5) insights.push({icon:'🔗',text:'You\'re not actively connecting others. Strong networks are built by creating value first.',type:'warn'});
-      if(receiveRefs===0&&giveRefs>3) insights.push({icon:'⏳',text:'You\'re creating value for others. Stay consistent — reciprocity often follows.',type:'neutral'});
+      if(receiveRefs===0&&giveRefs>3) insights.push({icon:'⏳',text:'You\'re creating value for others. Stay consistent. Reciprocity often follows.',type:'neutral'});
       if(receiveRefs>0&&giveRefs===0) insights.push({icon:'🔄',text:'You\'re benefiting from your network, but not contributing at the same level. Look for opportunities to connect others.',type:'warn'});
-      if(giveRefs>0&&receiveRefs>0) insights.push({icon:'🌐',text:`Referral flywheel active — you gave ${giveRefs} and received ${receiveRefs}. You are operating as a connector.`,type:'good'});
+      if(giveRefs>0&&receiveRefs>0) insights.push({icon:'🌐',text:`Referral flywheel active. You gave ${giveRefs} and received ${receiveRefs}. You are operating as a connector.`,type:'good'});
 
       // Tier coaching
       if(tier.name==='Getting Started') insights.push({icon:'🚀',text:'Trust is built in small kept commitments. Even 3 to 5 activities a day adds up to 100+ pts by week\'s end.',type:'neutral'});
@@ -3133,7 +3133,7 @@
     else if(followPct<10) risk=`Low follow through activity last week. Every connection without follow through is a missed opportunity.`;
     else risk=`Watch your activity mix this week. Make sure no single category dominates.`;
 
-    if(totalPts<100) recommendation=`Aim for 100+ pts this week — that is the consistency threshold. Start with 3 conversations per day.`;
+    if(totalPts<100) recommendation=`Aim for 100+ pts this week. That is the consistency threshold. Start with 3 conversations per day.`;
     else if(introPct<5) recommendation=`Make 2 introductions this week. Connecting others is the highest-leverage activity.`;
     else recommendation=`Keep your momentum from last week. Focus on deepening 3 relationships with strong potential.`;
 
@@ -3435,7 +3435,7 @@
         const _needed = Math.max(0, 3 - _daysThisWeek);
         const _dots = [1,2,3].map(i=>`<div style="flex:1;height:8px;border-radius:4px;background:${i<=_daysThisWeek?'#E6B83A':'var(--border)'}"></div>`).join('');
         const _msg = _daysThisWeek>=3
-          ? (_wStreak>0 ? `🎉 Active week confirmed — ${_wStreak} week${_wStreak!==1?'s':''} in a row. Keep the momentum going.` : `🎉 Active week confirmed! Log consistently next week to start a streak.`)
+          ? (_wStreak>0 ? `🎉 Active week confirmed! ${_wStreak} week${_wStreak!==1?'s':''} in a row. Keep the momentum going.` : `🎉 Active week confirmed! Log consistently next week to start a streak.`)
           : (_wStreak>0 ? `Log ${_needed} more day${_needed!==1?'s':''} this week to keep your ${_wStreak}-week streak alive.` : `Log ${_needed} more day${_needed!==1?'s':''} this week to complete an active week and start a streak.`);
         return `<div style="background:var(--card);border-radius:var(--radius);padding:20px;margin-bottom:12px;border:1.5px solid ${_daysThisWeek>=3?'#E6B83A':'var(--border)'};">
           <div style="font-size:11px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:var(--text-muted);margin-bottom:14px;">Weekly Streak</div>
@@ -3446,7 +3446,7 @@
               <div style="font-size:13px;color:var(--text-muted);margin-top:2px;">week${_wStreak!==1?'s':''} in a row</div>
             </div>
           </div>
-          <div style="font-size:11px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;color:var(--text-muted);margin-bottom:8px;">This week — ${_daysThisWeek}/3 days</div>
+          <div style="font-size:11px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;color:var(--text-muted);margin-bottom:8px;">This week: ${_daysThisWeek}/3 days</div>
           <div style="display:flex;gap:6px;margin-bottom:12px;">${_dots}</div>
           <div style="font-size:13px;color:var(--text);line-height:1.5;">${_msg}</div>
         </div>`;
@@ -3471,19 +3471,19 @@
     // Strength
     if(weekPts>=200) insights.push({label:'Strength',icon:'💪',text:`You're operating at Master Networker level. Gold-tier consistency creates compounding momentum.`,color:'#5A8A6A',bg:'#f4fbf6'});
     else if(weekPts>=150) insights.push({label:'Strength',icon:'💪',text:`You're at Professional Networker level this week. You're operating at a high standard.`,color:'#5A8A6A',bg:'#f4fbf6'});
-    else if(followPct>30) insights.push({label:'Strength',icon:'💪',text:'Strong follow through discipline — you\'re nurturing relationships consistently.',color:'#5A8A6A',bg:'#f4fbf6'});
+    else if(followPct>30) insights.push({label:'Strength',icon:'💪',text:'Strong follow through discipline. You\'re nurturing relationships consistently.',color:'#5A8A6A',bg:'#f4fbf6'});
     else if(meetPct>25) insights.push({label:'Strength',icon:'💪',text:'High-value meeting activity is strong. Face time is your biggest relationship driver.',color:'#5A8A6A',bg:'#f4fbf6'});
-    else if(weekPts>=100) insights.push({label:'Strength',icon:'💪',text:'You\'ve hit the 100pt consistency threshold. Momentum is building — keep going.',color:'#5A8A6A',bg:'#f4fbf6'});
+    else if(weekPts>=100) insights.push({label:'Strength',icon:'💪',text:'You\'ve hit the 100pt consistency threshold. Momentum is building. Keep going.',color:'#5A8A6A',bg:'#f4fbf6'});
     else insights.push({label:'Strength',icon:'💪',text:'You showed up. Every activity logged is a step forward in building your network.',color:'#5A8A6A',bg:'#f4fbf6'});
 
     // Risk
-    if(lagRatio>50) insights.push({label:'Risk',icon:'⚠️',text:'Most of your points came from results, not activity. Future pipeline may slow down — focus on lead activity.',color:'#C0392B',bg:'#fff8f7'});
+    if(lagRatio>50) insights.push({label:'Risk',icon:'⚠️',text:'Most of your points came from results, not activity. Future pipeline may slow down. Focus on lead activity.',color:'#C0392B',bg:'#fff8f7'});
     else if(weekPts<50&&daysLeft<3) insights.push({label:'Risk',icon:'⚠️',text:'Low activity with few days left. A strong push now can still change this week\'s outcome.',color:'#C0392B',bg:'#fff8f7'});
     else if(followPct<10&&weekDays.length>2) insights.push({label:'Risk',icon:'⚠️',text:'Follow through activity is low. Every conversation without follow through is a missed connection.',color:'#C0392B',bg:'#fff8f7'});
-    else insights.push({label:'Risk',icon:'⚠️',text:'Watch your follow through — it\'s the easiest activity to skip and the most important to maintain.',color:'#E67E22',bg:'#fffbf0'});
+    else insights.push({label:'Risk',icon:'⚠️',text:'Watch your follow through. It\'s the easiest activity to skip and the most important to maintain.',color:'#E67E22',bg:'#fffbf0'});
 
     // Recommendation
-    if(weekPts>=weeklyGoal) insights.push({label:'Recommendation',icon:'🎯',text:'Goal achieved! Now focus on quality — look for 1–2 strategic introductions you can make before week\'s end.',color:'#4A7FB5',bg:'#f0f4ff'});
+    if(weekPts>=weeklyGoal) insights.push({label:'Recommendation',icon:'🎯',text:'Goal achieved! Now focus on quality. Look for 1–2 strategic introductions you can make before week\'s end.',color:'#4A7FB5',bg:'#f0f4ff'});
     else if(introPct<5&&weekDays.length>2) insights.push({label:'Recommendation',icon:'🎯',text:'Look for 2–3 introductions you can make this week. Connecting others is the highest-leverage activity.',color:'#4A7FB5',bg:'#f0f4ff'});
     else if(followPct<15) insights.push({label:'Recommendation',icon:'🎯',text:'Increase follow through activity. Send 3 personalized follow throughs to recent connections today.',color:'#4A7FB5',bg:'#f0f4ff'});
     else insights.push({label:'Recommendation',icon:'🎯',text:`You need ${Math.max(0,weeklyGoal-weekPts)} more pts this week. At ${pace} pts/day you\'ll hit your goal.`,color:'#4A7FB5',bg:'#f0f4ff'});
@@ -3493,9 +3493,9 @@
     const _daysLogged = weekDays.length;
     const _needed = Math.max(0, 3 - _daysLogged);
     if (_daysLogged >= 3) {
-      insights.push({label:'Streak',icon:'🔥',text:_wks>0?`${_wks}-week streak active — you've hit 3+ days this week. Consistency is your competitive advantage.`:`Active week! Log 3+ days every week to build your streak.`,color:'#E67E22',bg:'#fffbf0'});
+      insights.push({label:'Streak',icon:'🔥',text:_wks>0?`${_wks}-week streak active. You've hit 3+ days this week. Consistency is your competitive advantage.`:`Active week! Log 3+ days every week to build your streak.`,color:'#E67E22',bg:'#fffbf0'});
     } else {
-      insights.push({label:_wks>0?'Streak Alert':'Build Your Streak',icon:'🔥',text:_wks>0?`You're on a ${_wks}-week streak — log ${_needed} more day${_needed!==1?'s':''} this week to keep it alive.`:`Log ${_needed} more day${_needed!==1?'s':''} this week to complete an active week. Three days = momentum.`,color:'#E67E22',bg:'#fffbf0'});
+      insights.push({label:_wks>0?'Streak Alert':'Build Your Streak',icon:'🔥',text:_wks>0?`You're on a ${_wks}-week streak. Log ${_needed} more day${_needed!==1?'s':''} this week to keep it alive.`:`Log ${_needed} more day${_needed!==1?'s':''} this week to complete an active week. Three days = momentum.`,color:'#E67E22',bg:'#fffbf0'});
     }
 
     // Identity
@@ -3554,7 +3554,7 @@
     else if(followPct<10) risk=`Low follow through last week. Every connection without follow through is a missed opportunity.`;
     else risk=`Watch your activity mix this week. Make sure no single category dominates.`;
 
-    if(totalPts<100) recommendation=`Aim for 100+ pts this week — the consistency threshold. Start with 3 conversations per day.`;
+    if(totalPts<100) recommendation=`Aim for 100+ pts this week (the consistency threshold). Start with 3 conversations per day.`;
     else if(introPct<5) recommendation=`Make 2 introductions this week. Connecting others is the highest-leverage activity.`;
     else recommendation=`Keep the momentum from last week. Focus on deepening 3 relationships with strong potential.`;
 
@@ -3782,7 +3782,7 @@
         if (window._pendingTrialPlan && (userPlan === 'free' || userPlan === 'demo' || !userPlan)) {
           const plan = window._pendingTrialPlan;
           window._pendingTrialPlan = null;
-          showToast('✅ Signed in — opening checkout…');
+          showToast('✅ Signed in. Opening checkout…');
           setTimeout(() => { try { startUpgrade(plan); } catch(_) {} }, 600);
           return;
         }
@@ -4552,7 +4552,7 @@
 <div id="screen-onboarding" class="screen" style="background:linear-gradient(160deg,var(--navy) 0%,#000 100%);display:none;flex-direction:column;align-items:center;justify-content:flex-start;padding:max(88px, calc(env(safe-area-inset-top) + 48px)) 32px max(56px, calc(env(safe-area-inset-bottom) + 32px));min-height:100vh;overflow-y:auto;box-sizing:border-box;">
   <img src="/assets/swh-logo-dark.svg" style="width:72px;height:72px;border-radius:18px;margin-bottom:24px;" alt="SWH">
   <div style="font-family:'Playfair Display',serif;font-size:24px;font-weight:900;color:#fff;text-align:center;margin-bottom:8px;">One Last Thing</div>
-  <div style="color:rgba(255,255,255,0.55);font-size:14px;text-align:center;margin-bottom:32px;line-height:1.6;">Want a daily text reminder at 5pm if you haven't logged your points? No spam — only fires when you haven't logged.</div>
+  <div style="color:rgba(255,255,255,0.55);font-size:14px;text-align:center;margin-bottom:32px;line-height:1.6;">Want a daily text reminder at 5pm if you haven't logged your points? No spam. Only fires when you haven't logged.</div>
   <div style="width:100%;margin-bottom:16px;">
     <div style="font-size:13px;font-weight:600;color:rgba(255,255,255,0.6);margin-bottom:8px;">Your Mobile Number</div>
     <div style="display:flex;align-items:center;border-radius:14px;background:#fff;overflow:hidden;">
@@ -4823,7 +4823,7 @@
   </div>
   <div id="team-empty" style="padding:60px 20px;text-align:center;display:none;">
     <div style="font-size:46px;margin-bottom:14px;">👥</div>
-    <div style="font-family:'Playfair Display',serif;font-size:24px;font-weight:900;color:var(--navy);margin-bottom:8px;">Stop wasting handshakes — together.</div>
+    <div style="font-family:'Playfair Display',serif;font-size:24px;font-weight:900;color:var(--navy);margin-bottom:8px;">Stop wasting handshakes. Together.</div>
     <div style="font-size:14px;color:var(--text-muted);line-height:1.6;margin-bottom:24px;max-width:380px;margin-left:auto;margin-right:auto;">Bring your team. See who's logging, who's leading, who needs a nudge. Volume pricing kicks in at 3 seats.</div>
     <div style="background:var(--card);border:1.5px solid var(--border);border-radius:14px;padding:16px;max-width:380px;margin:0 auto 18px;">
       <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);">
@@ -4901,7 +4901,7 @@
   <div class="modal">
     <div class="modal-handle"></div>
     <div class="modal-title" id="team-upgrade-title">Start a Team Plan</div>
-    <div id="team-upgrade-blurb" style="font-size:13px;color:var(--text-muted);line-height:1.6;margin-bottom:14px;">Bring your team to SWH Scorecard. Minimum 3 seats. Volume pricing kicks in automatically — you only pay for the seats you use.</div>
+    <div id="team-upgrade-blurb" style="font-size:13px;color:var(--text-muted);line-height:1.6;margin-bottom:14px;">Bring your team to SWH Scorecard. Minimum 3 seats. Volume pricing kicks in automatically. You only pay for the seats you use.</div>
 
     <!-- Plan switcher: Team Scorecard vs Team CRM -->
     <div style="display:flex;gap:6px;background:var(--bg);border:1.5px solid var(--border);border-radius:12px;padding:4px;margin-bottom:14px;">
@@ -4965,7 +4965,7 @@
     <div class="modal-handle"></div>
     <div class="modal-title">Edit Activities</div>
     <div style="font-size:12px;color:var(--text-muted);margin-bottom:6px;">Icon · Name · Category · Points</div>
-    <div style="font-size:11px;color:var(--text-muted);margin-bottom:14px;line-height:1.5;">💡 Type any new value in the <em>Category</em> field to create a custom category — existing options autocomplete from the dropdown.</div>
+    <div style="font-size:11px;color:var(--text-muted);margin-bottom:14px;line-height:1.5;">💡 Type any new value in the <em>Category</em> field to create a custom category. Existing options autocomplete from the dropdown.</div>
     <div id="edit-rows"></div>
     <button class="add-activity-btn" onclick="addEditRow()">+ Add New Activity</button>
     <div id="sc-catalog-section" style="display:none;margin-top:18px;">
@@ -4986,7 +4986,7 @@
   <div class="modal">
     <div class="modal-handle"></div>
     <div class="modal-title">Log Today's Results</div>
-    <div class="lag-note">Results are lag indicators — they reflect past activity. Track them here separately. "Handshakes are the seed. Follow through is the harvest."</div>
+    <div class="lag-note">Results are lag indicators. They reflect past activity. Track them here separately. "Handshakes are the seed. Follow through is the harvest."</div>
     <div class="lag-form">
       <div class="lag-field"><label>Opportunities Created</label><input type="number" id="lag-opportunities" value="0" min="0"></div>
       <div class="lag-field"><label>Referrals Received</label><input type="number" id="lag-referrals" value="0" min="0"></div>
@@ -5023,7 +5023,7 @@
   <div class="modal">
     <div class="modal-handle"></div>
     <div class="modal-title">SMS Reminders</div>
-    <div class="lag-note">Get a text at 5pm Mon–Fri if you haven't logged your points. No spam — only sends when you haven't logged.</div>
+    <div class="lag-note">Get a text at 5pm Mon–Fri if you haven't logged your points. No spam. Only sends when you haven't logged.</div>
     <div class="goal-field">
       <label>Your Mobile Number</label>
       <div style="display:flex;align-items:center;gap:0;border:1.5px solid var(--border);border-radius:12px;background:var(--bg);overflow:hidden;">
@@ -5758,7 +5758,7 @@
           <div style="font-size:18px;">📧</div>
           <div style="flex:1;min-width:0;">
             <div style="font-size:13px;font-weight:700;color:var(--text);">${escapeHtml(p.email)}</div>
-            <div style="font-size:11px;color:var(--text-muted);">Invite sent — pending acceptance</div>
+            <div style="font-size:11px;color:var(--text-muted);">Invite sent, pending acceptance</div>
           </div>
         </div>`).join('');
     } else {
@@ -6422,7 +6422,7 @@
     const p = new URLSearchParams(window.location.search);
     if (p.get('team_subscribed') === '1') {
       setTimeout(() => {
-        showToast('🎉 Team plan started — invite your members below');
+        showToast('🎉 Team plan started. Invite your members below');
         setTimeout(() => updateTeamNavVisibility(true), 600);
         // Clean URL
         const url = new URL(window.location.href);
