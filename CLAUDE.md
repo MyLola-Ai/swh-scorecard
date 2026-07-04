@@ -16,14 +16,13 @@ Stop Wasting Handshakes is a networking-productivity platform:
 ## Repo layout
 
 ```
-public/                  marketing landing (stopwastinghandshakes.com)
 public-scorecard/        Scorecard web app (app.stopwastinghandshakes.com)
   index.html             Scorecard SPA — the main app
   crm.html               CRM copy bundled for Capacitor (has native patches — see below)
 public-crm/              CRM web app (crm.stopwastinghandshakes.com)
   index.html             CRM source of truth
 public-admin/            Admin panel (swh-admin.web.app)
-public-landing/          Landing redirect
+public-landing/          Marketing landing (stopwastinghandshakes.com)
 functions/               Cloud Functions (Node 24 CJS, deployed to swh-scoreboard)
 ios-scorecard/           Capacitor iOS — App Store build (bundle: com.impactleadershipgroup.swh.scorecard)
 ios-combined/            Capacitor iOS — dev/test build (bundle: com.impactleadershipgroup.swh.combined)

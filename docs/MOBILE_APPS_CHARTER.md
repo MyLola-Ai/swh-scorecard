@@ -57,8 +57,8 @@ build time. Consequences:
 - The synced copy lives at `ios-crm/ios/App/App/public/`; check its mtime vs `public-crm/` to detect
   a stale bundle.
 - Hosting targets in `firebase.json`: scorecard→`public-scorecard`, crm→`public-crm`,
-  landing→`public-landing`, admin→`public-admin`. Scoreboard live source is `public-scorecard/`,
-  NOT `public/`.
+  landing→`public-landing`, admin→`public-admin`. Scoreboard live source is `public-scorecard/`
+  (a stale legacy copy at `public/` was deleted 2026-07-03 — it was never a hosting target).
 
 ## 4. WKWebView + Firebase: the NativeAPI pattern
 
