@@ -2995,7 +2995,7 @@
       insights.push({icon:'📋',text:'WEEKLY SUMMARY',type:'header'});
 
       // Strength
-      if(weekPts>=150&&tier.name==='Master Networker'||tier.name==='Network Leader') insights.push({icon:'💪',text:`Strength: You operated at ${tier.name} level this week — high consistency and strong presence.`,type:'good'});
+      if(weekPts>=150&&(tier.name==='Professional Networker'||tier.name==='Master Networker')) insights.push({icon:'💪',text:`Strength: You operated at ${tier.name} level this week — high consistency and strong presence.`,type:'good'});
       else if(followPct>30) insights.push({icon:'💪',text:'Strength: Strong follow through discipline — you\'re nurturing relationships consistently.',type:'good'});
       else if(meetPct>25) insights.push({icon:'💪',text:'Strength: High-value conversation activity is strong — face time is driving your network.',type:'good'});
       else if(weekPts>=100) insights.push({icon:'💪',text:'Strength: You maintained consistent activity this week. Keep the momentum.',type:'good'});
@@ -3027,7 +3027,7 @@
 
       // Tier coaching
       if(tier.name==='Getting Started') insights.push({icon:'🚀',text:'Trust is built in small kept commitments. Even 3 to 5 activities a day adds up to 100+ pts by week\'s end.',type:'neutral'});
-      if(weekPts>=150&&tier.name==='Master Networker') insights.push({icon:'🏆',text:'You hit Master Networker level this week. Maintain this to build compounding momentum.',type:'good'});
+      if(weekPts>=150&&(tier.name==='Professional Networker'||tier.name==='Master Networker')) insights.push({icon:'🏆',text:`You hit ${tier.name} level this week. Maintain this to build compounding momentum.`,type:'good'});
     }
 
     document.getElementById('insights-list').innerHTML=insights.map(ins=>{
