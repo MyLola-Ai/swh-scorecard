@@ -761,10 +761,20 @@ async function computeUserWeeklyStats(uid) {
   };
 }
 
+// Coaching voice: SWH Manifesto (built not harvested, small kept commitments,
+// follow through when others fade) + Marketing by Referral (givers gain,
+// referrals come from cultivated relationships, results follow activity).
 function buildCoachingBlocks({ totalPts, leadPts, lagPts, daysLogged, goal, goalHit, streak, dailyArr, topActs, topCategory, tier }) {
+  const zeroDays = dailyArr.filter(d => d.pts === 0).length;
+  const lagShare = totalPts > 0 ? lagPts / totalPts : 0;
+  // Lag-heavy week: results dominated the scoreboard. Celebrate the harvest,
+  // then coach hard on planting (lead activity) so next month doesn't go quiet.
+  const lagHeavy = totalPts > 0 && lagShare >= 0.4;
+
   // Strength
   let strength;
-  if (streak >= 5) strength = `${streak}-day streak. That's the consistency engine working. Keep the chain alive and the tier follows.`;
+  if (lagHeavy && lagPts > 0) strength = `Results landed: ${lagPts} pts in referrals and wins. That is the harvest of relationships you planted weeks ago. The system is paying you back.`;
+  else if (streak >= 5) strength = `${streak}-day streak. That's the consistency engine working. Keep the chain alive and the tier follows.`;
   else if (topActs[0] && topActs[0].count >= 10) strength = `${topActs[0].name} rhythm was elite: ${topActs[0].count} sessions. Repetition at this volume is what compounds.`;
   else if (goalHit) strength = `Crossed your weekly goal of ${goal} with ${totalPts} pts. The bar moved.`;
   else if (totalPts > 0) strength = `You showed up ${daysLogged} ${daysLogged === 1 ? 'day' : 'days'} this week. Every entry counts toward the habit.`;
@@ -772,10 +782,9 @@ function buildCoachingBlocks({ totalPts, leadPts, lagPts, daysLogged, goal, goal
 
   // Watch / Risk
   let watch;
-  const zeroDays = dailyArr.filter(d => d.pts === 0).length;
-  if (zeroDays >= 4) watch = `${zeroDays} days at zero this week. Even one small touch, a follow through note, keeps the momentum from going cold.`;
+  if (lagHeavy) watch = `${Math.round(lagShare * 100)}% of this week's points were results, only ${leadPts} pts were lead activity. Results are the harvest, not the planting. Today's referrals came from seeds you planted weeks ago; if the planting stays quiet now, the pipeline goes quiet next month.`;
+  else if (zeroDays >= 4) watch = `${zeroDays} days at zero this week. Even one small touch, a follow through note, keeps the momentum from going cold.`;
   else if (lagPts === 0 && totalPts > 0) watch = 'Lots of activity, zero results logged. Make sure you\'re tracking referrals received and deals won so the lag side reflects the lead.';
-  else if (leadPts < lagPts && totalPts > 0) watch = 'Results outpaced activity. That\'s great this week, but lead activity is what predicts NEXT week\'s pipeline.';
   else if (zeroDays >= 1) watch = `${zeroDays} quiet ${zeroDays === 1 ? 'day' : 'days'}. Stacking two or three breaks the streak engine. Plan a small move on those days.`;
   else watch = 'No obvious gaps this week. Keep the variety up so no single category carries the whole load.';
 
@@ -783,7 +792,8 @@ function buildCoachingBlocks({ totalPts, leadPts, lagPts, daysLogged, goal, goal
   let recommendation;
   const tierTargets = { 'Getting Started': 50, 'Active Networker': 100, 'Consistent Connector': 150, 'Professional Networker': 200, 'Master Networker': null };
   const nextTierAt = tierTargets[tier.name];
-  if (tier.name === 'Master Networker') recommendation = 'You\'re at the top tier. Hold the line. Two more weeks at this rhythm becomes a habit, not a streak.';
+  if (lagHeavy) recommendation = 'Givers gain: the surest way to keep referrals coming is to give first. This week, give one referral, book two one-on-ones, and send five Good to Meet You notes. Relationships are built, not harvested. Small kept commitments now become next month\'s wins.';
+  else if (tier.name === 'Master Networker') recommendation = 'You\'re at the top tier. Hold the line. Two more weeks at this rhythm becomes a habit, not a streak.';
   else if (nextTierAt) {
     const gap = nextTierAt - totalPts;
     recommendation = `To reach the next tier, layer on ${gap} more pts next week. Try ${Math.ceil(gap / 10)} extra introductions or a host event.`;
@@ -985,9 +995,23 @@ ${topActsRows ? `<tr><td style="padding:32px 32px 8px;">
   </div>
 </td></tr>
 
-<tr><td style="padding:36px 32px 32px;text-align:center;">
+<tr><td style="padding:36px 32px 8px;text-align:center;">
   <a href="https://app.stopwastinghandshakes.com" style="display:inline-block;background:linear-gradient(135deg,#E63946,#b8252f);color:#fff;text-decoration:none;font-weight:800;font-size:15px;letter-spacing:0.02em;padding:16px 36px;border-radius:12px;box-shadow:0 8px 24px rgba(230,57,70,0.35);">Start the Next Week →</a>
   <div style="font-size:11px;color:#9CA3AF;margin-top:14px;line-height:1.6;">Open the app to log your first activity.</div>
+</td></tr>
+
+<tr><td style="padding:24px 32px 32px;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#FAFAFA;border:1px solid #E4E4E7;border-radius:14px;">
+    <tr>
+      <td style="padding:18px 20px;vertical-align:middle;">
+        <div style="font-size:10px;font-weight:800;color:#9CA3AF;letter-spacing:0.18em;text-transform:uppercase;">Looking for something to do?</div>
+        <div style="font-size:14px;color:#0a0a0a;line-height:1.55;margin-top:6px;">Every handshake starts somewhere. Find this week's networking events on The Networking Wire.</div>
+      </td>
+      <td align="right" style="vertical-align:middle;padding:18px 20px 18px 0;white-space:nowrap;">
+        <a href="https://thenetworkingwire.com" style="display:inline-block;background:#0a0a0a;color:#ffffff;text-decoration:none;font-weight:800;font-size:13px;padding:12px 20px;border-radius:10px;">Browse events →</a>
+      </td>
+    </tr>
+  </table>
 </td></tr>
 
 <tr><td style="background:#FAFAFA;border-top:1px solid #E4E4E7;padding:22px 32px;text-align:center;">
@@ -1014,6 +1038,8 @@ WATCH: ${s.coaching.watch}
 NEXT WEEK: ${s.coaching.recommendation}
 
 "${s.tier.msg}"
+
+Looking for something to do? This week's networking events: https://thenetworkingwire.com
 
 Open the app: https://app.stopwastinghandshakes.com`;
 }
