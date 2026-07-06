@@ -8681,7 +8681,13 @@ async function saveContactImpl(){
   }
   setTimeout(()=>{expandedContactId=ref.id;renderNetwork();},300);
 }
-window.saveContact=()=>saveContactImpl();
+window.saveContact=async()=>{
+  try { await saveContactImpl(); }
+  catch(e){
+    console.error('[saveContact] failed:', e);
+    showToast('⚠️ Could not save: ' + ((e && e.message) || e));
+  }
+};
 
 // ── PIPELINE ──
 function renderPipeline() {
