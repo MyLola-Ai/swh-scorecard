@@ -7119,12 +7119,17 @@ function updateTotals() {
   if(msb){if(pts>0){msb.style.display='flex';msb.classList.add('show');document.body.classList.add('save-bar-up');if(msp)msp.textContent=pts+' pts logged';}else{msb.classList.remove('show');document.body.classList.remove('save-bar-up');setTimeout(()=>{if(msb)msb.style.display='none';},400);}}
   const dp=document.getElementById('desk-pts'); if(dp) dp.textContent=displayPts;
   const da=document.getElementById('desk-acts'); if(da) da.textContent=displayActs;
-  // Update sidebar week stats — drive tier/goal off LEAD points only
-  const ws=getWeekStart(getTodayKey());
-  const savedLead=history.filter(d=>inWeek(d, ws)).reduce((s,d)=>s+(d.leadPts||0),0);
-  const savedLag=history.filter(d=>inWeek(d, ws)).reduce((s,d)=>s+(d.lagPts||0),0);
-  const currentLead=savedLead+leadInProgress;
-  const currentLag=savedLag+lagInProgress;
+  // Update sidebar week stats — drive tier/goal off LEAD points only.
+  // Count today ONCE: past days come from saved history; today's contribution
+  // is max(live in-progress, today's saved totals) — same floor rule the panel
+  // uses above. (Summing both double-counted any day that had auto-saved.)
+  const _todayKey=getTodayKey();
+  const ws=getWeekStart(_todayKey);
+  const savedLeadPast=history.filter(d=>inWeek(d, ws)&&d.dateKey!==_todayKey).reduce((s,d)=>s+(d.leadPts||0),0);
+  const savedLagPast=history.filter(d=>inWeek(d, ws)&&d.dateKey!==_todayKey).reduce((s,d)=>s+(d.lagPts||0),0);
+  const _todayEntry=history.find(d=>d.dateKey===_todayKey);
+  const currentLead=savedLeadPast+Math.max(leadInProgress,_todayEntry?(_todayEntry.leadPts||0):0);
+  const currentLag=savedLagPast+Math.max(lagInProgress,_todayEntry?(_todayEntry.lagPts||0):0);
   const tier=getTier(currentLead);
   const daysLeft=Math.max(1,7-new Date().getDay()||7);
   const needed=Math.max(0,weeklyGoal-currentLead);
@@ -8616,6 +8621,9 @@ async function autoLogActivity(activityName, contactName, contactId, source, ext
     if(idx >= 0) history[idx] = entry; else history.unshift(entry);
     history.sort((a,b) => b.dateKey.localeCompare(a.dateKey));
 
+    // Refresh the Log screen's totals rail (points today, activities, week,
+    // Save button) — todayCounts and history both changed above.
+    if (typeof updateTotals === 'function') updateTotals();
     renderDashboard();
     showToast(`✅ ${pts} pts logged: ${activityName}${contactName ? ' (' + contactName + ')' : ''}`);
   } catch(e) {
