@@ -33,6 +33,10 @@
 <style>
 /* Force dark native background — keeps iOS home indicator white (light bar, not black pill) */
 html, body { background: #111111; }
+/* Light theme: paint the real canvas. The dark base above is the native-layer
+   backstop; dark theme keeps it, but light theme (especially the desktop web
+   layout, whose shell doesn't paint its own bg) must not sit on a black canvas. */
+html:not(.dark-theme), html:not(.dark-theme) body { background: var(--bg); }
 body.login-active,
 body.login-active #login-screen { background: #111111 !important; }
 
