@@ -84,6 +84,31 @@ service cloud.firestore {
           (isSignedIn() && exists(/databases/$(database)/documents/teams/$(teamId)/members/$(request.auth.uid)));
         allow create, update, delete: if isAdmin();
       }
+
+      // Team Contact Awareness — shared duplicate-awareness index.
+      // Docs are {uid}_{contactId} = { phoneNorm, ownerUid, ownerName, addedAt, contactId }.
+      // Members may read (to see "a teammate is already working this number");
+      // each member manages only entries they own. Backfill + wipe run through
+      // Cloud Functions (admin SDK) when the team toggle flips.
+      match /contactIndex/{entryId} {
+        allow read: if isAdmin() || isTeamMemberHere();
+        allow create: if isAdmin() ||
+          (isTeamMemberHere() &&
+           request.resource.data.ownerUid == request.auth.uid &&
+           entryId == request.auth.uid + '_' + request.resource.data.contactId &&
+           request.resource.data.phoneNorm is string &&
+           request.resource.data.phoneNorm.size() >= 7 &&
+           request.resource.data.phoneNorm.size() <= 10);
+        allow update: if isAdmin() ||
+          (isTeamMemberHere() &&
+           resource.data.ownerUid == request.auth.uid &&
+           request.resource.data.ownerUid == request.auth.uid &&
+           request.resource.data.phoneNorm is string &&
+           request.resource.data.phoneNorm.size() >= 7 &&
+           request.resource.data.phoneNorm.size() <= 10);
+        allow delete: if isAdmin() ||
+          (isSignedIn() && resource.data.ownerUid == request.auth.uid);
+      }
     }
 
     // ── /teamInvites — short, queryable invite tokens for accept-flow ──

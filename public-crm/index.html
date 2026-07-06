@@ -2106,7 +2106,7 @@ html.dark-theme .st-sect-head{color:rgba(255,255,255,.55);}
         </div>
         <div>
           <label class="ctx-label">Phone <span style="color:var(--red);">*</span> <span style="color:var(--muted);font-size:10px;font-weight:400;">(duplicate detection)</span></label>
-          <input class="ctx-input" id="ac-phone" type="tel" placeholder="(512) 555-0142" autocomplete="off">
+          <input class="ctx-input" id="ac-phone" type="tel" placeholder="(512) 555-0142" autocomplete="off" oninput="hideAcTeamWarning()">
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
           <div>
@@ -2154,6 +2154,20 @@ html.dark-theme .st-sect-head{color:rgba(255,255,255,.55);}
             <div style="font-size:11px;color:var(--muted);margin-top:3px;" id="ac-campaign-hint">Starts the clock. Adds steps to Google Calendar if enabled in Settings.</div>
           </div>
         </label>
+        <!-- Team Contact Awareness — teammate heads-up, hidden until a match is found -->
+        <div id="ac-team-warning" style="display:none;background:#fff7e6;border:1.5px solid #fbd38d;border-radius:11px;padding:12px 14px;">
+          <div style="display:flex;gap:10px;align-items:flex-start;">
+            <div style="font-size:16px;flex-shrink:0;">🤝</div>
+            <div style="flex:1;min-width:0;">
+              <div id="ac-team-warning-text" style="font-size:13px;font-weight:600;color:var(--text);line-height:1.45;"></div>
+              <div style="font-size:11px;color:var(--muted);margin-top:3px;">You can still add them. Contacts stay private to each member.</div>
+              <div style="display:flex;gap:8px;margin-top:10px;">
+                <button type="button" onclick="acTeamWarningProceed()" style="padding:8px 14px;border:none;border-radius:9px;background:var(--navy);color:#fff;font-family:inherit;font-size:12px;font-weight:700;cursor:pointer;">Add Anyway</button>
+                <button type="button" onclick="acTeamWarningCancel()" style="padding:8px 14px;border:1.5px solid var(--border);border-radius:9px;background:#fff;color:var(--text);font-family:inherit;font-size:12px;font-weight:600;cursor:pointer;">Cancel</button>
+              </div>
+            </div>
+          </div>
+        </div>
       </form>
     </div>
     <div class="ctx-footer" style="flex-shrink:0;">
@@ -4249,6 +4263,62 @@ function inWeek(d, ws) {
 const formatDate = k => new Date(k+'T12:00:00').toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric'});
 const formatDateShort = k => new Date(k+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'});
 const normalizePhone = p => p.replace(/[\s\-().+]/g,'').toLowerCase();
+// Last-10-digits phone key for the team contact index (matches "+1 (512) 555-0142"
+// with "512-555-0142"). Returns '' for anything under 7 digits so junk never indexes.
+const phoneLast10 = p => { const d = String(p||'').replace(/\D/g,''); return d.length >= 7 ? d.slice(-10) : ''; };
+
+// ── TEAM CONTACT AWARENESS ──
+// When a team turns on settings.contactAwareness, every member mirrors a tiny
+// digest of each contact (last-10 phone + their own name) into
+// teams/{id}/contactIndex so teammates get a heads-up before adding a duplicate.
+// Full contact lists stay private per member. Every helper here is best-effort:
+// failures log to console and never block a contact save.
+function teamAwarenessTeam() {
+  const t = window._crmTeam && window._crmTeam.team;
+  return (t && t.id && t.settings && t.settings.contactAwareness === true) ? t : null;
+}
+function _teamIndexRef(contactId) {
+  const t = teamAwarenessTeam();
+  if (!t || !currentUser || !contactId) return null;
+  return doc(db, 'teams', t.id, 'contactIndex', currentUser.uid + '_' + contactId);
+}
+async function teamIndexUpsert(contactId, phone, addedAt) {
+  try {
+    const ref = _teamIndexRef(contactId);
+    if (!ref) return;
+    const key = phoneLast10(phone);
+    if (!key) { await deleteDoc(ref).catch(()=>{}); return; }
+    await setDoc(ref, {
+      phoneNorm: key,
+      ownerUid: currentUser.uid,
+      ownerName: currentUser.displayName || (currentUser.email||'').split('@')[0] || 'A teammate',
+      addedAt: addedAt || new Date().toISOString(),
+      contactId,
+    });
+  } catch(e) { console.warn('[teamIndexUpsert]', e.message); }
+}
+async function teamIndexRemove(contactId) {
+  try {
+    const ref = _teamIndexRef(contactId);
+    if (!ref) return;
+    await deleteDoc(ref).catch(()=>{});
+  } catch(e) { console.warn('[teamIndexRemove]', e.message); }
+}
+// First teammate (not me) already working this number, or null. Capped at 4s so
+// a slow network can never stall the Add Contact save.
+async function teamAwarenessLookup(phone) {
+  try {
+    const t = teamAwarenessTeam();
+    if (!t || !currentUser) return null;
+    const key = phoneLast10(phone);
+    if (!key) return null;
+    const q = getDocs(query(collection(db, 'teams', t.id, 'contactIndex'), where('phoneNorm','==',key)));
+    const snap = await Promise.race([q, new Promise(r => setTimeout(() => r(null), 4000))]);
+    if (!snap) return null;
+    const hit = snap.docs.map(d => d.data()).find(e => e.ownerUid && e.ownerUid !== currentUser.uid);
+    return hit || null;
+  } catch(e) { console.warn('[teamAwarenessLookup]', e.message); return null; }
+}
 const daysBetween = (d1,d2) => Math.round((d2-d1)/(1000*60*60*24));
 const addDays = (dateStr, days) => { const d=new Date(dateStr+'T12:00:00'); d.setDate(d.getDate()+days); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
 
@@ -5243,6 +5313,21 @@ function renderCrmTeamDashboard() {
       <div style="font-size:11px;color:var(--muted);margin-top:6px;line-height:1.5;">Existing users are added instantly. New users get an invite email to sign up.</div>
     </div>
     <button onclick="openCrmPushActivityModal()" style="width:100%;margin-top:10px;padding:11px;background:transparent;border:1.5px solid var(--border);border-radius:10px;font-family:inherit;font-size:13px;font-weight:700;color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;">➕ Push Activity to All Members</button>`;
+
+    // Team Contact Awareness toggle (owner/co_lead only — writes go through a Cloud Function)
+    const tcaOn = !!(team.settings && team.settings.contactAwareness);
+    html += `<div style="background:var(--bg);border:1.5px solid var(--border);border-radius:12px;padding:14px;margin-top:10px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:13px;font-weight:700;color:var(--text);">🤝 Team Contact Awareness</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:3px;line-height:1.5;">Members get a heads-up when they add a contact a teammate is already working with. Contact lists stay private to each member.</div>
+        </div>
+        <div id="crm-tca-toggle" onclick="toggleTeamContactAwareness()" style="width:48px;height:28px;border-radius:28px;background:${tcaOn?'var(--gold)':'#ccc'};position:relative;cursor:pointer;transition:background 0.25s;flex-shrink:0;">
+          <div style="position:absolute;top:3px;left:${tcaOn?'23px':'3px'};width:22px;height:22px;border-radius:50%;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,0.2);transition:left 0.25s;"></div>
+        </div>
+      </div>
+      <div id="crm-tca-status" style="display:none;font-size:11px;color:var(--muted);margin-top:8px;">Building the shared index from everyone's contacts…</div>
+    </div>`;
   }
 
   // Members list
@@ -5315,6 +5400,33 @@ window.crmRemoveMember = async function(memberUid, email) {
     openCrmTeamDashboard();
     refreshCrmTeamSettings();
   } catch (e) { showToast('⚠️ ' + (e.message || 'Could not remove')); }
+};
+
+// ── Team Contact Awareness toggle (owner/co_lead) ──
+// Enabling runs a server-side backfill of every member's contacts into the
+// shared index, so the switch stays busy until the function returns.
+window.toggleTeamContactAwareness = async function() {
+  const s = window._crmTeam;
+  if (!s || !s.team) return;
+  const next = !(s.team.settings && s.team.settings.contactAwareness);
+  const toggleEl = document.getElementById('crm-tca-toggle');
+  const statusEl = document.getElementById('crm-tca-status');
+  if (toggleEl) { toggleEl.style.pointerEvents = 'none'; toggleEl.style.opacity = '0.55'; }
+  if (statusEl && next) statusEl.style.display = 'block';
+  try {
+    const headers = await _crmAuthHeader();
+    const r = await fetch(CRM_FN_BASE + '/setTeamContactAwareness', {
+      method: 'POST', headers, body: JSON.stringify({ enabled: next }),
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || 'Could not update');
+    s.team.settings = Object.assign({}, s.team.settings, { contactAwareness: next });
+    renderCrmTeamDashboard();
+    showToast(next ? `✅ Contact awareness on${typeof d.indexed === 'number' ? ` · ${d.indexed} contact${d.indexed === 1 ? '' : 's'} indexed` : ''}` : '✅ Contact awareness off');
+  } catch (e) {
+    showToast('⚠️ ' + (e.message || 'Could not update'));
+    renderCrmTeamDashboard();
+  }
 };
 
 // ══════════════════════════════════════════════
@@ -8365,6 +8477,7 @@ window.saveFormNote=async function(contactId,field,value){
 window.deleteContact=async function(id){
   if(!confirm('Remove this contact? This cannot be undone.'))return;
   await deleteDoc(doc(db,'users',currentUser.uid,'contacts',id));
+  teamIndexRemove(id);
   CONTACTS=CONTACTS.filter(c=>c.id!==id);expandedContactId=null;
   renderNetwork();showToast('🗑️ Contact removed');
 };
@@ -8412,8 +8525,29 @@ function _refreshEventSuggestions() {
   ])].sort((a,b) => a.localeCompare(b));
   dl.innerHTML = names.map(n => `<option value="${n.replace(/"/g,'&quot;')}">`).join('');
 }
-window.openAddContact=function(){editingContactId=null;document.getElementById('add-contact-form').reset();setContactModalMode('add');refreshAcPlaybookOptions();_refreshEventSuggestions();document.getElementById('ac-overlay').classList.add('open');setTimeout(()=>document.getElementById('ac-first').focus(),200);};
-window.closeAddContact=function(){editingContactId=null;document.getElementById('ac-overlay').classList.remove('open');};
+window.openAddContact=function(){editingContactId=null;_acTeamResetWarning();document.getElementById('add-contact-form').reset();setContactModalMode('add');refreshAcPlaybookOptions();_refreshEventSuggestions();document.getElementById('ac-overlay').classList.add('open');setTimeout(()=>document.getElementById('ac-first').focus(),200);};
+window.closeAddContact=function(){editingContactId=null;_acTeamResetWarning();document.getElementById('ac-overlay').classList.remove('open');};
+
+// ── Team Contact Awareness — Add Contact teammate heads-up ──
+// _acTeamAckKey holds the phone key the user pressed "Add Anyway" for; the save
+// re-runs and sails past the check for that exact number only.
+let _acTeamAckKey='';
+let _acTeamPendingKey='';
+function _acTeamResetWarning(){_acTeamAckKey='';_acTeamPendingKey='';window.hideAcTeamWarning();}
+function showAcTeamWarning(hit,key){
+  const el=document.getElementById('ac-team-warning');
+  const txt=document.getElementById('ac-team-warning-text');
+  if(!el||!txt){_acTeamAckKey=key;window.saveContact();return;} // markup missing → never block the save
+  _acTeamPendingKey=key;
+  let when='';
+  if(hit.addedAt){const d=new Date(hit.addedAt);if(!isNaN(d.getTime()))when=` (added ${d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})})`;}
+  txt.textContent=`${hit.ownerName||'A teammate'} is already working with this contact${when}`;
+  el.style.display='block';
+  el.scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+window.hideAcTeamWarning=function(){const el=document.getElementById('ac-team-warning');if(el)el.style.display='none';};
+window.acTeamWarningProceed=function(){if(_acTeamPendingKey)_acTeamAckKey=_acTeamPendingKey;_acTeamPendingKey='';window.hideAcTeamWarning();window.saveContact();};
+window.acTeamWarningCancel=function(){_acTeamPendingKey='';window.hideAcTeamWarning();};
 window.openEditContact=function(id){
   const c=CONTACTS.find(x=>x.id===id);if(!c){showToast('⚠️ Contact not found');return;}
   editingContactId=id;
@@ -8655,15 +8789,29 @@ async function saveContactImpl(){
     const dupe=CONTACTS.find(c=>normalizePhone(c.phone||'')===norm&&norm!==''&&c.id!==editingContactId);
     if(dupe){showToast(`⚠️ ${dupe.name} already has this phone number`);return;}
   }
+  // Team Contact Awareness — heads-up if a teammate already works this number.
+  // Non-blocking: "Add Anyway" acknowledges the number and re-runs this save.
+  // Skipped on edits unless the phone actually changed to a new number.
+  if(phone){
+    const key=phoneLast10(phone);
+    const priorPhone=isEdit?(CONTACTS.find(x=>x.id===editingContactId)?.phone||''):'';
+    if(key&&key!==_acTeamAckKey&&key!==phoneLast10(priorPhone)){
+      const hit=await teamAwarenessLookup(phone);
+      if(hit){showAcTeamWarning(hit,key);return;}
+    }
+  }
   const name=`${first} ${last}`;
   const initials=(first[0]+(last[0]||'')).toUpperCase();
   if(isEdit){
     const c=CONTACTS.find(x=>x.id===editingContactId);
     if(!c){showToast('⚠️ Contact not found');return;}
+    const priorPhoneKey=phoneLast10(c.phone||'');
     // Always clear grade on save — single source of truth is now `status`.
     const updates={name,initials,phone:phone||'',email:email||'',company:company||'',event:event||'',status,grade:null,notes:notes||'',playbookId};
     await updateDoc(doc(db,'users',currentUser.uid,'contacts',editingContactId),updates);
     Object.assign(c,updates);
+    // Keep the team awareness index in step when the number changed (best-effort)
+    if(priorPhoneKey!==phoneLast10(phone)) teamIndexUpsert(editingContactId,phone,c.addedAt);
     CONTACTS.sort((a,b)=>a.name.localeCompare(b.name));
     const editedId=editingContactId;
     closeAddContact();
@@ -8678,6 +8826,7 @@ async function saveContactImpl(){
   const data={name,initials,color,phone:phone||'',email:email||'',company:company||'',event:event||'',status,grade:null,notes:notes||'',steps:0,wasted:false,playbookId,form:{family:'',occupation:'',recreation:'',motivation:''},addedAt:new Date().toISOString(),lastActivityAt:new Date().toISOString()};
   const ref=await addDoc(collection(db,'users',currentUser.uid,'contacts'),data);
   data.id=ref.id;CONTACTS.unshift(data);CONTACTS.sort((a,b)=>a.name.localeCompare(b.name));
+  teamIndexUpsert(ref.id,phone,data.addedAt);
   closeAddContact();renderNetwork();
   await autoLogActivity('Add New Contact', name, ref.id, 'scorecard');
   // Campaign start — start clock and optionally add to Google Calendar
@@ -9086,6 +9235,11 @@ async function confirmImport() {
       await batch.commit();
       staged.forEach(c => CONTACTS.push(c));
       added += staged.length;
+      // Mirror imported contacts into the team awareness index in the background
+      if (teamAwarenessTeam()) {
+        const toIndex = staged.filter(c => phoneLast10(c.phone));
+        (async () => { for (const c of toIndex) { await teamIndexUpsert(c.id, c.phone, c.addedAt); } })();
+      }
     }
     CONTACTS.sort((a, b) => a.name.localeCompare(b.name));
     detectWastedHandshakes();
@@ -10660,6 +10814,7 @@ async function saveScannedContactImpl() {
   data.id = ref.id;
   CONTACTS.unshift(data);
   CONTACTS.sort((a,b)=>a.name.localeCompare(b.name));
+  teamIndexUpsert(ref.id, phone, data.addedAt);
 
   closeCardScanner();
   renderNetwork();

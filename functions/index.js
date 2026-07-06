@@ -1677,6 +1677,98 @@ exports.saveTeamReportSettings = onRequest({ cors: true }, async (req, res) => {
   } catch(e) { console.error('[saveTeamReportSettings]', e); sendErr(res, e); }
 });
 
+// ===== Team Contact Awareness — shared duplicate-awareness index =====
+// teams/{teamId}/contactIndex/{uid_contactId} = { phoneNorm, ownerUid, ownerName, addedAt, contactId }
+// Contacts stay private per rep; the index only tells teammates "this number is
+// already being worked by [name]" at add time. Day-to-day upkeep is client-side
+// in the CRM; the rebuild below runs with the admin SDK when the toggle flips on.
+function phoneKeyLast10(p) {
+  const digits = String(p || '').replace(/\D/g, '');
+  return digits.length >= 7 ? digits.slice(-10) : '';
+}
+
+async function wipeTeamContactIndex(teamId) {
+  const snap = await db.collection(`teams/${teamId}/contactIndex`).get();
+  let batch = db.batch(), n = 0;
+  for (const d of snap.docs) {
+    batch.delete(d.ref); n++;
+    if (n >= 450) { await batch.commit(); batch = db.batch(); n = 0; }
+  }
+  if (n > 0) await batch.commit();
+  return snap.size;
+}
+
+async function rebuildTeamContactIndex(teamId) {
+  // Member set = members subcollection ∪ users bound via users/{uid}.teamId ∪ owner.
+  // (Owners don't always carry teamId on their user doc — see loadTeamForOwnerOrColead.)
+  const teamSnap = await db.doc(`teams/${teamId}`).get();
+  const uids = new Set();
+  const nameByUid = {};
+  if (teamSnap.data()?.ownerUid) uids.add(teamSnap.data().ownerUid);
+  const membersSnap = await db.collection(`teams/${teamId}/members`).get();
+  membersSnap.docs.forEach(d => {
+    uids.add(d.id);
+    const m = d.data() || {};
+    if (m.displayName || m.name) nameByUid[d.id] = m.displayName || m.name;
+  });
+  const boundSnap = await db.collection('users').where('teamId', '==', teamId).get();
+  boundSnap.docs.forEach(d => uids.add(d.id));
+
+  let written = 0;
+  let batch = db.batch(), n = 0;
+  for (const uid of uids) {
+    let ownerName = nameByUid[uid];
+    if (!ownerName) {
+      const u = await db.doc(`users/${uid}`).get();
+      const ud = u.data() || {};
+      ownerName = ud.displayName || ud.name || (ud.email ? ud.email.split('@')[0] : 'A teammate');
+    }
+    const contactsSnap = await db.collection(`users/${uid}/contacts`).get();
+    for (const c of contactsSnap.docs) {
+      const phoneNorm = phoneKeyLast10((c.data() || {}).phone);
+      if (!phoneNorm) continue;
+      batch.set(db.doc(`teams/${teamId}/contactIndex/${uid}_${c.id}`), {
+        phoneNorm,
+        ownerUid: uid,
+        ownerName,
+        addedAt: (c.data() || {}).addedAt || null,
+        contactId: c.id,
+      });
+      n++; written++;
+      if (n >= 450) { await batch.commit(); batch = db.batch(); n = 0; }
+    }
+  }
+  if (n > 0) await batch.commit();
+  return written;
+}
+
+// ===== setTeamContactAwareness — owner/co_lead toggles the awareness index =====
+// Body: { enabled:boolean }
+// Enable: sets teams/{id}.settings.contactAwareness, then rebuilds the index fresh.
+// Disable: clears the flag AND wipes the index so nothing stale stays readable.
+exports.setTeamContactAwareness = onRequest({ cors: true, timeoutSeconds: 540 }, async (req, res) => {
+  if (req.method === 'OPTIONS') { res.status(204).send(''); return; }
+  if (req.method !== 'POST') { res.status(405).json({ error: 'Method not allowed' }); return; }
+  try {
+    const decoded = await requireAuth(req);
+    const { enabled } = req.body || {};
+    if (typeof enabled !== 'boolean') { res.status(400).json({ error: 'enabled must be a boolean' }); return; }
+
+    const team = await loadTeamForOwnerOrColead(decoded.uid);
+    const teamId = team.id;
+
+    await db.doc(`teams/${teamId}`).set({ settings: { contactAwareness: enabled } }, { merge: true });
+
+    // Always wipe first so every enable starts from a clean, accurate index
+    // (heals drift from contacts deleted or members removed while off).
+    await wipeTeamContactIndex(teamId);
+    const indexed = enabled ? await rebuildTeamContactIndex(teamId) : 0;
+
+    console.log(`[setTeamContactAwareness] team=${teamId} enabled=${enabled} indexed=${indexed} by=${decoded.uid}`);
+    res.json({ ok: true, enabled, indexed });
+  } catch (e) { console.error('[setTeamContactAwareness]', e); sendErr(res, e); }
+});
+
 // ===== sendTeamReportNow — owner/co_lead triggers an immediate team report (HTTP, Bearer auth) =====
 exports.sendTeamReportNow = onRequest({ cors: true }, async (req, res) => {
   if (req.method === 'OPTIONS') { res.status(204).send(''); return; }
