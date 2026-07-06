@@ -5307,7 +5307,7 @@ function renderCrmTeamDashboard() {
     html += `<div style="background:var(--bg);border:1.5px solid var(--border);border-radius:12px;padding:14px;">
       <div style="font-size:11px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--muted);margin-bottom:8px;">Add Member</div>
       <div style="display:flex;gap:8px;">
-        <input type="email" id="crm-team-invite-email" placeholder="teammate@example.com" style="flex:1;padding:10px 12px;border:1.5px solid var(--border);border-radius:9px;font-family:inherit;font-size:13px;color:var(--text);background:#fff;">
+        <input type="email" id="crm-team-invite-email" placeholder="teammate@example.com" style="flex:1;padding:10px 12px;border:1.5px solid var(--border);border-radius:9px;font-family:inherit;font-size:13px;color:var(--text);background:var(--bg);">
         <button onclick="crmInviteTeammate()" class="tb-btn primary" style="padding:0 16px;">Invite</button>
       </div>
       <div style="font-size:11px;color:var(--muted);margin-top:6px;line-height:1.5;">Existing users are added instantly. New users get an invite email to sign up.</div>
@@ -5339,7 +5339,7 @@ function renderCrmTeamDashboard() {
       const safeNameJs = (m.displayName||m.email||'Member').replace(/\\/g,'\\\\').replace(/'/g,"\\'");
       const safeEmailJs = (m.email||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'");
       return `
-      <div onclick="${isOwner ? `openCrmMemberDetail('${m.uid}','${safeNameJs}','${safeEmailJs}')` : ''}" style="display:flex;align-items:center;gap:12px;padding:10px 12px;background:#fff;border:1.5px solid var(--border);border-radius:10px;margin-bottom:6px;${isOwner?'cursor:pointer;':''}">
+      <div onclick="${isOwner ? `openCrmMemberDetail('${m.uid}','${safeNameJs}','${safeEmailJs}')` : ''}" style="display:flex;align-items:center;gap:12px;padding:10px 12px;background:var(--card);border:1.5px solid var(--border);border-radius:10px;margin-bottom:6px;${isOwner?'cursor:pointer;':''}">
         <div style="width:32px;height:32px;border-radius:50%;background:${m.role==='owner'?'var(--gold)':m.role==='co_lead'?'#1F4F87':'var(--navy)'};color:#fff;display:flex;align-items:center;justify-content:center;font-family:'Playfair Display',Georgia,serif;font-size:12px;font-weight:900;">${(m.displayName||m.email||'?').slice(0,2).toUpperCase()}</div>
         <div style="flex:1;min-width:0;">
           <div style="font-size:13px;font-weight:700;color:var(--text);">${safeName}${m.role==='owner'?' <span style="font-size:9px;background:var(--gold);color:#fff;padding:2px 6px;border-radius:4px;font-weight:700;letter-spacing:0.04em;margin-left:4px;">OWNER</span>':m.role==='co_lead'?' <span style="font-size:9px;background:#1F4F87;color:#fff;padding:2px 6px;border-radius:4px;font-weight:700;letter-spacing:0.04em;margin-left:4px;">CO-LEAD</span>':''}</div>
@@ -5359,7 +5359,7 @@ function renderCrmTeamDashboard() {
       ${pending.map(p => `
         <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:#fff7e6;border:1px solid #fbd38d;border-radius:10px;margin-bottom:6px;">
           <div style="font-size:16px;">📧</div>
-          <div style="flex:1;font-size:12px;color:var(--text);">
+          <div style="flex:1;font-size:12px;color:#1a1a1a;">
             <strong>${escapeHtmlCRM(p.email)}</strong> · invite sent · pending acceptance
           </div>
         </div>`).join('')}
