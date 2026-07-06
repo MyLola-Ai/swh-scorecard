@@ -2298,9 +2298,15 @@ async function mirrorSubscriptionToUser(sub) {
   // Personal subscription
   const uid = await resolveUidFromSubscription(sub);
   if (!uid) { console.warn('[mirrorSubscriptionToUser] no uid', sub.id); return; }
-  const plan = (sub.status === 'canceled' || sub.status === 'incomplete_expired')
+  let plan = (sub.status === 'canceled' || sub.status === 'incomplete_expired')
     ? 'free'
     : (STRIPE_PRICE_TO_PLAN[priceId] || 'free');
+  // planOverride (manual comp/owner grants) always wins over billing-derived plan.
+  try {
+    const existing = await db.collection('users').doc(uid).get();
+    const override = existing.exists ? existing.data().planOverride : null;
+    if (override) plan = override;
+  } catch (_) { /* fall through with billing-derived plan */ }
   const periodEndSec = sub.current_period_end || sub.trial_end || null;
   const trialEndSec = sub.trial_end || null;
   await db.collection('users').doc(uid).set({
@@ -2417,7 +2423,14 @@ exports.revenueCatWebhook = onRequest({
       case 'UNCANCELLATION':
       case 'TRANSFER': {
         // Active or re-activated subscription — set plan based on entitlement / product.
-        const plan = resolvePlanFromRcEvent(event);
+        // planOverride (set manually for owners/comps) always wins: a $10 Scorecard
+        // renewal must never downgrade an account that's been comp'd to pro.
+        let plan = resolvePlanFromRcEvent(event);
+        try {
+          const existing = await db.collection('users').doc(uid).get();
+          const override = existing.exists ? existing.data().planOverride : null;
+          if (override) plan = override;
+        } catch (_) { /* fall through with resolved plan */ }
         const periodEndSec = event.expiration_at_ms ? Math.floor(event.expiration_at_ms / 1000) : null;
         await db.collection('users').doc(uid).set({
           plan,
