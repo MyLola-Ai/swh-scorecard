@@ -172,13 +172,37 @@ function addDays(dateKey, days) {
   d.setDate(d.getDate() + days);
   return fmtDate(d);
 }
+// KEEP IN SYNC with the tier msgs in public-scorecard/index.html (tiers array
+// + tiers modal), public-scorecard/crm.html, and public-crm/index.html.
 function getTier(pts) {
-  if (pts >= 200) return { name:'Master Networker', emoji:'🥇', color:'#D4A847', msg:"You've earned the Gold. You are the network." };
-  if (pts >= 150) return { name:'Professional Networker', emoji:'🥈', color:'#9CA3AF', msg:"Operating at a professional level." };
-  if (pts >= 100) return { name:'Consistent Connector', emoji:'🥉', color:'#CD7F32', msg:"Relationships are forming. Keep going." };
-  if (pts >= 50)  return { name:'Active Networker', emoji:'🔵', color:'#2563EB', msg:"Earned your activity. Now earn consistency." };
-  return { name:'Getting Started', emoji:'🟢', color:'#16A34A', msg:"You took the step. Now build the habit." };
+  if (pts >= 200) return { name:'Master Networker', emoji:'🥇', color:'#D4A847', msg:"Gold earned. Every handshake honored. You are the network." };
+  if (pts >= 150) return { name:'Professional Networker', emoji:'🥈', color:'#9CA3AF', msg:"Silver earned. You follow through when others fade away." };
+  if (pts >= 100) return { name:'Consistent Connector', emoji:'🥉', color:'#CD7F32', msg:"Bronze earned. Relationships are built, not harvested. Keep building." };
+  if (pts >= 50)  return { name:'Active Networker', emoji:'🔵', color:'#2563EB', msg:"You're showing up. Now notice, remember, and respond." };
+  return { name:'Getting Started', emoji:'🟢', color:'#16A34A', msg:"The first step is taken. Trust is built in small kept commitments." };
 }
+
+// Canonical category/lead per default activity name. Saved day breakdowns
+// carry whatever category the user's (possibly stale/legacy) activity list
+// had at log time — e.g. "Perform Other 8 Step Activities" labeled
+// "Follow Through" in old lists. Emails normalize known names through this
+// map and only trust stored values for unknown/custom activities.
+const CANONICAL_ACTIVITIES = {
+  'Attend Networking Meeting':        { category: 'Networking',          lead: true },
+  'Add New Contact':                  { category: 'Networking',          lead: true },
+  'Have a FORMing Conversation':      { category: 'Conversations',       lead: true },
+  'Good to Meet You Follow Through':  { category: 'Follow Through',      lead: true },
+  'Call Someone from CRM':            { category: 'Follow Through',      lead: true },
+  'Attend 1:1, Coffee, Lunch, etc.':  { category: 'High-Value Meetings', lead: true },
+  'Attend 1:1, Coffee, Lunch':        { category: 'High-Value Meetings', lead: true },
+  'Mail Note or Card':                { category: 'High-Value Meetings', lead: true },
+  'Give a Referral':                  { category: 'Referrals & Results', lead: true },
+  'Make Introduction':                { category: 'Referrals & Results', lead: true },
+  'Receive a Referral':               { category: 'Referrals & Results', lead: false },
+  'Opportunity Won':                  { category: 'Referrals & Results', lead: false },
+  'Perform Other 8 Step Activities':  { category: 'System',              lead: true },
+  'Host Event':                       { category: 'Events',              lead: true },
+};
 
 // ===== getMe — returns the current user's plan, settings, today, history, lag, activities =====
 exports.getMe = onRequest({ cors: true }, async (req, res) => {
@@ -705,9 +729,13 @@ async function computeUserWeeklyStats(uid) {
   const goalHit = totalPts >= goal;
   const firstName = (settings.displayName || userData.email || 'there').split(/[\s@]/)[0];
 
-  // Top 3 activities by count
+  // Top 3 activities by count (normalize category/lead for known names —
+  // stored breakdowns can carry stale categories from legacy activity lists)
   const topActs = Object.entries(breakdown)
-    .map(([name, b]) => ({ name, ...b }))
+    .map(([name, b]) => {
+      const canon = CANONICAL_ACTIVITIES[name];
+      return { name, ...b, category: canon ? canon.category : b.category, lead: canon ? canon.lead : b.lead };
+    })
     .sort((a,b) => b.count - a.count)
     .slice(0, 3);
 
@@ -736,19 +764,19 @@ async function computeUserWeeklyStats(uid) {
 function buildCoachingBlocks({ totalPts, leadPts, lagPts, daysLogged, goal, goalHit, streak, dailyArr, topActs, topCategory, tier }) {
   // Strength
   let strength;
-  if (streak >= 5) strength = `${streak}-day streak — that's the consistency engine working. Keep the chain alive and the tier follows.`;
-  else if (topActs[0] && topActs[0].count >= 10) strength = `${topActs[0].name} rhythm was elite — ${topActs[0].count} sessions. Repetition at this volume is what compounds.`;
+  if (streak >= 5) strength = `${streak}-day streak. That's the consistency engine working. Keep the chain alive and the tier follows.`;
+  else if (topActs[0] && topActs[0].count >= 10) strength = `${topActs[0].name} rhythm was elite: ${topActs[0].count} sessions. Repetition at this volume is what compounds.`;
   else if (goalHit) strength = `Crossed your weekly goal of ${goal} with ${totalPts} pts. The bar moved.`;
   else if (totalPts > 0) strength = `You showed up ${daysLogged} ${daysLogged === 1 ? 'day' : 'days'} this week. Every entry counts toward the habit.`;
-  else strength = 'You opened the app — that already puts you ahead of most.';
+  else strength = 'You opened the app. That already puts you ahead of most.';
 
   // Watch / Risk
   let watch;
   const zeroDays = dailyArr.filter(d => d.pts === 0).length;
-  if (zeroDays >= 4) watch = `${zeroDays} days at zero this week. Even one small touch — a follow through note — keeps the momentum from going cold.`;
+  if (zeroDays >= 4) watch = `${zeroDays} days at zero this week. Even one small touch, a follow through note, keeps the momentum from going cold.`;
   else if (lagPts === 0 && totalPts > 0) watch = 'Lots of activity, zero results logged. Make sure you\'re tracking referrals received and deals won so the lag side reflects the lead.';
   else if (leadPts < lagPts && totalPts > 0) watch = 'Results outpaced activity. That\'s great this week, but lead activity is what predicts NEXT week\'s pipeline.';
-  else if (zeroDays >= 1) watch = `${zeroDays} quiet ${zeroDays === 1 ? 'day' : 'days'}. Stacking two or three breaks the streak engine — plan a small move on those days.`;
+  else if (zeroDays >= 1) watch = `${zeroDays} quiet ${zeroDays === 1 ? 'day' : 'days'}. Stacking two or three breaks the streak engine. Plan a small move on those days.`;
   else watch = 'No obvious gaps this week. Keep the variety up so no single category carries the whole load.';
 
   // Recommendation
@@ -758,10 +786,10 @@ function buildCoachingBlocks({ totalPts, leadPts, lagPts, daysLogged, goal, goal
   if (tier.name === 'Master Networker') recommendation = 'You\'re at the top tier. Hold the line. Two more weeks at this rhythm becomes a habit, not a streak.';
   else if (nextTierAt) {
     const gap = nextTierAt - totalPts;
-    recommendation = `To reach the next tier, layer on ${gap} more pts next week — try ${Math.ceil(gap / 10)} extra introductions or a host event.`;
+    recommendation = `To reach the next tier, layer on ${gap} more pts next week. Try ${Math.ceil(gap / 10)} extra introductions or a host event.`;
   } else if (!goalHit) {
     const gap = goal - totalPts;
-    recommendation = `You're ${gap} pts shy of goal. Add ${Math.ceil(gap / 7)} pts per day next week to close it — that's one quick conversation.`;
+    recommendation = `You're ${gap} pts shy of goal. Add ${Math.ceil(gap / 7)} pts per day next week to close it. That's one quick conversation.`;
   } else {
     recommendation = 'Goal hit and tier earned. Hold the same rhythm next week and the gap to the next tier closes itself.';
   }
@@ -797,9 +825,9 @@ function getDemoStats() {
     ],
     topCategory: 'Conversations', topCategoryPts: 70,
     coaching: {
-      strength: 'FORMing conversation rhythm was elite this week — 14 sessions averages 2 per day. Consistency at this pace is what separates Master Networkers from everyone else.',
+      strength: 'FORMing conversation rhythm was elite this week: 14 sessions averages 2 per day. Consistency at this pace is what separates Master Networkers from everyone else.',
       watch: 'Sunday was a zero. One quiet day is fine, but stacking two or three breaks the streak engine. Plan a small Sunday move (one follow-through note) to keep the chain alive.',
-      recommendation: 'You crossed the goal but haven\'t broken into Master Networker yet. To hit 200, layer in 2 introductions and 1 host event next week — that\'s 35 pts on top of your current rhythm.'
+      recommendation: 'You crossed the goal but haven\'t broken into Master Networker yet. To hit 200, layer in 2 introductions and 1 host event next week. That\'s 35 pts on top of your current rhythm.'
     }
   };
 }
@@ -817,18 +845,20 @@ function renderRecapHTML(s) {
   const trendUp = s.trendPct !== null && s.trendPct >= 0;
   const maxBarPts = Math.max(...s.dailyArr.map(d => d.pts), 1);
 
-  // Daily bar chart cells
+  // Daily bar chart cells. Bars are table cells with bgcolor (email-safe:
+  // Outlook and others strip gradient/div backgrounds; bgcolor always renders).
   const barCells = s.dailyArr.map(d => {
     const heightPx = d.pts > 0 ? Math.max(8, Math.round((d.pts / maxBarPts) * 100)) : 6;
-    const barColor = d.isBest
-      ? 'background:linear-gradient(180deg,#E63946,#b8252f);box-shadow:0 -2px 8px rgba(230,57,70,0.4);'
-      : (d.pts > 0 ? 'background:linear-gradient(180deg,#1a1a1a,#3a3a3a);' : 'background:#E4E4E7;');
+    const solid = d.isBest ? '#E63946' : (d.pts > 0 ? '#1a1a1a' : '#E4E4E7');
+    const grad = d.isBest
+      ? 'linear-gradient(180deg,#E63946,#b8252f)'
+      : (d.pts > 0 ? 'linear-gradient(180deg,#1a1a1a,#3a3a3a)' : '#E4E4E7');
     const labelColor = d.isBest ? 'color:#E63946;' : (d.pts > 0 ? 'color:#0a0a0a;' : 'color:#9CA3AF;font-weight:600;');
-    const labelText = d.pts > 0 ? `${d.pts}${d.isBest ? ' 🏆' : ''}` : '—';
+    const labelText = d.pts > 0 ? `${d.pts}${d.isBest ? ' 🏆' : ''}` : '–';
     const fontWeight = d.isBest ? '800' : '700';
     return `<td style="width:14.28%;text-align:center;padding:0 3px;vertical-align:bottom;">
       <div style="font-size:10px;font-weight:${fontWeight};${labelColor}margin-bottom:4px;">${labelText}</div>
-      <div style="margin:0 auto;width:32px;height:${heightPx}px;${barColor}border-radius:6px 6px 0 0;"></div>
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="margin:0 auto;"><tr><td width="32" height="${heightPx}" bgcolor="${solid}" style="width:32px;height:${heightPx}px;background:${grad};border-radius:6px 6px 0 0;font-size:1px;line-height:1px;">&nbsp;</td></tr></table>
     </td>`;
   }).join('');
   const dayLabels = s.dailyArr.map(d => {
@@ -901,7 +931,7 @@ function renderRecapHTML(s) {
       <td align="right" style="vertical-align:bottom;"><span style="display:inline-block;background:${s.goalHit?'#E8F5EC':'#FEE2E2'};color:${s.goalHit?'#2F6B3F':'#991B1B'};font-size:11px;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;padding:6px 12px;border-radius:6px;">${s.goalHit ? `✓ Goal hit · ${s.goalPct}%` : `${s.goalPct}% to goal`}</span></td>
     </tr>
   </table>
-  <div style="margin-top:14px;background:#F4F4F5;border-radius:10px;height:14px;overflow:hidden;position:relative;"><div style="width:${goalPctClamped}%;height:100%;background:${s.goalHit?'linear-gradient(90deg,#5A8A6A 0%,#7BC288 70%,#5A8A6A 100%)':'linear-gradient(90deg,#E63946,#b8252f)'};"></div></div>
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:14px;border-collapse:separate;border-radius:10px;overflow:hidden;"><tr style="height:14px;">${goalPctClamped > 0 ? `<td width="${goalPctClamped}%" height="14" bgcolor="${s.goalHit ? '#5A8A6A' : '#E63946'}" style="height:14px;background:${s.goalHit?'linear-gradient(90deg,#5A8A6A 0%,#7BC288 70%,#5A8A6A 100%)':'linear-gradient(90deg,#E63946,#b8252f)'};font-size:1px;line-height:1px;">&nbsp;</td>` : ''}${goalPctClamped < 100 ? `<td height="14" bgcolor="#F4F4F5" style="height:14px;background:#F4F4F5;font-size:1px;line-height:1px;">&nbsp;</td>` : ''}</tr></table>
   <div style="font-size:11px;color:#9CA3AF;margin-top:8px;text-align:right;">${s.goalHit ? `+${overGoal} pts beyond goal` : `${s.goal - s.totalPts} pts to go`}</div>
 </td></tr>
 
@@ -920,7 +950,7 @@ function renderRecapHTML(s) {
 <tr><td style="padding:32px 32px 8px;">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
     <tr><td><div style="font-size:10px;font-weight:800;color:#9CA3AF;letter-spacing:0.18em;text-transform:uppercase;">Day-by-Day</div></td>
-        <td align="right">${s.bestDay && s.bestDay.pts > 0 ? `<div style="font-size:11px;color:#9CA3AF;">🏆 Best day: <strong style="color:#0a0a0a;">${s.bestDay.dayLong} — ${s.bestDay.pts} pts</strong></div>` : ''}</td></tr>
+        <td align="right">${s.bestDay && s.bestDay.pts > 0 ? `<div style="font-size:11px;color:#9CA3AF;">🏆 Best day: <strong style="color:#0a0a0a;">${s.bestDay.dayLong} · ${s.bestDay.pts} pts</strong></div>` : ''}</td></tr>
   </table>
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:18px;">
     <tr style="vertical-align:bottom;height:120px;">${barCells}</tr>
@@ -1020,7 +1050,7 @@ async function computeTeamWeeklyStats(teamId) {
 }
 
 function renderTeamRecapSubject(s) {
-  return `Team recap: ${s.teamTotal} pts this week — ${s.teamName}`;
+  return `Team recap: ${s.teamTotal} pts this week (${s.teamName})`;
 }
 
 function renderTeamRecapHTML(s) {
