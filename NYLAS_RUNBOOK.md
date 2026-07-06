@@ -173,8 +173,9 @@ connect. Remaining (Claude can do these on request):
 - SWH Scorecard `public-scorecard/index.html` — calendar connect + dashboard widget.
 - SWH CRM — dashboard calendar panel + contact-profile email panel.
 - MyLola — contact/household email panel, home calendar panel, point the inbox nav at `/inbox-nylas`.
-- SWH `crm.html` — re-sync from `public-crm/index.html` first (it has diverged), then the wiring
-  carries over for the Capacitor build.
+- ~~SWH `crm.html` re-sync~~ — dropped 2026-07-06: `public-scorecard/crm.html` is a stale
+  Scorecard snapshot, not a CRM copy. The CRM iOS app (`ios-crm/`) bundles `public-crm/`
+  directly, so CRM wiring reaches the Capacitor build via `npx cap sync ios`.
 
 Deploy hosting after wiring:
 ```bash

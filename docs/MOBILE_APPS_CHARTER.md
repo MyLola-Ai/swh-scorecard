@@ -150,8 +150,10 @@ on BOTH apps; the CRM (`public-crm/index.html`) is the reference implementation 
 **Copy — SWH Manifesto (July 2026) is the canonical voice.** First-person commitment language;
 no em-dashes; no leads/targets/transactions framing. Tier identity messages exist in THREE synced
 copies that must never drift: `public-scorecard/index.html` (TIERS array + tiers modal — KEEP IN
-SYNC comment is there), `public-scorecard/crm.html` (TIERS array + modal; this file IS the desktop
-CRM and ships inside the Scorecard app bundle), `public-crm/index.html` (tiers array). The five:
+SYNC comment is there), `public-scorecard/crm.html` (TIERS array + modal; NOT the CRM — a legacy
+stale Scorecard v18 snapshot, kept copy-synced only because it is still publicly served at
+app.stopwastinghandshakes.com/crm.html; the real CRM is `public-crm/index.html`, bundled into the
+CRM iOS app by `ios-crm/`), `public-crm/index.html` (tiers array). The five:
 🟢 "The first step is taken. Trust is built in small kept commitments." · 🔵 "You're showing up.
 Now notice, remember, and respond." · 🥉 "Bronze earned. Relationships are built, not harvested.
 Keep building." · 🥈 "Silver earned. You follow through when others fade away." · 🥇 "Gold earned.

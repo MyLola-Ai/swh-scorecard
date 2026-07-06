@@ -163,8 +163,10 @@ live-tested and users are re-consented (a Nylas grant is a fresh OAuth; existing
   filter is unreliable. `nylasSendEmail` writes ISO; reconcile with the CRM's existing writers.
 - **The 7-day "no reply" rule** is time-based, so it is a daily scheduled sweep
   (`nylasFollowThroughSweep`), not a webhook event, despite the spec listing it under webhooks.
-- **SWH `crm.html`** — `public-crm/nylas-email.js` must be mirrored into `public-scorecard/`
-  (or referenced by absolute URL) for the Capacitor `crm.html` build (the two-file rule).
+- **SWH iOS CRM** — no `crm.html` step: the CRM iOS app (`ios-crm/`) bundles `public-crm/`
+  directly, so `public-crm/index.html` + `public-crm/nylas-email.js` wiring carries over via
+  `npx cap sync ios`. (`public-scorecard/crm.html` is a stale Scorecard snapshot, not a CRM
+  copy — the two-file rule was retired 2026-07-06.)
 - **Frontend embed** — SWH modules expose `mount*` functions; add a `<script>` tag + container
   and call them from the existing settings/dashboard render code. MyLola: import the components
   into `app/settings/connections`, `app/inbox`, the contact/household view, and a dashboard slot.
@@ -196,7 +198,7 @@ Done (additive — legacy connect paths left intact until cutover):
 - **SWH CRM** `public-crm/index.html` — `#nylas-connect-mount` container in the Settings → Email & Calendar card; idempotent `SWHNylasEmail.mountConnect` in the `onAuthStateChanged` ready path (token getter wired to the module-scoped `auth`); `nylas-email.js` script include. `nylas-email.js` also copied to `public-scorecard/` for the Capacitor `crm.html`.
 
 Remaining wiring:
-- **SWH `crm.html`** has diverged from `public-crm/index.html` (no Email Integrations section, different auth handler). Re-sync `crm.html` from `index.html` first, then the Nylas wiring carries over. Do NOT hand-patch the divergent copy.
+- ~~SWH `crm.html` re-sync~~ — dropped 2026-07-06: `public-scorecard/crm.html` turned out to be a stale Scorecard v18 snapshot, not a diverged CRM copy. The CRM iOS app (`ios-crm/`) bundles `public-crm/` directly; there is no second CRM file to wire.
 - **SWH Scorecard** `public-scorecard/index.html` — add `nylas-calendar.js` + `SWHNylasCalendar.mountConnect` (settings) and `mountWidget` (dashboard), same pattern as CRM.
 - **SWH CRM** — mount `SWHNylasEmail.mountCalendar` on the dashboard and `mountContactPanel(el, email)` in the contact profile.
 - **MyLola** — `ContactEmailPanel` in the contact/household detail (`app/contact`), `CalendarPanel` on the dashboard/home, and switch the inbox nav link to `/inbox-nylas` at cutover.

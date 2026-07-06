@@ -9,7 +9,7 @@ Repo root: `~/swh-scoreboard`. Firebase project: `swh-scoreboard`.
 Stop Wasting Handshakes is a networking-productivity platform:
 
 - **Scorecard** ($10/mo) — daily activity tracker, tier progression, weekly recap emails
-- **Pro CRM** ($25/mo) — full CRM. Web: `crm.stopwastinghandshakes.com`. Also embedded as a tab inside the Scorecard iOS app via `public-scorecard/crm.html`
+- **Pro CRM** ($25/mo) — full CRM. Web: `crm.stopwastinghandshakes.com`. The same file ships as the native CRM iOS app (`ios-crm/` bundles `public-crm/` directly)
 
 ---
 
@@ -18,37 +18,40 @@ Stop Wasting Handshakes is a networking-productivity platform:
 ```
 public-scorecard/        Scorecard web app (app.stopwastinghandshakes.com)
   index.html             Scorecard SPA — the main app
-  crm.html               CRM copy bundled for Capacitor (has native patches — see below)
+  crm.html               LEGACY stale Scorecard v18 snapshot — NOT the CRM (see below)
 public-crm/              CRM web app (crm.stopwastinghandshakes.com)
-  index.html             CRM source of truth
+  index.html             CRM source of truth — serves web AND the native CRM iOS bundle
 public-admin/            Admin panel (swh-admin.web.app)
 public-landing/          Marketing landing (stopwastinghandshakes.com)
 functions/               Cloud Functions (Node 24 CJS, deployed to swh-scoreboard)
 ios-scorecard/           Capacitor iOS — App Store build (bundle: com.impactleadershipgroup.swh.scorecard)
+ios-crm/                 Capacitor iOS — CRM app (bundle: com.impactleadershipgroup.swh.crm, webDir ../public-crm)
 ios-combined/            Capacitor iOS — dev/test build (bundle: com.impactleadershipgroup.swh.combined)
 firebase.json            Hosting targets config
 firestore.rules          Firestore security rules
 ```
 
-### CRM two-file rule
+### CRM source of truth (the "two-file rule" is retired — 2026-07-06)
 
-**Always edit `public-crm/index.html` first**, then mirror all logic changes to `public-scorecard/crm.html`.
-`crm.html` is a copy of `index.html` with native-iOS patches applied on top:
+`public-crm/index.html` is the ONLY CRM file. It serves the web CRM at
+crm.stopwastinghandshakes.com AND is bundled directly into the native CRM iOS app
+(`ios-crm/capacitor.config.json` has `webDir: "../public-crm"`). All native-iOS behavior
+(safe-area CSS, `html.native-platform` rules, native paywall, `showNativeSignedOut`) lives
+inline in that one file behind `window.Capacitor?.isNativePlatform()` guards — there is no
+separate patched copy to maintain.
 
-- `html.native-platform` CSS (safe-area insets, bottom nav padding, hide install banner)
-- `.crm-back-btn.native-only` (← Scorecard back button, fixed position)
-- Capacitor detection script injected before `</head>`
-- `showNativeSignedOut()` in `onAuthStateChanged` instead of `showLogin()`
-- `showApp()` plan check includes `scorecard` plan as valid on native
-- All logos use `swh-lockup-light.png` (not dark)
+`public-scorecard/crm.html` is NOT a CRM copy. It is a stale "SWH Scoreboard v18" snapshot
+that has never contained CRM code in this repo's history (verified across every commit,
+2026-07-06). Nothing in the current apps links to it — the Scorecard reaches the CRM via
+`goToCRM()` → crm.stopwastinghandshakes.com with a cross-product token handoff. Do NOT
+port or mirror CRM features into it. It is a deletion candidate (Austen's call; until
+removed it is still publicly served at app.stopwastinghandshakes.com/crm.html, so its
+user-visible copy — tier messages, em-dash sweeps — is kept from drifting).
 
-After editing both files, deploy both targets:
+After editing `public-crm/index.html`:
 ```bash
-firebase deploy --only hosting:scorecard,hosting:crm
-```
-Then sync Capacitor:
-```bash
-cd ios-combined && npx cap sync ios
+firebase deploy --only hosting:crm
+cd ios-crm && npx cap sync ios   # refresh the native CRM bundle
 ```
 
 ---
@@ -72,7 +75,7 @@ mylola.ai / myappointment.ai scheduling data lives in **`loaniq-75a20`** (the Lo
 
 Client-side Firestore reads from either external project are always `permission-denied`. All reads go through the `getApptData` Cloud Function, which uses `LOANIQ_SERVICE_ACCOUNT_KEY` (firebase-adminsdk SA for `loaniq-75a20`) to read scheduling data via admin SDK. There is NO secondary Firebase app in the client (`apptApp`/`apptAuth`/`apptDb`) — those were removed.
 
-### Client-side (`public-crm/index.html` + `public-scorecard/crm.html`)
+### Client-side (`public-crm/index.html`)
 
 ```javascript
 // State — populated by loadApptData() via getApptData Cloud Function
@@ -138,6 +141,7 @@ Native Cloud Functions used from Scorecard iOS:
 | Project | Bundle ID | Notes |
 |---|---|---|
 | `ios-scorecard/` | `com.impactleadershipgroup.swh.scorecard` | App Store build, build 10 uploaded |
+| `ios-crm/` | `com.impactleadershipgroup.swh.crm` | CRM app — bundles `public-crm/` directly |
 | `ios-combined/` | `com.impactleadershipgroup.swh.combined` | Dev/test build — includes CRM tab |
 
 `ios-combined/` uses `webDir: "../public-scorecard"` and hostname `app.stopwastinghandshakes.com`. It has its own `GoogleService-Info.plist` registered in `project.pbxproj`.
@@ -200,4 +204,4 @@ Native Cloud Functions used from Scorecard iOS:
 - `MYAPPOINTMENT_UPGRADE_SECRET` uses `.trim()` comparison (secret was set with trailing newline via pipe)
 - `body.modal-open` must NOT use `position:fixed` — breaks iOS WKWebView touch targets
 - MutationObserver in Scorecard watches specific modal elements only, not full DOM subtree
-- `crm.html` is a manually maintained copy of `public-crm/index.html` — no build step, sync by hand after edits
+- The `crm.html` "two-file rule" is retired (2026-07-06): `public-scorecard/crm.html` is a stale Scorecard v18 snapshot, not a CRM copy. The CRM ships from `public-crm/index.html` everywhere (web + `ios-crm/` bundle)
