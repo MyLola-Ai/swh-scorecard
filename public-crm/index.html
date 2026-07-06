@@ -155,6 +155,13 @@ body{height:100%;min-height:100dvh;background:#111111;overscroll-behavior:none;}
 .logo-text{font-family:'Playfair Display',serif;font-size:14px;font-weight:900;color:#fff;line-height:1.2;}
 .logo-sub{font-size:9px;color:rgba(255,255,255,0.35);}
 
+/* Sidebar search — lives on the dark rail in both themes */
+.sidebar-search{position:relative;margin:2px 14px 10px;}
+.sidebar-search-icon{position:absolute;left:11px;top:50%;transform:translateY(-50%);font-size:12px;opacity:0.55;pointer-events:none;}
+.sidebar-search input{width:100%;background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.10);border-radius:10px;padding:9px 40px 9px 32px;color:#fff;font-family:'DM Sans',sans-serif;font-size:13px;outline:none;box-sizing:border-box;transition:background .15s,border-color .15s;}
+.sidebar-search input::placeholder{color:rgba(255,255,255,0.35);}
+.sidebar-search input:focus{background:rgba(255,255,255,0.10);border-color:rgba(255,255,255,0.24);}
+.sidebar-search-kbd{position:absolute;right:9px;top:50%;transform:translateY(-50%);font-size:10px;font-weight:700;color:rgba(255,255,255,0.35);border:1px solid rgba(255,255,255,0.14);border-radius:5px;padding:2px 5px;pointer-events:none;}
 .sidebar-nav{flex:1;padding:14px 10px;overflow-y:auto;}
 .sidebar-nav::-webkit-scrollbar{display:none;}
 .nav-section{font-size:9px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:rgba(255,255,255,0.22);padding:14px 8px 6px;}
@@ -1353,6 +1360,13 @@ html.dark-theme .st-sect-head{color:rgba(255,255,255,.55);}
         <div class="logo-text">SWH</div>
         <div class="logo-sub">Stop Wasting Handshakes</div>
       </div>
+    </div>
+    <div class="sidebar-search">
+      <span class="sidebar-search-icon">🔍</span>
+      <input id="sidebar-search-input" type="text" placeholder="Search contacts" autocomplete="off"
+        oninput="sidebarSearch(this.value)"
+        onkeydown="if(event.key==='Escape'){this.value='';sidebarSearch('');this.blur();}">
+      <span class="sidebar-search-kbd">⌘K</span>
     </div>
     <div class="sidebar-nav">
       <div class="nav-section">Overview</div>
@@ -13223,6 +13237,30 @@ window.onSendToMyLolaSubmit = async function() {
     el.addEventListener('scroll', onScroll, {passive:true});
   });
 })();
+
+// Sidebar search (desktop): pipes into My Network's contact filter.
+// Jumps to the network screen on first keystroke; Esc clears and blurs.
+window.sidebarSearch = function(q){
+  var scr = document.getElementById('screen-network');
+  var apply = function(){
+    var input = document.getElementById('net-search');
+    if (input) input.value = q;
+    if (typeof filterContacts === 'function') filterContacts(q);
+  };
+  if (scr && !scr.classList.contains('active') && q) {
+    showScreen('network', document.getElementById('nav-network'));
+    setTimeout(apply, 60);
+  } else {
+    apply();
+  }
+};
+// Cmd/Ctrl+K focuses the sidebar search when the sidebar is visible (desktop).
+document.addEventListener('keydown', function(e){
+  if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {
+    var el = document.getElementById('sidebar-search-input');
+    if (el && el.offsetParent !== null) { e.preventDefault(); el.focus(); el.select(); }
+  }
+});
 </script>
 </body>
 </html>
