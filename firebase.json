@@ -3,65 +3,116 @@
     {
       "target": "scorecard",
       "public": "public-scorecard",
-      "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+      "ignore": [
+        "firebase.json",
+        "**/.*",
+        "**/node_modules/**"
+      ],
       "headers": [
         {
           "source": "**/*.@(html|json)",
           "headers": [
-            { "key": "Cache-Control", "value": "no-store, max-age=0, must-revalidate" }
+            {
+              "key": "Cache-Control",
+              "value": "no-store, max-age=0, must-revalidate"
+            }
           ]
         },
         {
           "source": "/",
           "headers": [
-            { "key": "Cache-Control", "value": "no-store, max-age=0, must-revalidate" }
+            {
+              "key": "Cache-Control",
+              "value": "no-store, max-age=0, must-revalidate"
+            }
           ]
         },
         {
           "source": "**/*",
           "headers": [
-            { "key": "X-Content-Type-Options", "value": "nosniff" },
-            { "key": "X-Frame-Options", "value": "DENY" },
-            { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" }
+            {
+              "key": "X-Content-Type-Options",
+              "value": "nosniff"
+            },
+            {
+              "key": "X-Frame-Options",
+              "value": "DENY"
+            },
+            {
+              "key": "Referrer-Policy",
+              "value": "strict-origin-when-cross-origin"
+            }
           ]
         },
         {
           "source": "**",
           "headers": [
-            { "key": "Content-Security-Policy", "value": "default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://accounts.google.com https://apis.google.com https://js.stripe.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https://*.googleapis.com https://*.firebaseio.com https://*.cloudfunctions.net https://*.run.app https://accounts.google.com https://oauth2.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://api.stripe.com https://m.stripe.network https://login.microsoftonline.com https://graph.microsoft.com; frame-src 'self' https://js.stripe.com https://hooks.stripe.com https://accounts.google.com https://*.firebaseapp.com https://login.microsoftonline.com; frame-ancestors 'none'; form-action 'self' https://accounts.google.com https://login.microsoftonline.com https://*.stripe.com; base-uri 'self'; object-src 'none'" }
+            {
+              "key": "Content-Security-Policy",
+              "value": "default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://accounts.google.com https://apis.google.com https://js.stripe.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https://*.googleapis.com https://*.firebaseio.com https://*.cloudfunctions.net https://*.run.app https://accounts.google.com https://oauth2.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://api.stripe.com https://m.stripe.network https://login.microsoftonline.com https://graph.microsoft.com; frame-src 'self' https://js.stripe.com https://hooks.stripe.com https://accounts.google.com https://*.firebaseapp.com https://login.microsoftonline.com; frame-ancestors 'none'; form-action 'self' https://accounts.google.com https://login.microsoftonline.com https://*.stripe.com; base-uri 'self'; object-src 'none'"
+            }
           ]
+        }
+      ],
+      "redirects": [
+        {
+          "source": "/crm.html",
+          "destination": "https://crm.stopwastinghandshakes.com",
+          "type": 301
         }
       ]
     },
     {
       "target": "crm",
       "public": "public-crm",
-      "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+      "ignore": [
+        "firebase.json",
+        "**/.*",
+        "**/node_modules/**"
+      ],
       "headers": [
         {
           "source": "**/*.@(html|json)",
           "headers": [
-            { "key": "Cache-Control", "value": "no-store, max-age=0, must-revalidate" }
+            {
+              "key": "Cache-Control",
+              "value": "no-store, max-age=0, must-revalidate"
+            }
           ]
         },
         {
           "source": "/",
           "headers": [
-            { "key": "Cache-Control", "value": "no-store, max-age=0, must-revalidate" }
+            {
+              "key": "Cache-Control",
+              "value": "no-store, max-age=0, must-revalidate"
+            }
           ]
         },
         {
           "source": "**/*",
           "headers": [
-            { "key": "X-Content-Type-Options", "value": "nosniff" },
-            { "key": "X-Frame-Options", "value": "DENY" },
-            { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" }
+            {
+              "key": "X-Content-Type-Options",
+              "value": "nosniff"
+            },
+            {
+              "key": "X-Frame-Options",
+              "value": "DENY"
+            },
+            {
+              "key": "Referrer-Policy",
+              "value": "strict-origin-when-cross-origin"
+            }
           ]
         },
         {
           "source": "**",
           "headers": [
-            { "key": "Content-Security-Policy", "value": "default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://accounts.google.com https://apis.google.com https://js.stripe.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https://*.googleapis.com https://*.firebaseio.com https://*.cloudfunctions.net https://*.run.app https://accounts.google.com https://oauth2.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://api.stripe.com https://m.stripe.network https://login.microsoftonline.com https://graph.microsoft.com; frame-src 'self' https://js.stripe.com https://hooks.stripe.com https://accounts.google.com https://*.firebaseapp.com https://login.microsoftonline.com; frame-ancestors 'none'; form-action 'self' https://accounts.google.com https://login.microsoftonline.com https://*.stripe.com; base-uri 'self'; object-src 'none'" }
+            {
+              "key": "Content-Security-Policy",
+              "value": "default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://accounts.google.com https://apis.google.com https://js.stripe.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https://*.googleapis.com https://*.firebaseio.com https://*.cloudfunctions.net https://*.run.app https://accounts.google.com https://oauth2.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://api.stripe.com https://m.stripe.network https://login.microsoftonline.com https://graph.microsoft.com; frame-src 'self' https://js.stripe.com https://hooks.stripe.com https://accounts.google.com https://*.firebaseapp.com https://login.microsoftonline.com; frame-ancestors 'none'; form-action 'self' https://accounts.google.com https://login.microsoftonline.com https://*.stripe.com; base-uri 'self'; object-src 'none'"
+            }
           ]
         }
       ]
@@ -70,32 +121,54 @@
       "target": "landing",
       "public": "public-landing",
       "cleanUrls": true,
-      "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+      "ignore": [
+        "firebase.json",
+        "**/.*",
+        "**/node_modules/**"
+      ],
       "headers": [
         {
           "source": "**/*.@(html|json)",
           "headers": [
-            { "key": "Cache-Control", "value": "no-store, max-age=0, must-revalidate" }
+            {
+              "key": "Cache-Control",
+              "value": "no-store, max-age=0, must-revalidate"
+            }
           ]
         },
         {
           "source": "/",
           "headers": [
-            { "key": "Cache-Control", "value": "no-store, max-age=0, must-revalidate" }
+            {
+              "key": "Cache-Control",
+              "value": "no-store, max-age=0, must-revalidate"
+            }
           ]
         },
         {
           "source": "**/*",
           "headers": [
-            { "key": "X-Content-Type-Options", "value": "nosniff" },
-            { "key": "X-Frame-Options", "value": "DENY" },
-            { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" }
+            {
+              "key": "X-Content-Type-Options",
+              "value": "nosniff"
+            },
+            {
+              "key": "X-Frame-Options",
+              "value": "DENY"
+            },
+            {
+              "key": "Referrer-Policy",
+              "value": "strict-origin-when-cross-origin"
+            }
           ]
         },
         {
           "source": "**",
           "headers": [
-            { "key": "Content-Security-Policy", "value": "default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self'; frame-ancestors 'none'; form-action 'self'; base-uri 'self'; object-src 'none'" }
+            {
+              "key": "Content-Security-Policy",
+              "value": "default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self'; frame-ancestors 'none'; form-action 'self'; base-uri 'self'; object-src 'none'"
+            }
           ]
         }
       ]
@@ -103,32 +176,54 @@
     {
       "target": "admin",
       "public": "public-admin",
-      "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+      "ignore": [
+        "firebase.json",
+        "**/.*",
+        "**/node_modules/**"
+      ],
       "headers": [
         {
           "source": "**/*.@(html|json)",
           "headers": [
-            { "key": "Cache-Control", "value": "no-store, max-age=0, must-revalidate" }
+            {
+              "key": "Cache-Control",
+              "value": "no-store, max-age=0, must-revalidate"
+            }
           ]
         },
         {
           "source": "/",
           "headers": [
-            { "key": "Cache-Control", "value": "no-store, max-age=0, must-revalidate" }
+            {
+              "key": "Cache-Control",
+              "value": "no-store, max-age=0, must-revalidate"
+            }
           ]
         },
         {
           "source": "**/*",
           "headers": [
-            { "key": "X-Content-Type-Options", "value": "nosniff" },
-            { "key": "X-Frame-Options", "value": "DENY" },
-            { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" }
+            {
+              "key": "X-Content-Type-Options",
+              "value": "nosniff"
+            },
+            {
+              "key": "X-Frame-Options",
+              "value": "DENY"
+            },
+            {
+              "key": "Referrer-Policy",
+              "value": "strict-origin-when-cross-origin"
+            }
           ]
         },
         {
           "source": "**",
           "headers": [
-            { "key": "Content-Security-Policy", "value": "default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https://*.googleapis.com https://*.firebaseio.com https://*.cloudfunctions.net https://*.run.app https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://firebasestorage.googleapis.com; frame-ancestors 'none'; form-action 'self'; base-uri 'self'; object-src 'none'" }
+            {
+              "key": "Content-Security-Policy",
+              "value": "default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https://*.googleapis.com https://*.firebaseio.com https://*.cloudfunctions.net https://*.run.app https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://firebasestorage.googleapis.com; frame-ancestors 'none'; form-action 'self'; base-uri 'self'; object-src 'none'"
+            }
           ]
         }
       ]
@@ -139,7 +234,13 @@
       "source": "functions",
       "codebase": "default",
       "disallowLegacyRuntimeConfig": true,
-      "ignore": ["node_modules", ".git", "firebase-debug.log", "firebase-debug.*.log", "*.local"]
+      "ignore": [
+        "node_modules",
+        ".git",
+        "firebase-debug.log",
+        "firebase-debug.*.log",
+        "*.local"
+      ]
     }
   ],
   "firestore": {

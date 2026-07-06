@@ -4,9 +4,8 @@
  * Mirrors the spec's ConnectAccounts.tsx + ContactEmailPanel.tsx +
  * CalendarPanel.tsx as plain JS (the CRM is a single-file vanilla SPA).
  *
- * Two-file rule: this file lives in public-crm/. For the Capacitor build,
- * add the same <script> include to public-scorecard/crm.html (copy the file
- * there, or reference the absolute https URL).
+ * This file lives in public-crm/, which serves the web CRM and is bundled
+ * directly into the native CRM iOS app (single source of truth).
  *
  * Embed:
  *   <script src="nylas-email.js"></script>

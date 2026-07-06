@@ -173,7 +173,7 @@ function addDays(dateKey, days) {
   return fmtDate(d);
 }
 // KEEP IN SYNC with the tier msgs in public-scorecard/index.html (tiers array
-// + tiers modal), public-scorecard/crm.html, and public-crm/index.html.
+// + tiers modal) and public-crm/index.html.
 function getTier(pts) {
   if (pts >= 200) return { name:'Master Networker', emoji:'🥇', color:'#D4A847', msg:"Gold earned. Every handshake honored. You are the network." };
   if (pts >= 150) return { name:'Professional Networker', emoji:'🥈', color:'#9CA3AF', msg:"Silver earned. You follow through when others fade away." };
