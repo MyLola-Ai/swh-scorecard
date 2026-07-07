@@ -10748,9 +10748,16 @@ window.scanCard = async function() {
   document.getElementById('card-error').style.display = 'none';
 
   try {
-    const scanFn = httpsCallable(functions, 'scanBusinessCard');
-    const result = await scanFn({ imageBase64: cardImageBase64, mediaType: 'image/jpeg' });
-    const info = result.data;
+    let info;
+    if (isNativeEarly) {
+      // scanBusinessCard is an onCall fn — raw HTTP needs the callable envelope: {data} in, {result} out
+      const resp = await NativeAPI.call('scanBusinessCard', { data: { imageBase64: cardImageBase64, mediaType: 'image/jpeg' } }, { timeout: 60000 });
+      info = resp.result || {};
+    } else {
+      const scanFn = httpsCallable(functions, 'scanBusinessCard');
+      const result = await scanFn({ imageBase64: cardImageBase64, mediaType: 'image/jpeg' });
+      info = result.data;
+    }
 
     document.getElementById('scan-first').value = info.firstName || '';
     document.getElementById('scan-last').value = info.lastName || '';

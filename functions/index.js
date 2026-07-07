@@ -110,11 +110,12 @@ exports.scanBusinessCard = onCall({
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'x-api-key': ANTHROPIC_API_KEY.value(),
+      // secrets set via pipe carry a trailing newline; undici rejects it as a header value
+      'x-api-key': ANTHROPIC_API_KEY.value().trim(),
       'anthropic-version': '2023-06-01'
     },
     body: JSON.stringify({
-      model: 'claude-opus-4-5',
+      model: 'claude-opus-4-8',
       max_tokens: 500,
       messages: [{
         role: 'user',
@@ -126,9 +127,20 @@ exports.scanBusinessCard = onCall({
     })
   });
 
-  const result = await response.json();
-  const text = result.content?.[0]?.text || '{}';
-  return JSON.parse(text.replace(/```json|```/g, '').trim());
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    console.error('scanBusinessCard: Anthropic API error', response.status, JSON.stringify(result.error || result).slice(0, 500));
+    throw new HttpsError('internal', result.error?.message || `Card scan failed (API ${response.status}).`);
+  }
+  const text = result.content?.find(b => b.type === 'text')?.text || '{}';
+  try {
+    return JSON.parse(text.replace(/```json|```/g, '').trim());
+  } catch (_) {
+    const m = text.match(/\{[\s\S]*\}/);
+    if (m) { try { return JSON.parse(m[0]); } catch (_) {} }
+    console.error('scanBusinessCard: unparseable model output', text.slice(0, 300));
+    throw new HttpsError('internal', 'Could not parse card data.');
+  }
 });
 
 // ===== Auth helper — verify the Firebase ID token from the Authorization header =====
