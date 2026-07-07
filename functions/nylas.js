@@ -834,6 +834,65 @@ function resultPage(title, body, success) {
 }
 
 // ============================================================
+// Direct send from the Lola Draft modal — any contact, no queue.
+// Sends via the user's connected grant and records the email on the
+// contact (Emails tab). No step/points side effects; the user marks
+// steps intentionally.
+// ============================================================
+exports.sendContactEmail = onRequest(
+  { cors: true, secrets: [NYLAS_API_KEY], invoker: 'public' },
+  async (req, res) => {
+    try {
+      const decoded = await requireAuth(req);
+      const uid = decoded.uid;
+
+      const { contactId, subject, body } = req.body || {};
+      if (!contactId || !body) return res.status(400).json({ error: 'Missing required fields.' });
+
+      const contactDoc = await db().doc(`users/${uid}/contacts/${contactId}`).get();
+      if (!contactDoc.exists) return res.status(404).json({ error: 'Contact not found.' });
+      const contact = contactDoc.data();
+      if (!contact.email) return res.status(400).json({ error: 'Contact has no email address.' });
+
+      const integration = await loadActiveGrant(uid, res);
+      if (!integration) return;
+
+      // Nylas treats body as HTML; drafts are plain text
+      const html = escapeHtml(String(body))
+        .replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1">$1</a>')
+        .replace(/\n/g, '<br>');
+
+      const nylas = nylasClient();
+      const sendResp = await nylas.messages.send({
+        identifier: integration.grantId,
+        requestBody: {
+          to: [{ email: contact.email, name: contact.name || contact.email }],
+          subject: subject || 'Hello',
+          body: html,
+        },
+      });
+
+      const msgData = sendResp.data || sendResp;
+      const nylasMsgId = msgData.id || `ld_${Date.now()}`;
+      await db().doc(`users/${uid}/contacts/${contactId}/emails/${nylasMsgId}`).set({
+        direction: 'sent',
+        subject: subject || '',
+        snippet: String(body).slice(0, 200),
+        sentAt: new Date().toISOString(),
+        source: 'lola-draft',
+        syncedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+
+      return res.json({ ok: true, id: nylasMsgId });
+    } catch (e) {
+      await maybeFlagExpired(req, e);
+      console.error('[sendContactEmail]', e.message);
+      return sendErr(res, e);
+    }
+  }
+);
+
+// ============================================================
 // Follow-Through Queue: one-tap send from the morning queue
 // ============================================================
 const ADMIN_EMAILS_FTQ = ['austen@austensmith.com'];

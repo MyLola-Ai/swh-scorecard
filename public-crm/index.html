@@ -8314,39 +8314,193 @@ window.openEmailActionPopup = function(contactId, email, btn) {
   }, 0);
 };
 
-// ── Context-aware Lola Draft (from Email action button) ─────────────────
-window.draftContactEmail = async function(contactId) {
-  const c = CONTACTS.find(x => x.id === contactId);
-  if (!c) return;
-  _neDraftCtx = { contactId, mode: 'contact' };
+// ── Lola Draft shared plumbing ──────────────────────────────────────────
+// onCall fns need the callable envelope on native: {data} in, {result} out
+// (httpsCallable can't attach auth on capacitor://)
+async function callLolaFn(name, payload, timeoutMs) {
+  if (isNativeEarly) {
+    const resp = await NativeAPI.call(name, { data: payload }, { timeout: timeoutMs || 90000 });
+    return { data: resp.result || {} };
+  }
+  return httpsCallable(functions, name)(payload);
+}
 
-  const overlay = document.getElementById('ne-draft-modal-overlay');
-  document.getElementById('ne-draft-modal-title').textContent = 'Drafting your email...';
-  document.getElementById('ne-draft-modal-sub').textContent   = c.name || '';
+async function lolaIdToken() {
+  if (isNativeEarly) { await NativeAPI._refreshIfNeeded(); return NativeAPI.idToken; }
+  return currentUser.getIdToken();
+}
+
+const LOLA_DRAFT_TYPES = [
+  { key: 'auto',       emoji: '✨', label: "Lola's pick",     hint: 'The right touch for where you are with them' },
+  { key: 'one_on_one', emoji: '☕', label: 'Set up a 1-on-1', hint: 'Coffee or a quick call to get to know them' },
+  { key: 'check_in',   emoji: '👋', label: 'Check in',        hint: 'No agenda, just thinking of them' },
+  { key: 'thank_you',  emoji: '🙏', label: 'Say thanks',      hint: 'For a referral, an intro, or their time' },
+  { key: 'reconnect',  emoji: '🌱', label: 'Reconnect',       hint: 'Warm the relationship back up' },
+];
+
+function renderDraftTypes(mode) { // 'pick' = full option list, 'chips' = compact switcher
+  const wrap = document.getElementById('ne-draft-types');
+  const active = _neDraftCtx?.draftType;
+  wrap.style.display = 'flex';
+  if (mode === 'pick') {
+    wrap.style.flexDirection = 'column';
+    wrap.style.flexWrap = 'nowrap';
+    wrap.innerHTML = LOLA_DRAFT_TYPES.map(t => `
+      <button onclick="neDraftGenerate('${t.key}')" style="display:flex;align-items:center;gap:12px;padding:12px 14px;border:1.5px solid var(--border);background:var(--card);border-radius:12px;cursor:pointer;text-align:left;font-family:'DM Sans',sans-serif;width:100%;">
+        <span style="font-size:20px;">${t.emoji}</span>
+        <span style="display:flex;flex-direction:column;gap:1px;">
+          <span style="font-size:13.5px;font-weight:700;color:var(--text);">${t.label}</span>
+          <span style="font-size:11.5px;color:var(--muted);">${t.hint}</span>
+        </span>
+      </button>`).join('');
+  } else {
+    wrap.style.flexDirection = 'row';
+    wrap.style.flexWrap = 'wrap';
+    wrap.innerHTML = LOLA_DRAFT_TYPES.map(t => {
+      const on = t.key === active;
+      return `<button onclick="neDraftGenerate('${t.key}')" style="padding:6px 11px;border-radius:999px;border:1.5px solid ${on ? 'transparent' : 'var(--border)'};background:${on ? 'linear-gradient(135deg,#5B5BD6,#A78BFA)' : 'var(--card)'};color:${on ? '#fff' : 'var(--muted)'};font-size:12px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;">${t.emoji} ${t.label}</button>`;
+    }).join('');
+  }
+}
+
+function neDraftSpinner(msg) {
   document.getElementById('ne-draft-spinner').innerHTML =
-    '<div style="font-size:28px;margin-bottom:8px;animation:spin 1s linear infinite;display:inline-block;">⏳</div><br>Lola is writing...';
+    `<div style="font-size:28px;margin-bottom:8px;animation:spin 1s linear infinite;display:inline-block;">⏳</div><br>${msg}`;
   document.getElementById('ne-draft-spinner').style.display = 'block';
   document.getElementById('ne-draft-fields').style.display  = 'none';
   document.getElementById('ne-draft-actions').style.display = 'none';
+  document.getElementById('ne-draft-guidance-wrap').style.display = 'none';
+}
+
+function neDraftShowResult(data) {
+  document.getElementById('ne-draft-subj').value = data.subject || '';
+  document.getElementById('ne-draft-body').value = data.body    || '';
+  document.getElementById('ne-draft-spinner').style.display = 'none';
+  document.getElementById('ne-draft-fields').style.display  = 'flex';
+  document.getElementById('ne-draft-actions').style.display = 'flex';
+  document.getElementById('ne-draft-guidance-wrap').style.display = 'block';
+  updateSendBtn();
+}
+
+function neDraftShowError(err) {
+  document.getElementById('ne-draft-spinner').innerHTML =
+    `<div style="color:var(--red);font-size:13px;">Failed to generate draft.<br><small>${err.message||''}</small></div>`;
+  document.getElementById('ne-draft-spinner').style.display = 'block';
+}
+
+// ── Direct send via the user's connected email (Nylas grant) ───────────
+let _lolaSendReady = null; // session cache: null unknown, true/false known
+async function primeSendAvailability() {
+  if (_lolaSendReady === null) {
+    try {
+      const tok = await lolaIdToken();
+      const r = await fetch(`${CRM_FUNCTIONS_BASE}/nylasStatus`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${tok}` },
+        body: '{}',
+      });
+      const s = await r.json();
+      _lolaSendReady = !!(s && s.connected && s.status === 'active');
+    } catch (_) { _lolaSendReady = false; }
+  }
+  updateSendBtn();
+}
+
+function updateSendBtn() {
+  const btn    = document.getElementById('ne-draft-send-btn');
+  const mailto = document.getElementById('ne-draft-mailto-btn');
+  const c = _neDraftCtx && CONTACTS.find(x => x.id === _neDraftCtx.contactId);
+  const ready = _lolaSendReady === true && !!(c && c.email);
+  btn.style.display = ready ? '' : 'none';
+  if (ready) { // Send becomes the primary action; Open in Mail steps back
+    btn.style.background = 'linear-gradient(135deg,#5B5BD6,#A78BFA)'; btn.style.color = '#fff'; btn.style.borderColor = 'transparent';
+    mailto.style.background = ''; mailto.style.color = ''; mailto.style.borderColor = '';
+  } else {
+    mailto.style.background = 'linear-gradient(135deg,#5B5BD6,#A78BFA)'; mailto.style.color = '#fff'; mailto.style.borderColor = 'transparent';
+  }
+}
+
+let _sendArmTimer = null;
+window.neStepDraftSend = async function() {
+  const btn = document.getElementById('ne-draft-send-btn');
+  const c = _neDraftCtx && CONTACTS.find(x => x.id === _neDraftCtx.contactId);
+  if (!c || !c.email) { showToast('⚠️ This contact has no email address'); return; }
+  if (btn.dataset.armed !== '1') { // two-tap confirm: arm first, send on second tap
+    btn.dataset.armed = '1';
+    btn.textContent = `Send to ${c.email}?`;
+    clearTimeout(_sendArmTimer);
+    _sendArmTimer = setTimeout(() => { btn.dataset.armed = ''; btn.textContent = 'Send'; }, 5000);
+    return;
+  }
+  clearTimeout(_sendArmTimer);
+  btn.dataset.armed = '';
+  btn.disabled = true; btn.textContent = 'Sending...';
+  try {
+    const tok = await lolaIdToken();
+    const r = await fetch(`${CRM_FUNCTIONS_BASE}/sendContactEmail`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${tok}` },
+      body: JSON.stringify({
+        contactId: c.id,
+        subject: document.getElementById('ne-draft-subj').value,
+        body: document.getElementById('ne-draft-body').value,
+      }),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.needsReconnect ? 'Email connection expired. Reconnect in Settings.' : (j.error || `HTTP ${r.status}`));
+    btn.textContent = 'Sent ✓';
+    showToast(`📧 Sent to ${c.name}`);
+    setTimeout(() => { neStepDraftClose(); btn.disabled = false; btn.textContent = 'Send'; }, 900);
+  } catch (e) {
+    btn.disabled = false; btn.textContent = 'Send';
+    showToast('⚠️ ' + (e.message || 'Send failed'));
+  }
+};
+
+// ── Context-aware Lola Draft (from Email action button) ─────────────────
+// Opens with the intent picker; generation happens on pick.
+window.draftContactEmail = async function(contactId) {
+  const c = CONTACTS.find(x => x.id === contactId);
+  if (!c) return;
+  _neDraftCtx = { contactId, mode: 'contact', draftType: null };
+
+  document.getElementById('ne-draft-modal-title').textContent = 'What should Lola write?';
+  document.getElementById('ne-draft-modal-sub').textContent   = c.name || '';
+  document.getElementById('ne-draft-spinner').style.display   = 'none';
+  document.getElementById('ne-draft-fields').style.display    = 'none';
+  document.getElementById('ne-draft-actions').style.display   = 'none';
+  document.getElementById('ne-draft-guidance-wrap').style.display = 'none';
   document.getElementById('ne-draft-subj').value = '';
   document.getElementById('ne-draft-body').value = '';
-  overlay.classList.add('open');
+  document.getElementById('ne-draft-guidance').value = '';
+  renderDraftTypes('pick');
+  document.getElementById('ne-draft-modal-overlay').classList.add('open');
+  primeSendAvailability();
+};
+
+window.neDraftGenerate = async function(draftType, opts) {
+  if (!_neDraftCtx) return;
+  _neDraftCtx.draftType = draftType;
+  const { contactId } = _neDraftCtx;
+  const c = CONTACTS.find(x => x.id === contactId);
+  const meta = LOLA_DRAFT_TYPES.find(t => t.key === draftType) || LOLA_DRAFT_TYPES[0];
+
+  renderDraftTypes('chips');
+  document.getElementById('ne-draft-modal-title').textContent = 'Drafting your email...';
+  neDraftSpinner(opts?.guidance ? 'Applying your notes...' : 'Lola is writing...');
 
   try {
-    const fn  = httpsCallable(functions, 'draftContactEmail');
-    const res = await fn({ contactId });
-    document.getElementById('ne-draft-subj').value            = res.data.subject || '';
-    document.getElementById('ne-draft-body').value            = res.data.body    || '';
-    document.getElementById('ne-draft-spinner').style.display = 'none';
-    document.getElementById('ne-draft-fields').style.display  = 'flex';
-    document.getElementById('ne-draft-actions').style.display = 'flex';
-    const stepsDone = c.steps || 0;
+    const payload = { contactId, draftType };
+    if (opts?.guidance)      payload.guidance      = opts.guidance;
+    if (opts?.previousDraft) payload.previousDraft = opts.previousDraft;
+    const res = await callLolaFn('draftContactEmail', payload, 90000);
+    neDraftShowResult(res.data);
+    const stepsDone = c?.steps || 0;
     document.getElementById('ne-draft-modal-title').textContent =
-      stepsDone >= 8 ? 'Draft ready, keeping it warm' : `Draft ready, ${stepsDone}/8 steps in`;
-  } catch (err) {
-    document.getElementById('ne-draft-spinner').innerHTML =
-      `<div style="color:var(--red);font-size:13px;">Failed to generate draft.<br><small>${err.message||''}</small></div>`;
-  }
+      draftType === 'auto'
+        ? (stepsDone >= 8 ? 'Draft ready, keeping it warm' : `Draft ready, ${stepsDone}/8 steps in`)
+        : `Draft ready: ${meta.label}`;
+  } catch (err) { neDraftShowError(err); }
 };
 
 // ── Generate Email modal (step cards) ──────────────────────────────────
@@ -8361,35 +8515,32 @@ window.generateNeStepEmail = async function(contactId, stepIndex) {
   }
   const pb   = playbookFor(c);
   const step = pb.steps[stepIndex] || {};
-  _neDraftCtx = { contactId, stepIndex };
+  _neDraftCtx = { contactId, stepIndex, mode: 'step' };
 
   const overlay = document.getElementById('ne-draft-modal-overlay');
   document.getElementById('ne-draft-modal-title').textContent = `Step ${stepIndex + 1}: ${step.name || ''}`;
   document.getElementById('ne-draft-modal-sub').textContent   = c.name || '';
-  document.getElementById('ne-draft-spinner').style.display   = 'block';
-  document.getElementById('ne-draft-fields').style.display    = 'none';
-  document.getElementById('ne-draft-actions').style.display   = 'none';
+  document.getElementById('ne-draft-types').style.display = 'none';
+  neDraftSpinner('Lola is writing...');
   document.getElementById('ne-draft-subj').value = '';
   document.getElementById('ne-draft-body').value = '';
+  document.getElementById('ne-draft-guidance').value = '';
   overlay.classList.add('open');
+  primeSendAvailability();
 
   try {
-    const fn  = httpsCallable(functions, 'generateStepDraft');
-    const res = await fn({ contactId, stepIndex });
-    document.getElementById('ne-draft-subj').value          = res.data.subject || '';
-    document.getElementById('ne-draft-body').value          = res.data.body    || '';
-    document.getElementById('ne-draft-spinner').style.display = 'none';
-    document.getElementById('ne-draft-fields').style.display  = 'flex';
-    document.getElementById('ne-draft-actions').style.display = 'flex';
+    const res = await callLolaFn('generateStepDraft', { contactId, stepIndex });
+    neDraftShowResult(res.data);
     document.getElementById('ne-draft-modal-title').textContent = `Draft ready. Step ${stepIndex + 1}`;
-  } catch (err) {
-    document.getElementById('ne-draft-spinner').innerHTML =
-      `<div style="color:var(--red);font-size:13px;">Failed to generate draft.<br><small>${err.message||''}</small></div>`;
-  }
+  } catch (err) { neDraftShowError(err); }
 };
 
 window.neStepDraftClose = function() {
   document.getElementById('ne-draft-modal-overlay').classList.remove('open');
+  document.getElementById('ne-draft-types').style.display = 'none';
+  const sendBtn = document.getElementById('ne-draft-send-btn');
+  sendBtn.dataset.armed = ''; sendBtn.textContent = 'Send'; sendBtn.disabled = false;
+  clearTimeout(_sendArmTimer);
   _neDraftCtx = null;
 };
 
@@ -8412,39 +8563,36 @@ window.neStepDraftMailto = function() {
   window.open(`mailto:${to}?subject=${subj}&body=${body}`, '_blank');
 };
 
+// Regenerate: with guidance = revise the current draft per the user's
+// notes; without = fresh take.
 window.neStepDraftRegenerate = async function() {
   if (!_neDraftCtx) return;
-  const { contactId, stepIndex, mode } = _neDraftCtx;
-  document.getElementById('ne-draft-spinner').innerHTML =
-    '<div style="font-size:28px;margin-bottom:8px;animation:spin 1s linear infinite;display:inline-block;">⏳</div><br>Regenerating...';
-  document.getElementById('ne-draft-spinner').style.display = 'block';
-  document.getElementById('ne-draft-fields').style.display  = 'none';
-  document.getElementById('ne-draft-actions').style.display = 'none';
-  try {
-    let res;
-    if (mode === 'contact') {
-      res = await httpsCallable(functions, 'draftContactEmail')({ contactId });
-    } else {
-      res = await httpsCallable(functions, 'generateStepDraft')({ contactId, stepIndex });
+  const { contactId, stepIndex, mode, draftType } = _neDraftCtx;
+  const guidance = document.getElementById('ne-draft-guidance').value.trim().slice(0, 500);
+  const previousDraft = guidance ? {
+    subject: document.getElementById('ne-draft-subj').value,
+    body:    document.getElementById('ne-draft-body').value,
+  } : null;
+
+  if (mode === 'contact') {
+    await window.neDraftGenerate(draftType || 'auto', guidance ? { guidance, previousDraft } : undefined);
+    if (guidance && document.getElementById('ne-draft-fields').style.display !== 'none') {
+      document.getElementById('ne-draft-guidance').value = '';
     }
-    document.getElementById('ne-draft-subj').value            = res.data.subject || '';
-    document.getElementById('ne-draft-body').value            = res.data.body    || '';
-    document.getElementById('ne-draft-spinner').style.display = 'none';
-    document.getElementById('ne-draft-fields').style.display  = 'flex';
-    document.getElementById('ne-draft-actions').style.display = 'flex';
-    const c = CONTACTS.find(x => x.id === contactId);
-    if (mode === 'contact') {
-      const stepsDone = c?.steps || 0;
-      document.getElementById('ne-draft-modal-title').textContent =
-        stepsDone >= 8 ? 'Draft ready, keeping it warm' : `Draft ready, ${stepsDone}/8 steps in`;
-    } else {
-      const step = playbookFor(c).steps[stepIndex] || {};
-      document.getElementById('ne-draft-modal-title').textContent = `Draft ready. Step ${stepIndex + 1}: ${step.name || ''}`;
-    }
-  } catch (err) {
-    document.getElementById('ne-draft-spinner').innerHTML =
-      `<div style="color:var(--red);font-size:13px;">Failed.<br><small>${err.message||''}</small></div>`;
+    return;
   }
+
+  neDraftSpinner(guidance ? 'Applying your notes...' : 'Regenerating...');
+  try {
+    const payload = { contactId, stepIndex };
+    if (guidance) { payload.guidance = guidance; payload.previousDraft = previousDraft; }
+    const res = await callLolaFn('generateStepDraft', payload, 90000);
+    neDraftShowResult(res.data);
+    if (guidance) document.getElementById('ne-draft-guidance').value = '';
+    const c = CONTACTS.find(x => x.id === contactId);
+    const step = playbookFor(c).steps[stepIndex] || {};
+    document.getElementById('ne-draft-modal-title').textContent = `Draft ready. Step ${stepIndex + 1}: ${step.name || ''}`;
+  } catch (err) { neDraftShowError(err); }
 };
 // ── /Generate Email modal ───────────────────────────────────────────────
 
@@ -13295,6 +13443,7 @@ window.onSendToMyLolaSubmit = async function() {
       <div class="ctx-subtitle" id="ne-draft-modal-sub"></div>
     </div>
     <div class="ctx-body" id="ne-draft-modal-body" style="padding:16px 20px;display:flex;flex-direction:column;gap:10px;">
+      <div id="ne-draft-types" style="display:none;gap:8px;"></div>
       <div id="ne-draft-spinner" style="text-align:center;padding:32px 0;color:var(--muted);font-size:13px;">
         <div style="font-size:28px;margin-bottom:8px;animation:spin 1s linear infinite;display:inline-block;">⏳</div><br>Lola is writing...
       </div>
@@ -13308,13 +13457,18 @@ window.onSendToMyLolaSubmit = async function() {
           <textarea id="ne-draft-body" rows="9" style="width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;font-family:'DM Sans',sans-serif;resize:vertical;box-sizing:border-box;background:var(--bg);color:var(--navy);line-height:1.55;"></textarea>
         </div>
       </div>
+      <div id="ne-draft-guidance-wrap" style="display:none;">
+        <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px;">Want it different?</div>
+        <input id="ne-draft-guidance" type="text" placeholder="Tell Lola what to change: shorter, more casual, mention their kids..." onkeydown="if(event.key==='Enter')neStepDraftRegenerate()" style="width:100%;padding:7px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;font-family:'DM Sans',sans-serif;box-sizing:border-box;background:var(--bg);color:var(--navy);">
+      </div>
     </div>
     <div style="padding:12px 20px 16px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:8px;">
       <button class="tb-btn" onclick="neStepDraftClose()">Close</button>
-      <div style="display:flex;gap:8px;" id="ne-draft-actions" style="display:none;">
+      <div id="ne-draft-actions" style="display:none;gap:8px;flex-wrap:wrap;justify-content:flex-end;">
         <button class="tb-btn" id="ne-draft-regen-btn" onclick="neStepDraftRegenerate()" style="color:#5B5BD6;border-color:#5B5BD6;">↺ Regenerate</button>
         <button class="tb-btn" id="ne-draft-copy-btn" onclick="neStepDraftCopy()" style="font-weight:700;">Copy</button>
         <button class="tb-btn" id="ne-draft-mailto-btn" onclick="neStepDraftMailto()" style="font-weight:700;background:linear-gradient(135deg,#5B5BD6,#A78BFA);color:#fff;border-color:transparent;">Open in Mail</button>
+        <button class="tb-btn" id="ne-draft-send-btn" onclick="neStepDraftSend()" style="display:none;font-weight:700;">Send</button>
       </div>
     </div>
   </div>

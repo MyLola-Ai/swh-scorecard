@@ -4108,7 +4108,7 @@ When listing contacts, use this format (no bullet markers, just lines):
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: 'claude-opus-4-5',
+        model: 'claude-opus-4-8',
         max_tokens: 1500,
         system: fullSystemPrompt,
         messages: [
@@ -6316,7 +6316,7 @@ Return ONLY valid JSON, no prose, no markdown fences:
       'anthropic-version': '2023-06-01',
     },
     body: JSON.stringify({
-      model: 'claude-opus-4-5',
+      model: 'claude-opus-4-8',
       max_tokens: 600,
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
@@ -6525,6 +6525,8 @@ exports.generateStepDraft = onCall({ secrets: [ANTHROPIC_API_KEY] }, async (requ
   const stepIndex = Number(request.data?.stepIndex  ?? -1);
   if (!contactId || stepIndex < 0 || stepIndex > 7)
     throw new HttpsError('invalid-argument', 'contactId and stepIndex (0-7) required');
+  const guidance = String(request.data?.guidance || '').slice(0, 500);
+  const prevBody = String(request.data?.previousDraft?.body || '').slice(0, 2500);
 
   const [contactSnap, userSnap, pbSnap] = await Promise.all([
     db.doc(`users/${uid}/contacts/${contactId}`).get(),
@@ -6563,6 +6565,8 @@ exports.generateStepDraft = onCall({ secrets: [ANTHROPIC_API_KEY] }, async (requ
     form:           c.form    || {},
     userFirstName,
     daysSinceClockStart,
+    userFeedback: guidance,
+    previousBody: prevBody,
     signature: buildSignature(ud),
     linkUrl:   stepLink(stepName),
   });
@@ -6596,9 +6600,28 @@ exports.draftContactEmail = onCall({ secrets: [ANTHROPIC_API_KEY] }, async (requ
     ? Math.floor((Date.now() - new Date(clockKey + 'T12:00:00Z').getTime()) / 86400000)
     : 0;
 
-  const situation = allDone
+  // User-picked intent from the Lola Draft modal; 'auto' keeps the
+  // step-aware default. Guidance + previousDraft come from Regenerate.
+  const draftType = String(request.data?.draftType || 'auto');
+  const guidance  = String(request.data?.guidance || '').slice(0, 500);
+  const prev      = request.data?.previousDraft || null;
+  const prevBody  = prev ? String(prev.body || '').slice(0, 2500) : '';
+
+  const INTENT_SITUATIONS = {
+    one_on_one: 'Draft an invitation to get together for a 1-on-1: coffee, lunch, or a quick call in the next week or two. Warm and low-pressure. The point is to get to know them better, not to pitch. Make the ask easy to say yes to and let them pick the time.',
+    check_in:   'Draft a no-agenda check-in. A small kept commitment: you were thinking about them and wanted them to know. Reference something specific they shared (family, work, season of life) if you have it. No ask, no pitch, no "let me know if you need anything" filler. Keep it to a few sentences.',
+    thank_you:  'Draft a genuine thank-you. Use the notes and FORM intel to find what to thank them for (a referral, an introduction, their time, something they taught you). Be specific about what it meant. Gratitude only. No ask, no pivot to business.',
+    reconnect:  'It has been a while since you two connected. Draft a warm re-opening that acknowledges the gap without over-apologizing, brings up something you remember about them, and gives a genuine reason to reconnect. No guilt, no fake urgency.',
+  };
+  const relationshipLine = `Relationship status: ${stepsDone} of 8 follow-through steps completed${daysSince ? `, ${daysSince} days since you met` : ''}. Match the warmth and familiarity to that depth.`;
+
+  const autoSituation = allDone
     ? `You have completed all 8 follow-through steps with this person. They are a real, cultivated relationship — not a prospect to chase. The goal of this email is to keep the relationship warm and prevent it from going stagnant. Find a genuine, specific reason to reach out: a useful resource, a referral opportunity, something tied to what they shared (family, work, hobbies, goals), a milestone worth acknowledging, or a simple human check-in that adds value. No pitch, no agenda — just a real touch that reminds them you think of them.`
     : `You have completed ${stepsDone} of 8 follow-through steps with this person (${daysSince} days since you met). This is NOT a scripted step — just draft the right email for where you are with them right now. Match the tone and depth to the relationship as it actually stands at this moment.`;
+
+  const situation = INTENT_SITUATIONS[draftType]
+    ? INTENT_SITUATIONS[draftType] + '\n' + relationshipLine
+    : autoSituation;
 
   const formParts = c.form
     ? ['family','occupation','recreation','motivation'].map(k => c.form[k] ? `${k}: ${c.form[k]}` : '').filter(Boolean)
@@ -6611,8 +6634,10 @@ exports.draftContactEmail = onCall({ secrets: [ANTHROPIC_API_KEY] }, async (requ
     `My name: ${userFirstName}`,
     c.notes   ? `My notes on them: ${String(c.notes).slice(0, 300)}` : '',
     formParts.length ? `FORM intel — ${formParts.join(' | ')}` : '',
+    prevBody ? `\nMy current draft (revise this, keep what works):\nSubject: ${String(prev.subject || '')}\n${prevBody}` : '',
+    guidance ? `What to change — apply exactly: ${guidance}` : '',
     '',
-    'Draft this email for me.',
+    (guidance || prevBody) ? 'Revise my email with those instructions. Return the same JSON shape.' : 'Draft this email for me.',
   ].filter(Boolean).join('\n');
 
   const systemPrompt = VOICE_PROFILE + `\n\nReturn ONLY valid JSON, no prose, no markdown fences:\n{"subject":"<email subject, 5-10 words, warm and specific, no em-dashes>","body":"<the full email body in Austen's voice, first-person, referencing the contact by first name. End with a short sign-off and his first name (e.g. Thanks, Austen). Do NOT add phone, email, or a contact block; that is appended automatically. No bracket placeholders, no em-dashes>","text":"<same as body>"}`;
@@ -6625,7 +6650,7 @@ exports.draftContactEmail = onCall({ secrets: [ANTHROPIC_API_KEY] }, async (requ
       'anthropic-version': '2023-06-01',
     },
     body: JSON.stringify({
-      model: 'claude-opus-4-5',
+      model: 'claude-opus-4-8',
       max_tokens: 600,
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
