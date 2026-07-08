@@ -6084,6 +6084,136 @@ exports.getApptData = onCall({
   return result;
 });
 
+// ============================================================
+// apptMeetingSweep — every 15 min. New myappointment.ai bookings
+// (loaniq-75a20 users/{apptUid}/meetings) are matched by bookerEmail
+// to SWH contacts → timeline history entry + a scheduled_activity
+// task. Points are NOT awarded here: the CRM client auto-completes
+// the task once the meeting time passes (autoCompleteApptTasks), so
+// points flow through the same client path as manual logging — no
+// server-side day-doc mutation, no race with an open session.
+// Idempotent via deterministic ids: tasks/appt_{meetingId},
+// contact activities/appt_sched_{meetingId}.
+// ============================================================
+const APPT_MEETING_ACTIVITY = 'Attend 1:1, Coffee, Lunch, etc.';
+
+exports.apptMeetingSweep = onSchedule({
+  schedule: 'every 15 minutes',
+  timeZone: 'America/Chicago',
+  secrets: [LOANIQ_SA_KEY],
+}, async () => {
+  const lqDb  = admin.firestore(getLoaniqAdminApp());
+  const swhDb = admin.firestore();
+  // 26h lookback with overlap — deterministic doc ids make re-processing a no-op
+  const sinceTs = admin.firestore.Timestamp.fromMillis(Date.now() - 26 * 3600 * 1000);
+
+  const usersSnap = await swhDb.collection('users').where('apptUid', '>', '').limit(300).get();
+  console.log(`[apptMeetingSweep] ${usersSnap.size} linked users`);
+
+  for (const u of usersSnap.docs) {
+    const swhUid  = u.id;
+    const apptUid = u.data().apptUid;
+    try {
+      const mSnap = await lqDb.collection(`users/${apptUid}/meetings`)
+        .where('bookedAt', '>=', sinceTs).get();
+      if (mSnap.empty) continue;
+
+      // Contacts + catalog loaded lazily — only when this user has fresh bookings
+      let contacts = null;
+      const loadContacts = async () => {
+        if (contacts) return contacts;
+        const cSnap = await swhDb.collection(`users/${swhUid}/contacts`).get();
+        contacts = cSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+        return contacts;
+      };
+      let oneOnOnePts = 10;
+      try {
+        const actCfg = await swhDb.doc(`users/${swhUid}/config/activities`).get();
+        const def = actCfg.exists ? (actCfg.data().list || []).find(a => a.name === APPT_MEETING_ACTIVITY) : null;
+        if (def && typeof def.pts === 'number') oneOnOnePts = def.pts;
+      } catch (_) { /* default stands */ }
+
+      for (const mDoc of mSnap.docs) {
+        const m = mDoc.data();
+        const meetingId = mDoc.id;
+        const taskRef  = swhDb.doc(`users/${swhUid}/tasks/appt_${meetingId}`);
+        const taskSnap = await taskRef.get();
+
+        // Booking canceled after we tasked it → close the pending task
+        if (m.status === 'canceled') {
+          if (taskSnap.exists && taskSnap.data().status === 'open') {
+            await taskRef.set({ status: 'canceled', canceledAt: new Date().toISOString() }, { merge: true });
+            console.log(`[apptMeetingSweep] canceled task appt_${meetingId} (${swhUid})`);
+          }
+          continue;
+        }
+        if (m.status !== 'scheduled') continue;
+
+        const startDate = m.start && m.start.toDate ? m.start.toDate() : new Date(m.start);
+        const endDate   = m.end && m.end.toDate ? m.end.toDate() : null;
+        const dateKey   = startDate.toLocaleDateString('en-CA', { timeZone: 'America/Chicago' });
+        const hhmm      = startDate.toLocaleTimeString('en-GB', { timeZone: 'America/Chicago', hour: '2-digit', minute: '2-digit' });
+
+        // Rescheduled (same meeting doc, new start) → move the open task
+        if (taskSnap.exists) {
+          const t = taskSnap.data();
+          if (t.status === 'open' && t.dueDate !== dateKey) {
+            await taskRef.set({ dueDate: dateKey, startTime: `${dateKey}T${hhmm}:00` }, { merge: true });
+            console.log(`[apptMeetingSweep] moved task appt_${meetingId} → ${dateKey} (${swhUid})`);
+          }
+          continue;
+        }
+
+        const bookerEmail = String(m.bookerEmail || '').trim().toLowerCase();
+        if (!bookerEmail) continue;
+        const all = await loadContacts();
+        const contact = all.find(c => String(c.email || '').trim().toLowerCase() === bookerEmail);
+        if (!contact) { console.log(`[apptMeetingSweep] no contact match for booker (${swhUid})`); continue; }
+
+        const durationMins = endDate ? Math.max(15, Math.round((endDate - startDate) / 60000)) : 30;
+        const bookedIso = (m.bookedAt && m.bookedAt.toDate ? m.bookedAt.toDate() : new Date()).toISOString();
+        const bookedKey = new Date(bookedIso).toLocaleDateString('en-CA', { timeZone: 'America/Chicago' });
+        const whenLabel = startDate.toLocaleString('en-US', {
+          timeZone: 'America/Chicago', weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
+        });
+
+        const batch = swhDb.batch();
+        batch.set(taskRef, {
+          type: 'scheduled_activity',
+          contactId: contact.id,
+          contactName: contact.name || bookerEmail,
+          activityName: APPT_MEETING_ACTIVITY,
+          potentialPts: oneOnOnePts,
+          dueDate: dateKey,
+          startTime: `${dateKey}T${hhmm}:00`,
+          durationMins,
+          note: 'Booked via myappointment.ai',
+          label: `${APPT_MEETING_ACTIVITY} with ${contact.name || bookerEmail}`,
+          status: 'open',
+          createdAt: bookedIso,
+          source: 'myappointment',
+          apptMeetingId: meetingId,
+          autoLog: true,
+        });
+        batch.set(swhDb.doc(`users/${swhUid}/contacts/${contact.id}/activities/appt_sched_${meetingId}`), {
+          type: '1-on-1 Booked',
+          source: 'myappointment',
+          note: `Booked via myappointment.ai for ${whenLabel}`,
+          points: 0,
+          timestamp: bookedIso,
+          dateKey: bookedKey,
+          contactId: contact.id,
+          contactName: contact.name || '',
+        });
+        await batch.commit();
+        console.log(`[apptMeetingSweep] linked meeting ${meetingId} → contact ${contact.id} (${swhUid})`);
+      }
+    } catch (e) {
+      console.error(`[apptMeetingSweep] user ${swhUid}:`, e.message);
+    }
+  }
+});
+
 // migrateProUsersToAppt — completed 2026-05-28, removed.
 
 // ===== Nylas v3 unified integration (calendar / email / contacts) =====
@@ -6606,6 +6736,10 @@ exports.draftContactEmail = onCall({ secrets: [ANTHROPIC_API_KEY] }, async (requ
   const guidance  = String(request.data?.guidance || '').slice(0, 500);
   const prev      = request.data?.previousDraft || null;
   const prevBody  = prev ? String(prev.body || '').slice(0, 2500) : '';
+  // 1-on-1 drafts carry the user's own myappointment.ai booking link so the
+  // contact can pick a time — bookings then flow back via apptMeetingSweep.
+  const bookingUrlRaw = String(request.data?.bookingUrl || '');
+  const bookingUrl = /^https:\/\/myappointment\.ai\/[\w\-\/]+$/.test(bookingUrlRaw) ? bookingUrlRaw : '';
 
   const INTENT_SITUATIONS = {
     one_on_one: 'Draft an invitation to get together for a 1-on-1: coffee, lunch, or a quick call in the next week or two. Warm and low-pressure. The point is to get to know them better, not to pitch. Make the ask easy to say yes to and let them pick the time.',
@@ -6634,6 +6768,9 @@ exports.draftContactEmail = onCall({ secrets: [ANTHROPIC_API_KEY] }, async (requ
     `My name: ${userFirstName}`,
     c.notes   ? `My notes on them: ${String(c.notes).slice(0, 300)}` : '',
     formParts.length ? `FORM intel — ${formParts.join(' | ')}` : '',
+    (draftType === 'one_on_one' && bookingUrl)
+      ? `IMPORTANT: you MUST include this exact scheduling link in the message, written out in full and unchanged — do not alter, shorten, or invent a different URL. Present it as the easy way to grab a time that works for them: ${bookingUrl}`
+      : '',
     prevBody ? `\nMy current draft (revise this, keep what works):\nSubject: ${String(prev.subject || '')}\n${prevBody}` : '',
     guidance ? `What to change — apply exactly: ${guidance}` : '',
     '',

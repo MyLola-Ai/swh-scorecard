@@ -2245,6 +2245,14 @@ html.dark-theme .st-sect-head{color:rgba(255,255,255,.55);}
       <div class="ctx-subtitle" id="sa-subtitle">With —</div>
     </div>
     <div class="ctx-body">
+      <div id="sa-booking-row" style="display:none;background:linear-gradient(135deg,rgba(91,91,214,0.12),rgba(167,139,250,0.12));border:1.5px solid rgba(124,110,230,0.4);border-radius:10px;padding:11px 13px;margin-bottom:6px;">
+        <div style="font-size:12.5px;font-weight:700;color:var(--text);margin-bottom:3px;">📅 Or let them pick a time</div>
+        <div style="font-size:11px;color:var(--muted);line-height:1.5;margin-bottom:9px;" id="sa-booking-sub"></div>
+        <div style="display:flex;gap:8px;">
+          <button onclick="copyApptBookingLink()" style="padding:6px 12px;border-radius:8px;border:1.5px solid var(--border);background:var(--card);color:var(--text);font-family:'DM Sans',sans-serif;font-size:12px;font-weight:700;cursor:pointer;">Copy booking link</button>
+          <button onclick="openApptBookingLink()" style="padding:6px 12px;border-radius:8px;border:1.5px solid var(--border);background:var(--card);color:var(--text);font-family:'DM Sans',sans-serif;font-size:12px;font-weight:700;cursor:pointer;">Open ↗</button>
+        </div>
+      </div>
       <div class="ctx-field">
         <label class="ctx-label">Activity Type</label>
         <select class="ctx-select" id="sa-type"></select>
@@ -3873,6 +3881,45 @@ window.refreshApptData = async function() {
   if (icon) icon.style.animation = '';
 };
 
+// The user's public myappointment.ai booking link (first public page).
+// Bookings made through it are matched back to the contact by the
+// apptMeetingSweep cloud function.
+function apptBookingUrl() {
+  if (!apptUserSlug) return null;
+  const page = (apptBookingPages || []).find(p => p.isPublic) || apptBookingPages[0];
+  return page
+    ? `https://myappointment.ai/${apptUserSlug}/${page.slug || page.id}`
+    : `https://myappointment.ai/${apptUserSlug}`;
+}
+
+window.copyApptBookingLink = async function() {
+  const url = apptBookingUrl();
+  if (!url) return;
+  try { await navigator.clipboard.writeText(url); showToast('🔗 Booking link copied'); }
+  catch (_) { showToast('⚠️ Could not copy. Link: ' + url); }
+};
+
+window.openApptBookingLink = function() {
+  const url = apptBookingUrl();
+  if (url) window.open(url, '_blank');
+};
+
+// Auto-log myappointment 1-on-1s whose meeting time has passed: complete
+// the sweep-created task through the normal client path so points flow
+// exactly like a manual "Done" tap.
+async function autoCompleteApptTasks() {
+  try {
+    const now = Date.now();
+    const due = (RELATIONSHIP_TASKS || []).filter(t =>
+      t.type === 'scheduled_activity' && t.source === 'myappointment' && t.autoLog &&
+      t.status === 'open' && t.startTime && new Date(t.startTime).getTime() < now);
+    for (const t of due) {
+      await completeScheduledActivity(t.id);
+    }
+    if (due.length) console.log('[appt] auto-logged', due.length, 'completed 1-on-1(s)');
+  } catch (e) { console.warn('[appt] autoCompleteApptTasks:', e); }
+}
+
 // ── TIERS ──
 const TIERS = [
   { name:'Getting Started',        min:0,   max:49,    color:'#16A34A', emoji:'🟢', msg:"The first step is taken. Trust is built in small kept commitments." },
@@ -4852,6 +4899,8 @@ async function loadAllData() {
   // Email integration status (sets the Settings → Email Integrations subtitles)
   try { window.refreshGmailStatus && window.refreshGmailStatus(); } catch(_){}
   try { window.refreshOutlookStatus && window.refreshOutlookStatus(); } catch(_){}
+  // Auto-log completed myappointment 1-on-1s (tasks + ACTIVITIES are loaded)
+  autoCompleteApptTasks().catch(() => {});
   // Announcements
   await loadAnnouncementsForUser();
 }
@@ -7855,6 +7904,8 @@ function renderActivityTimeline(contactId, list) {
   const loggedHtml = list.map(a => {
     const sourcePill = a.source === 'scorecard'
       ? `<span style="display:inline-block;padding:2px 7px;border-radius:4px;background:#E5EEF8;color:#1F4F87;border:1px solid #B6CFE6;font-size:10px;font-weight:700;letter-spacing:0.04em;">📊 Scorecard</span>`
+      : a.source === 'myappointment'
+      ? `<span style="display:inline-block;padding:2px 7px;border-radius:4px;background:#EEF2FF;color:#4338CA;border:1px solid #C7D2FE;font-size:10px;font-weight:700;letter-spacing:0.04em;">📅 myappointment.ai</span>`
       : `<span style="display:inline-block;padding:2px 7px;border-radius:4px;background:#F4F4F5;color:#4B5563;border:1px solid #D1D5DB;font-size:10px;font-weight:700;letter-spacing:0.04em;">🗂 CRM</span>`;
     const isNote = a.type === 'Note';
     const typeBadge = `<span style="font-size:13px;font-weight:700;color:var(--text);">${isNote ? '📝 Note' : a.type}</span>`;
@@ -8049,6 +8100,18 @@ window.openScheduleActivityModal = function(contactId) {
 
   const btn = document.getElementById('sa-confirm-btn');
   if (btn) btn.textContent = crmNylasConnected ? '📅 Schedule + Add to Calendar' : 'Schedule';
+
+  // myappointment.ai booking link — bookings land on this contact automatically
+  const bookRow = document.getElementById('sa-booking-row');
+  if (bookRow) {
+    const url = apptBookingUrl();
+    bookRow.style.display = url ? 'block' : 'none';
+    const sub = document.getElementById('sa-booking-sub');
+    if (url && sub) {
+      const first = (c.name || '').split(' ')[0] || 'them';
+      sub.textContent = `Send ${first} your myappointment.ai link. When they book, the 1-on-1 logs here automatically.`;
+    }
+  }
 
   document.getElementById('schedule-activity-overlay').classList.add('open');
 };
@@ -8493,6 +8556,10 @@ window.neDraftGenerate = async function(draftType, opts) {
     const payload = { contactId, draftType };
     if (opts?.guidance)      payload.guidance      = opts.guidance;
     if (opts?.previousDraft) payload.previousDraft = opts.previousDraft;
+    if (draftType === 'one_on_one') {
+      const burl = apptBookingUrl();
+      if (burl) payload.bookingUrl = burl; // Lola embeds the scheduling link
+    }
     const res = await callLolaFn('draftContactEmail', payload, 90000);
     neDraftShowResult(res.data);
     const stepsDone = c?.steps || 0;
