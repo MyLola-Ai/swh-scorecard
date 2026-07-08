@@ -8158,28 +8158,11 @@ window.saveScheduleActivity = async function() {
   if (btn) { btn.disabled = true; btn.textContent = 'Saving...'; }
 
   const startTime = `${date}T${time}:00`;
-  const taskId = `sched_${contactId}_${Date.now()}`;
-  const taskData = {
-    type: 'scheduled_activity',
-    contactId,
-    contactName: c.name,
-    activityName,
-    potentialPts,
-    dueDate: date,
-    startTime,
-    durationMins,
-    note,
-    label: `${activityName} with ${c.name}`,
-    status: 'open',
-    createdAt: new Date().toISOString(),
-  };
 
   try {
-    await setDoc(doc(db, 'users', currentUser.uid, 'tasks', taskId), taskData);
-    RELATIONSHIP_TASKS.push({ id: taskId, ...taskData });
-
-    // Calendar event if Nylas connected — optionally inviting the contact
-    let inviteSent = false;
+    // 1) Calendar event first (its id feeds the MyAppointment record) —
+    //    optionally inviting the contact
+    let inviteSent = false, nylasEventId = null;
     if (crmNylasConnected) {
       try {
         const token = await currentUser.getIdToken();
@@ -8206,18 +8189,72 @@ window.saveScheduleActivity = async function() {
         });
         if (resp.ok) {
           const ev = await resp.json();
+          nylasEventId = ev.eventId || null;
           inviteSent = invite && (ev.invited || 0) > 0;
-          await updateDoc(doc(db, 'users', currentUser.uid, 'tasks', taskId), { calendarEventId: ev.eventId || null });
         }
       } catch (calErr) {
         console.warn('[scheduleActivity] calendar event failed:', calErr.message);
       }
     }
 
+    // 2) 1-on-1 with a linked MyAppointment account → real MyAppointment
+    //    meeting record; task auto-logs points after the meeting time passes
+    let bookedThrough = false;
+    if (activityName.includes('1:1') && c.email && apptUserSlug) {
+      try {
+        const token = await lolaIdToken();
+        const r = await fetch(`${CRM_FUNCTIONS_BASE}/apptCreateMeeting`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify({
+            contactId,
+            startISO: new Date(startTime).toISOString(),
+            durationMins,
+            nylasEventId,
+            timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+          }),
+        });
+        if (r.ok) {
+          const j = await r.json();
+          if (j.task) RELATIONSHIP_TASKS.push(j.task);
+          bookedThrough = true;
+        } else {
+          console.warn('[scheduleActivity] apptCreateMeeting HTTP', r.status);
+        }
+      } catch (e2) {
+        console.warn('[scheduleActivity] apptCreateMeeting failed, using local task:', e2.message);
+      }
+    }
+
+    // 3) Non-meeting activities, unlinked accounts, or fallback → local task
+    if (!bookedThrough) {
+      const taskId = `sched_${contactId}_${Date.now()}`;
+      const taskData = {
+        type: 'scheduled_activity',
+        contactId,
+        contactName: c.name,
+        activityName,
+        potentialPts,
+        dueDate: date,
+        startTime,
+        durationMins,
+        note,
+        label: `${activityName} with ${c.name}`,
+        status: 'open',
+        createdAt: new Date().toISOString(),
+        calendarEventId: nylasEventId,
+      };
+      await setDoc(doc(db, 'users', currentUser.uid, 'tasks', taskId), taskData);
+      RELATIONSHIP_TASKS.push({ id: taskId, ...taskData });
+    }
+
     closeScheduleActivityModal();
     renderTasks();
     renderActivityTimeline(contactId, c._activities || []);
-    showToast(`📅 ${activityName} scheduled for ${formatDateShort(date)}${inviteSent ? ` · invite emailed to ${(c.name || '').split(' ')[0]}` : ''}`);
+    const _first = (c.name || '').split(' ')[0];
+    showToast(bookedThrough
+      ? `📅 1-on-1 booked with ${_first} for ${formatDateShort(date)}${inviteSent ? ' · invite emailed' : ''} · logs automatically after you meet`
+      : `📅 ${activityName} scheduled for ${formatDateShort(date)}${inviteSent ? ` · invite emailed to ${_first}` : ''}`);
   } catch (e) {
     console.error('[saveScheduleActivity]', e);
     showToast('Could not save. Try again.', true);
@@ -8229,6 +8266,40 @@ window.deleteScheduledActivity = async function(taskId, contactId) {
   if (!currentUser) return;
   const idx = RELATIONSHIP_TASKS.findIndex(x => x.id === taskId);
   if (idx === -1) return;
+  const t = RELATIONSHIP_TASKS[idx];
+
+  // myappointment-linked: cancel the real meeting and CLOSE the task doc
+  // (deleting it would let the sweep re-create the booking)
+  if (t.source === 'myappointment' && t.apptMeetingId) {
+    if (!confirm(`Cancel this 1-on-1${t.contactName ? ' with ' + t.contactName : ''}?`)) return;
+    try {
+      const token = await lolaIdToken();
+      const r = await fetch(`${CRM_FUNCTIONS_BASE}/apptCancelMeeting`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ meetingId: t.apptMeetingId }),
+      });
+      if (!r.ok) { const j = await r.json().catch(() => ({})); throw new Error(j.error || `HTTP ${r.status}`); }
+      // Pull the calendar event too; notify sends the attendee the
+      // provider's standard cancellation email
+      if (t.calendarEventId) {
+        fetch(`${NYLAS_FN}/deleteNylasEvent`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify({ eventId: t.calendarEventId, notify: true }),
+        }).catch(() => {});
+      }
+      RELATIONSHIP_TASKS.splice(idx, 1);
+      renderTasks();
+      const c0 = CONTACTS.find(x => x.id === contactId);
+      renderActivityTimeline(contactId, c0 ? (c0._activities || []) : []);
+      showToast('📅 1-on-1 canceled');
+    } catch (e) {
+      showToast('⚠️ Could not cancel: ' + (e.message || 'try again'));
+    }
+    return;
+  }
+
   RELATIONSHIP_TASKS.splice(idx, 1);
   await deleteDoc(doc(db, 'users', currentUser.uid, 'tasks', taskId));
   renderTasks();

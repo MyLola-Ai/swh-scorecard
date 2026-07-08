@@ -773,7 +773,7 @@ exports.deleteNylasEvent = onRequest(
   async (req, res) => {
     try {
       const decoded = await requireAuth(req);
-      const { eventId } = req.body || {};
+      const { eventId, notify } = req.body || {};
       if (!eventId) throw new Error('Missing eventId');
 
       const integration = await loadActiveGrant(decoded.uid, res);
@@ -783,7 +783,8 @@ exports.deleteNylasEvent = onRequest(
       await nylas.events.destroy({
         identifier: integration.grantId,
         eventId: String(eventId),
-        queryParams: { calendarId: 'primary', notifyParticipants: false },
+        // notify=true sends attendees the provider's standard cancellation
+        queryParams: { calendarId: 'primary', notifyParticipants: !!notify },
       });
       res.json({ ok: true });
     } catch (e) {

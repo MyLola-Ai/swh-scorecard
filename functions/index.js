@@ -6073,7 +6073,7 @@ exports.getApptData = onCall({
         start: m.start.toDate().toISOString(),
         status: m.status,
         location: m.location || null,
-        guestName: key ? (subjectMap[key] || '') : '',
+        guestName: (key && subjectMap[key]) || m.bookerName || '',
       };
     });
   } catch (e) {
@@ -6139,8 +6139,9 @@ exports.apptMeetingSweep = onSchedule({
         const taskRef  = swhDb.doc(`users/${swhUid}/tasks/appt_${meetingId}`);
         const taskSnap = await taskRef.get();
 
-        // Booking canceled after we tasked it → close the pending task
-        if (m.status === 'canceled') {
+        // Booking canceled after we tasked it → close the pending task.
+        // MyAppointment writes 'cancelled' (double-L); tolerate both.
+        if (m.status === 'cancelled' || m.status === 'canceled') {
           if (taskSnap.exists && taskSnap.data().status === 'open') {
             await taskRef.set({ status: 'canceled', canceledAt: new Date().toISOString() }, { merge: true });
             console.log(`[apptMeetingSweep] canceled task appt_${meetingId} (${swhUid})`);
@@ -6211,6 +6212,173 @@ exports.apptMeetingSweep = onSchedule({
     } catch (e) {
       console.error(`[apptMeetingSweep] user ${swhUid}:`, e.message);
     }
+  }
+});
+
+// ============================================================
+// apptCreateMeeting — host-initiated 1-on-1 at an agreed time.
+// Writes a real meeting record into loaniq-75a20 so MyAppointment owns
+// it (upcoming list, Next Meeting card, sweep semantics), and creates
+// the SWH task + timeline entry immediately with the same ids the
+// sweep uses, so the next sweep no-ops. confirmationSentAt is stamped
+// so MyAppointment sends no emails — the contact is notified by the
+// calendar invite the client creates via Nylas.
+// ============================================================
+exports.apptCreateMeeting = onRequest({ cors: true, secrets: [LOANIQ_SA_KEY] }, async (req, res) => {
+  if (req.method === 'OPTIONS') { res.status(204).send(''); return; }
+  try {
+    const decoded = await requireAuth(req);
+    const uid = decoded.uid;
+    const { contactId, startISO, durationMins, nylasEventId, timezone } = req.body || {};
+    if (!contactId || !startISO) { res.status(400).json({ error: 'contactId and startISO required' }); return; }
+
+    const [userSnap, contactSnap, actCfgSnap] = await Promise.all([
+      db.collection('users').doc(uid).get(),
+      db.doc(`users/${uid}/contacts/${contactId}`).get(),
+      db.doc(`users/${uid}/config/activities`).get(),
+    ]);
+    const apptUid = userSnap.exists ? (userSnap.data().apptUid || null) : null;
+    if (!apptUid) { res.status(409).json({ error: 'no_myappointment_account' }); return; }
+    if (!contactSnap.exists) { res.status(404).json({ error: 'Contact not found.' }); return; }
+    const contact = contactSnap.data();
+    if (!contact.email) { res.status(400).json({ error: 'Contact has no email address.' }); return; }
+
+    const start = new Date(startISO);
+    if (isNaN(start.getTime())) { res.status(400).json({ error: 'Invalid startISO' }); return; }
+    const mins = Math.min(480, Math.max(15, Number(durationMins) || 60));
+    const end = new Date(start.getTime() + mins * 60000);
+    const meetingId = 'mtg_swh_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
+    const nowTs = admin.firestore.Timestamp.now();
+
+    const lqDb = admin.firestore(getLoaniqAdminApp());
+    await lqDb.doc(`users/${apptUid}/meetings/${meetingId}`).set({
+      id: meetingId,
+      userId: apptUid,
+      product: 'mylola',
+      meetingTypeId: null,
+      bookingPageId: null,
+      start: admin.firestore.Timestamp.fromDate(start),
+      end: admin.firestore.Timestamp.fromDate(end),
+      timezone: String(timezone || 'America/Chicago').slice(0, 64),
+      status: 'scheduled',
+      bookedAt: nowTs,
+      source: 'swh_host_scheduled',
+      calendarProvider: 'google',
+      externalCalendarEventId: nylasEventId ? String(nylasEventId) : `swh_${meetingId}`,
+      externalCalendarId: nylasEventId ? 'primary' : 'pending',
+      intakeAnswers: {},
+      location: null,
+      remindersSent: [],
+      bookerEmail: String(contact.email).trim().toLowerCase(),
+      bookerName: contact.name || '',
+      hostSlug: null,
+      // onPublicBookingCreated no-ops when this is already set — no
+      // MyAppointment confirmation/reminder emails for host-scheduled.
+      confirmationSentAt: nowTs,
+    });
+
+    let oneOnOnePts = 10;
+    const def = actCfgSnap.exists ? (actCfgSnap.data().list || []).find(a => a.name === APPT_MEETING_ACTIVITY) : null;
+    if (def && typeof def.pts === 'number') oneOnOnePts = def.pts;
+
+    const dateKey = start.toLocaleDateString('en-CA', { timeZone: 'America/Chicago' });
+    const hhmm = start.toLocaleTimeString('en-GB', { timeZone: 'America/Chicago', hour: '2-digit', minute: '2-digit' });
+    const bookedIso = new Date().toISOString();
+    const whenLabel = start.toLocaleString('en-US', {
+      timeZone: 'America/Chicago', weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
+    });
+
+    const task = {
+      type: 'scheduled_activity',
+      contactId,
+      contactName: contact.name || contact.email,
+      activityName: APPT_MEETING_ACTIVITY,
+      potentialPts: oneOnOnePts,
+      dueDate: dateKey,
+      startTime: `${dateKey}T${hhmm}:00`,
+      durationMins: mins,
+      note: 'Scheduled by you · myappointment.ai',
+      label: `${APPT_MEETING_ACTIVITY} with ${contact.name || contact.email}`,
+      status: 'open',
+      createdAt: bookedIso,
+      source: 'myappointment',
+      apptMeetingId: meetingId,
+      calendarEventId: nylasEventId ? String(nylasEventId) : null,
+      autoLog: true,
+    };
+    const batch = db.batch();
+    batch.set(db.doc(`users/${uid}/tasks/appt_${meetingId}`), task);
+    batch.set(db.doc(`users/${uid}/contacts/${contactId}/activities/appt_sched_${meetingId}`), {
+      type: '1-on-1 Booked',
+      source: 'myappointment',
+      note: `Scheduled by you for ${whenLabel}`,
+      points: 0,
+      timestamp: bookedIso,
+      dateKey: new Date().toLocaleDateString('en-CA', { timeZone: 'America/Chicago' }),
+      contactId,
+      contactName: contact.name || '',
+    });
+    await batch.commit();
+
+    res.json({ ok: true, meetingId, task: { id: `appt_${meetingId}`, ...task } });
+  } catch (e) {
+    const code = e.statusCode || 500;
+    console.error('[apptCreateMeeting]', e.message);
+    res.status(code).json({ error: e.message || 'Failed to create meeting' });
+  }
+});
+
+// Cancel a myappointment-linked meeting from the CRM. Marks the loaniq
+// meeting 'cancelled' (MyAppointment's spelling), cancels its pending
+// reminder messages, and closes the SWH task — kept, not deleted, so
+// the sweep can't re-create it.
+exports.apptCancelMeeting = onRequest({ cors: true, secrets: [LOANIQ_SA_KEY] }, async (req, res) => {
+  if (req.method === 'OPTIONS') { res.status(204).send(''); return; }
+  try {
+    const decoded = await requireAuth(req);
+    const uid = decoded.uid;
+    const meetingId = String(req.body?.meetingId || '').trim();
+    if (!meetingId) { res.status(400).json({ error: 'meetingId required' }); return; }
+
+    const [userSnap, taskSnap] = await Promise.all([
+      db.collection('users').doc(uid).get(),
+      db.doc(`users/${uid}/tasks/appt_${meetingId}`).get(),
+    ]);
+    const apptUid = userSnap.exists ? (userSnap.data().apptUid || null) : null;
+    if (!apptUid) { res.status(409).json({ error: 'no_myappointment_account' }); return; }
+    if (!taskSnap.exists) { res.status(404).json({ error: 'Meeting task not found.' }); return; }
+
+    const lqDb = admin.firestore(getLoaniqAdminApp());
+    const mRef = lqDb.doc(`users/${apptUid}/meetings/${meetingId}`);
+    const mSnap = await mRef.get();
+    if (mSnap.exists && mSnap.data().status === 'scheduled') {
+      await mRef.set({
+        status: 'cancelled',
+        cancelledAt: admin.firestore.Timestamp.now(),
+        cancelledBy: 'swh_host',
+      }, { merge: true });
+      // Public bookings have queued reminder messages — cancel them so the
+      // booker doesn't get reminded about a dead meeting.
+      try {
+        const pending = await lqDb.collection(`users/${apptUid}/scheduledMessages`)
+          .where('meetingId', '==', meetingId).where('status', '==', 'pending').get();
+        if (!pending.empty) {
+          const b = lqDb.batch();
+          pending.docs.forEach(d => b.set(d.ref, { status: 'cancelled' }, { merge: true }));
+          await b.commit();
+        }
+      } catch (msgErr) {
+        console.warn('[apptCancelMeeting] reminder cancel skipped:', msgErr.message);
+      }
+    }
+    await db.doc(`users/${uid}/tasks/appt_${meetingId}`).set(
+      { status: 'canceled', canceledAt: new Date().toISOString() }, { merge: true });
+
+    res.json({ ok: true, calendarEventId: taskSnap.data().calendarEventId || null });
+  } catch (e) {
+    const code = e.statusCode || 500;
+    console.error('[apptCancelMeeting]', e.message);
+    res.status(code).json({ error: e.message || 'Failed to cancel' });
   }
 });
 
