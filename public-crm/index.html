@@ -4866,6 +4866,16 @@ async function loadAllData() {
   // Contacts
   const cSnap = await getDocs(query(collection(db,'users',uid,'contacts'),orderBy('name','asc')));
   CONTACTS = cSnap.docs.map(d=>({id:d.id,...d.data()}));
+  // Normalize clockStarted to a clean YYYY-MM-DD key — imported/synced contacts
+  // sometimes carry ISO datetimes or Timestamps, which break the step due-date
+  // math (addDays blindly appends T12:00:00 → "Invalid Date").
+  CONTACTS.forEach(c => {
+    if (!c.clockStarted) return;
+    const raw = c.clockStarted;
+    if (typeof raw === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(raw)) return;
+    const d = raw && raw.toDate ? raw.toDate() : new Date(String(raw));
+    c.clockStarted = isNaN(d.getTime()) ? null : d.toLocaleDateString('en-CA');
+  });
   // Load relationship reminder tasks
   try {
     const tSnap = await getDocs(query(collection(db,'users',uid,'tasks'), where('status','==','open')));
@@ -7713,6 +7723,7 @@ function buildStepsListHTML(c, pb, pbBadge) {
           ${!done?`<button onclick="toggleNeStep(document.getElementById('ne-step-cb-${c.id}-${si}'),'${c.id}',${si})" style="font-size:11px;font-weight:700;padding:3px 10px;border:none;border-radius:6px;background:#e8f5ec;color:var(--green);cursor:pointer;">✅ Complete</button>
           <button onclick="dismissNeStep('${c.id}',${si})" style="font-size:11px;font-weight:700;padding:3px 10px;border:1.5px solid var(--border);border-radius:6px;background:var(--bg);color:var(--muted);cursor:pointer;">✕ Dismiss</button>`:''}
           <button onclick="event.stopPropagation();generateNeStepEmail('${c.id}',${si})" style="font-size:11px;font-weight:700;padding:3px 10px;border:none;border-radius:6px;background:linear-gradient(135deg,#5B5BD6,#A78BFA);color:#fff;cursor:pointer;">✉️ Draft Email</button>
+          <button onclick="event.stopPropagation();openScheduleActivityModal('${c.id}')" style="font-size:11px;font-weight:700;padding:3px 10px;border:1.5px solid #5B5BD6;border-radius:6px;background:transparent;color:#5B5BD6;cursor:pointer;">📅 Schedule</button>
         </div>
       </div>
       <div class="ne-step-pts">${s.points} pts</div>
