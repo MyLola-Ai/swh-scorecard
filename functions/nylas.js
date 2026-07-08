@@ -732,22 +732,34 @@ exports.createNylasEvent = onRequest(
     try {
       const decoded = await requireAuth(req);
       const src = req.body || {};
-      const { title, startTime, endTime } = src;
+      const { title, startTime, endTime, description, participants } = src;
       if (!title || !startTime || !endTime) throw new Error('Missing title, startTime, or endTime');
 
       const integration = await loadActiveGrant(decoded.uid, res);
       if (!integration) return;
 
+      // Attendees — the calendar provider emails them a real invite
+      const attendees = Array.isArray(participants)
+        ? participants
+            .filter(p => p && typeof p.email === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(p.email.trim()))
+            .slice(0, 10)
+            .map(p => ({ email: p.email.trim(), name: String(p.name || '').slice(0, 80) }))
+        : [];
+
+      const requestBody = {
+        title: String(title),
+        when: { startTime: Math.floor(Number(startTime)), endTime: Math.floor(Number(endTime)) },
+      };
+      if (description) requestBody.description = String(description).slice(0, 2000);
+      if (attendees.length) requestBody.participants = attendees;
+
       const nylas = nylasClient();
       const r = await nylas.events.create({
         identifier: integration.grantId,
-        queryParams: { calendarId: 'primary', notifyParticipants: false },
-        requestBody: {
-          title: String(title),
-          when: { startTime: Math.floor(Number(startTime)), endTime: Math.floor(Number(endTime)) },
-        },
+        queryParams: { calendarId: 'primary', notifyParticipants: attendees.length > 0 },
+        requestBody,
       });
-      res.json({ ok: true, eventId: (r.data || r).id });
+      res.json({ ok: true, eventId: (r.data || r).id, invited: attendees.length });
     } catch (e) {
       console.error('[createNylasEvent]', e);
       await maybeFlagExpired(req, e);

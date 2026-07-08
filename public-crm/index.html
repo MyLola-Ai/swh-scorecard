@@ -2280,6 +2280,10 @@ html.dark-theme .st-sect-head{color:rgba(255,255,255,.55);}
         <label class="ctx-label">Note (optional)</label>
         <textarea class="ctx-input" id="sa-note" rows="2" placeholder="Goal or context for this activity" style="resize:none;"></textarea>
       </div>
+      <label id="sa-invite-row" style="display:none;align-items:center;gap:9px;font-size:12.5px;font-weight:600;color:var(--text);cursor:pointer;padding:1px 2px;">
+        <input type="checkbox" id="sa-invite-check" checked style="width:16px;height:16px;accent-color:#5B5BD6;flex-shrink:0;">
+        <span id="sa-invite-label">📨 Email them a calendar invite</span>
+      </label>
       <div id="sa-calendar-hint" style="display:none;font-size:11px;color:var(--muted);line-height:1.5;padding:8px 10px;background:var(--bg);border-radius:8px;">
         📆 Will also create a calendar event in your connected account.
       </div>
@@ -8113,6 +8117,18 @@ window.openScheduleActivityModal = function(contactId) {
     }
   }
 
+  // Calendar invite to the contact (needs their email + a connected calendar)
+  const inviteRow = document.getElementById('sa-invite-row');
+  if (inviteRow) {
+    const canInvite = !!(crmNylasConnected && c.email);
+    inviteRow.style.display = canInvite ? 'flex' : 'none';
+    if (canInvite) {
+      document.getElementById('sa-invite-check').checked = true;
+      document.getElementById('sa-invite-label').textContent =
+        `📨 Email ${(c.name || '').split(' ')[0] || 'them'} a calendar invite (${c.email})`;
+    }
+  }
+
   document.getElementById('schedule-activity-overlay').classList.add('open');
 };
 
@@ -8162,19 +8178,35 @@ window.saveScheduleActivity = async function() {
     await setDoc(doc(db, 'users', currentUser.uid, 'tasks', taskId), taskData);
     RELATIONSHIP_TASKS.push({ id: taskId, ...taskData });
 
-    // Calendar event if Nylas connected
+    // Calendar event if Nylas connected — optionally inviting the contact
+    let inviteSent = false;
     if (crmNylasConnected) {
       try {
         const token = await currentUser.getIdToken();
         const startUnix = Math.floor(new Date(startTime).getTime() / 1000);
         const endUnix = startUnix + durationMins * 60;
+        const inviteRow = document.getElementById('sa-invite-row');
+        const invite = !!(c.email && inviteRow && inviteRow.style.display !== 'none'
+          && document.getElementById('sa-invite-check')?.checked);
+        const hostFirst = ((currentUser?.displayName || '') + '').split(' ')[0];
+        const contactFirst = (c.name || '').split(' ')[0];
+        // Invitee sees the title too — keep it human, no internal activity names
+        const title = invite
+          ? (activityName.includes('1:1')
+              ? `1-on-1: ${hostFirst ? hostFirst + ' & ' : ''}${contactFirst}`
+              : `${hostFirst ? hostFirst + ' & ' : ''}${contactFirst}`)
+          : `${activityName} (${c.name})`;
+        const evBody = { title, startTime: startUnix, endTime: endUnix };
+        if (note && !invite) evBody.description = note; // notes are internal; never sent to the contact
+        if (invite) evBody.participants = [{ email: c.email, name: c.name || '' }];
         const resp = await fetch(`${NYLAS_FN}/createNylasEvent`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-          body: JSON.stringify({ title: `${activityName} (${c.name})`, startTime: startUnix, endTime: endUnix }),
+          body: JSON.stringify(evBody),
         });
         if (resp.ok) {
           const ev = await resp.json();
+          inviteSent = invite && (ev.invited || 0) > 0;
           await updateDoc(doc(db, 'users', currentUser.uid, 'tasks', taskId), { calendarEventId: ev.eventId || null });
         }
       } catch (calErr) {
@@ -8185,7 +8217,7 @@ window.saveScheduleActivity = async function() {
     closeScheduleActivityModal();
     renderTasks();
     renderActivityTimeline(contactId, c._activities || []);
-    showToast(`📅 ${activityName} scheduled for ${formatDateShort(date)}`);
+    showToast(`📅 ${activityName} scheduled for ${formatDateShort(date)}${inviteSent ? ` · invite emailed to ${(c.name || '').split(' ')[0]}` : ''}`);
   } catch (e) {
     console.error('[saveScheduleActivity]', e);
     showToast('Could not save. Try again.', true);
