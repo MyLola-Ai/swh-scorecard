@@ -2241,10 +2241,17 @@ html.dark-theme .st-sect-head{color:rgba(255,255,255,.55);}
     <div class="ctx-header">
       <div class="ctx-handle mobile-only"></div>
       <div class="ctx-icon">📅</div>
-      <div class="ctx-title">Schedule Activity</div>
+      <div class="ctx-title" id="sa-modal-title">Schedule a Meeting</div>
       <div class="ctx-subtitle" id="sa-subtitle">With —</div>
     </div>
     <div class="ctx-body">
+      <div id="sa-mode-row" style="display:flex;gap:5px;background:var(--bg);border-radius:11px;padding:4px;">
+        <button id="sa-mode-meeting" onclick="setSaMode('meeting')">🤝 Meeting</button>
+        <button id="sa-mode-activity" onclick="setSaMode('activity')">📋 Activity</button>
+      </div>
+      <div id="sa-meeting-sub" style="display:none;font-size:11px;color:var(--muted);line-height:1.5;padding:0 2px;">
+        A real meeting: calendar invite with the time and place, logged on this contact automatically after you meet.
+      </div>
       <div id="sa-booking-row" style="display:none;background:linear-gradient(135deg,rgba(91,91,214,0.12),rgba(167,139,250,0.12));border:1.5px solid rgba(124,110,230,0.4);border-radius:10px;padding:11px 13px;margin-bottom:6px;">
         <div style="font-size:12.5px;font-weight:700;color:var(--text);margin-bottom:3px;">📅 Or let them pick a time</div>
         <div style="font-size:11px;color:var(--muted);line-height:1.5;margin-bottom:9px;" id="sa-booking-sub"></div>
@@ -2253,7 +2260,7 @@ html.dark-theme .st-sect-head{color:rgba(255,255,255,.55);}
           <button onclick="openApptBookingLink()" style="padding:6px 12px;border-radius:8px;border:1.5px solid var(--border);background:var(--card);color:var(--text);font-family:'DM Sans',sans-serif;font-size:12px;font-weight:700;cursor:pointer;">Open ↗</button>
         </div>
       </div>
-      <div class="ctx-field">
+      <div class="ctx-field" id="sa-type-field">
         <label class="ctx-label">Activity Type</label>
         <select class="ctx-select" id="sa-type"></select>
       </div>
@@ -2276,12 +2283,16 @@ html.dark-theme .st-sect-head{color:rgba(255,255,255,.55);}
           <option value="120">2 hours</option>
         </select>
       </div>
+      <div class="ctx-field" id="sa-where-field" style="display:none;">
+        <label class="ctx-label">Where</label>
+        <input class="ctx-input" id="sa-where" placeholder="Redhorn Coffee, Zoom link, phone call..." />
+      </div>
       <div class="ctx-field">
         <label class="ctx-label">Note (optional)</label>
         <textarea class="ctx-input" id="sa-note" rows="2" placeholder="Goal or context for this activity" style="resize:none;"></textarea>
       </div>
       <label id="sa-invite-row" style="display:none;align-items:center;gap:9px;font-size:12.5px;font-weight:600;color:var(--text);cursor:pointer;padding:1px 2px;">
-        <input type="checkbox" id="sa-invite-check" checked style="width:16px;height:16px;accent-color:#5B5BD6;flex-shrink:0;">
+        <input type="checkbox" id="sa-invite-check" checked onchange="setSaMode(_saMode)" style="width:16px;height:16px;accent-color:#5B5BD6;flex-shrink:0;">
         <span id="sa-invite-label">📨 Email them a calendar invite</span>
       </label>
       <div id="sa-calendar-hint" style="display:none;font-size:11px;color:var(--muted);line-height:1.5;padding:8px 10px;background:var(--bg);border-radius:8px;">
@@ -8072,6 +8083,44 @@ window.saveLogActivity = async function() {
 // ── SCHEDULE ACTIVITY ──
 let _scheduleActivityContactId = null;
 
+// ── Schedule modal: Meeting (real invite, MyAppointment record) vs
+//    Activity (internal points plan) ──────────────────────────────────
+const APPT_1ON1_ACTIVITY = 'Attend 1:1, Coffee, Lunch, etc.';
+let _saMode = 'meeting';
+let _saCanInvite = false;
+let _saBookingUrl = null;
+
+window.setSaMode = function(mode) {
+  _saMode = mode;
+  const meeting = mode === 'meeting';
+  const base = "flex:1;padding:8px;border:none;border-radius:8px;font-family:'DM Sans',sans-serif;font-size:12.5px;font-weight:700;cursor:pointer;";
+  const on  = 'background:linear-gradient(135deg,#5B5BD6,#A78BFA);color:#fff;';
+  const off = 'background:transparent;color:var(--muted);';
+  const mBtn = document.getElementById('sa-mode-meeting');
+  const aBtn = document.getElementById('sa-mode-activity');
+  if (mBtn) mBtn.style.cssText = base + (meeting ? on : off);
+  if (aBtn) aBtn.style.cssText = base + (meeting ? off : on);
+
+  const show = (id, disp, yes) => { const el = document.getElementById(id); if (el) el.style.display = yes ? disp : 'none'; };
+  show('sa-type-field',    'block', !meeting);
+  show('sa-where-field',   'block', meeting);
+  show('sa-meeting-sub',   'block', meeting);
+  show('sa-booking-row',   'block', meeting && !!_saBookingUrl);
+  show('sa-invite-row',    'flex',  meeting && _saCanInvite);
+  show('sa-calendar-hint', 'block', !meeting && crmNylasConnected);
+
+  const titleEl = document.getElementById('sa-modal-title');
+  if (titleEl) titleEl.textContent = meeting ? 'Schedule a Meeting' : 'Schedule Activity';
+  const btn = document.getElementById('sa-confirm-btn');
+  if (btn) {
+    btn.disabled = false;
+    const inviteOn = meeting && _saCanInvite && document.getElementById('sa-invite-check')?.checked;
+    btn.textContent = meeting
+      ? (inviteOn ? '📨 Schedule + Send Invite' : '🤝 Schedule Meeting')
+      : (crmNylasConnected ? '📅 Schedule + Add to Calendar' : 'Schedule');
+  }
+};
+
 window.openScheduleActivityModal = function(contactId) {
   _scheduleActivityContactId = contactId;
   const c = CONTACTS.find(x => x.id === contactId);
@@ -8099,35 +8148,23 @@ window.openScheduleActivityModal = function(contactId) {
   const noteInput = document.getElementById('sa-note');
   if (noteInput) noteInput.value = '';
 
-  const hint = document.getElementById('sa-calendar-hint');
-  if (hint) hint.style.display = crmNylasConnected ? 'block' : 'none';
-
-  const btn = document.getElementById('sa-confirm-btn');
-  if (btn) btn.textContent = crmNylasConnected ? '📅 Schedule + Add to Calendar' : 'Schedule';
-
-  // myappointment.ai booking link — bookings land on this contact automatically
-  const bookRow = document.getElementById('sa-booking-row');
-  if (bookRow) {
-    const url = apptBookingUrl();
-    bookRow.style.display = url ? 'block' : 'none';
-    const sub = document.getElementById('sa-booking-sub');
-    if (url && sub) {
-      const first = (c.name || '').split(' ')[0] || 'them';
-      sub.textContent = `Send ${first} your myappointment.ai link. When they book, the 1-on-1 logs here automatically.`;
-    }
+  // Mode setup: real meeting (invite + MyAppointment record) vs internal plan
+  _saBookingUrl = apptBookingUrl();
+  if (!_saBookingUrl && !apptUserSlug) loadApptData().catch(() => {}); // transient load miss — retry for next open
+  _saCanInvite = !!(crmNylasConnected && c.email);
+  const bookSub = document.getElementById('sa-booking-sub');
+  if (_saBookingUrl && bookSub) {
+    const first = (c.name || '').split(' ')[0] || 'them';
+    bookSub.textContent = `Send ${first} your myappointment.ai link. When they book, the 1-on-1 logs here automatically.`;
   }
-
-  // Calendar invite to the contact (needs their email + a connected calendar)
-  const inviteRow = document.getElementById('sa-invite-row');
-  if (inviteRow) {
-    const canInvite = !!(crmNylasConnected && c.email);
-    inviteRow.style.display = canInvite ? 'flex' : 'none';
-    if (canInvite) {
-      document.getElementById('sa-invite-check').checked = true;
-      document.getElementById('sa-invite-label').textContent =
-        `📨 Email ${(c.name || '').split(' ')[0] || 'them'} a calendar invite (${c.email})`;
-    }
+  if (_saCanInvite) {
+    document.getElementById('sa-invite-check').checked = true;
+    document.getElementById('sa-invite-label').textContent =
+      `📨 Email ${(c.name || '').split(' ')[0] || 'them'} a calendar invite (${c.email})`;
   }
+  const whereEl = document.getElementById('sa-where');
+  if (whereEl) whereEl.value = '';
+  setSaMode(_saCanInvite ? 'meeting' : 'activity');
 
   document.getElementById('schedule-activity-overlay').classList.add('open');
 };
@@ -8143,7 +8180,9 @@ window.saveScheduleActivity = async function() {
   const c = CONTACTS.find(x => x.id === contactId);
   if (!c) { closeScheduleActivityModal(); return; }
 
-  const activityName = document.getElementById('sa-type').value;
+  const isMeeting = _saMode === 'meeting';
+  const activityName = isMeeting ? APPT_1ON1_ACTIVITY : document.getElementById('sa-type').value;
+  const whereTxt = isMeeting ? (document.getElementById('sa-where')?.value || '').trim().slice(0, 200) : '';
   const date = document.getElementById('sa-date').value;
   const time = document.getElementById('sa-time').value || '09:00';
   const durationMins = parseInt(document.getElementById('sa-duration').value) || 60;
@@ -8168,19 +8207,16 @@ window.saveScheduleActivity = async function() {
         const token = await currentUser.getIdToken();
         const startUnix = Math.floor(new Date(startTime).getTime() / 1000);
         const endUnix = startUnix + durationMins * 60;
-        const inviteRow = document.getElementById('sa-invite-row');
-        const invite = !!(c.email && inviteRow && inviteRow.style.display !== 'none'
+        const invite = isMeeting && !!(c.email && _saCanInvite
           && document.getElementById('sa-invite-check')?.checked);
-        const hostFirst = ((currentUser?.displayName || '') + '').split(' ')[0];
-        const contactFirst = (c.name || '').split(' ')[0];
-        // Invitee sees the title too — keep it human, no internal activity names
-        const title = invite
-          ? (activityName.includes('1:1')
-              ? `1-on-1: ${hostFirst ? hostFirst + ' & ' : ''}${contactFirst}`
-              : `${hostFirst ? hostFirst + ' & ' : ''}${contactFirst}`)
+        const userFullName = ((currentUser?.displayName || '') + '').trim();
+        // Invitee sees the title too — meetings get the person-to-person format
+        const title = isMeeting
+          ? `1-2-1 Meeting with ${c.name}${userFullName ? ' and ' + userFullName : ''}`
           : `${activityName} (${c.name})`;
         const evBody = { title, startTime: startUnix, endTime: endUnix };
-        if (note && !invite) evBody.description = note; // notes are internal; never sent to the contact
+        if (whereTxt) evBody.location = whereTxt;
+        if (note && !isMeeting) evBody.description = note; // notes are internal; never sent to the contact
         if (invite) evBody.participants = [{ email: c.email, name: c.name || '' }];
         const resp = await fetch(`${NYLAS_FN}/createNylasEvent`, {
           method: 'POST',
@@ -8200,7 +8236,7 @@ window.saveScheduleActivity = async function() {
     // 2) 1-on-1 with a linked MyAppointment account → real MyAppointment
     //    meeting record; task auto-logs points after the meeting time passes
     let bookedThrough = false;
-    if (activityName.includes('1:1') && c.email && apptUserSlug) {
+    if (isMeeting && c.email && apptUserSlug) {
       try {
         const token = await lolaIdToken();
         const r = await fetch(`${CRM_FUNCTIONS_BASE}/apptCreateMeeting`, {
@@ -8211,6 +8247,7 @@ window.saveScheduleActivity = async function() {
             startISO: new Date(startTime).toISOString(),
             durationMins,
             nylasEventId,
+            location: whereTxt,
             timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
           }),
         });
@@ -8238,7 +8275,7 @@ window.saveScheduleActivity = async function() {
         dueDate: date,
         startTime,
         durationMins,
-        note,
+        note: whereTxt ? `Where: ${whereTxt}${note ? ' · ' + note : ''}` : note,
         label: `${activityName} with ${c.name}`,
         status: 'open',
         createdAt: new Date().toISOString(),
@@ -8252,13 +8289,13 @@ window.saveScheduleActivity = async function() {
     renderTasks();
     renderActivityTimeline(contactId, c._activities || []);
     const _first = (c.name || '').split(' ')[0];
-    showToast(bookedThrough
-      ? `📅 1-on-1 booked with ${_first} for ${formatDateShort(date)}${inviteSent ? ' · invite emailed' : ''} · logs automatically after you meet`
-      : `📅 ${activityName} scheduled for ${formatDateShort(date)}${inviteSent ? ` · invite emailed to ${_first}` : ''}`);
+    showToast(isMeeting
+      ? `🤝 1-2-1 with ${_first} scheduled for ${formatDateShort(date)}${inviteSent ? ' · invite sent' : ''}${bookedThrough ? ' · logs automatically after you meet' : ''}`
+      : `📅 ${activityName} scheduled for ${formatDateShort(date)}`);
   } catch (e) {
     console.error('[saveScheduleActivity]', e);
     showToast('Could not save. Try again.', true);
-    if (btn) { btn.disabled = false; btn.textContent = crmNylasConnected ? '📅 Schedule + Add to Calendar' : 'Schedule'; }
+    if (btn) { btn.disabled = false; setSaMode(_saMode); }
   }
 };
 

@@ -732,7 +732,7 @@ exports.createNylasEvent = onRequest(
     try {
       const decoded = await requireAuth(req);
       const src = req.body || {};
-      const { title, startTime, endTime, description, participants } = src;
+      const { title, startTime, endTime, description, participants, location } = src;
       if (!title || !startTime || !endTime) throw new Error('Missing title, startTime, or endTime');
 
       const integration = await loadActiveGrant(decoded.uid, res);
@@ -751,6 +751,7 @@ exports.createNylasEvent = onRequest(
         when: { startTime: Math.floor(Number(startTime)), endTime: Math.floor(Number(endTime)) },
       };
       if (description) requestBody.description = String(description).slice(0, 2000);
+      if (location) requestBody.location = String(location).slice(0, 200);
       if (attendees.length) requestBody.participants = attendees;
 
       const nylas = nylasClient();

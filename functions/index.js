@@ -6230,6 +6230,7 @@ exports.apptCreateMeeting = onRequest({ cors: true, secrets: [LOANIQ_SA_KEY] }, 
     const decoded = await requireAuth(req);
     const uid = decoded.uid;
     const { contactId, startISO, durationMins, nylasEventId, timezone } = req.body || {};
+    const locationTxt = String(req.body?.location || '').trim().slice(0, 200);
     if (!contactId || !startISO) { res.status(400).json({ error: 'contactId and startISO required' }); return; }
 
     const [userSnap, contactSnap, actCfgSnap] = await Promise.all([
@@ -6267,7 +6268,7 @@ exports.apptCreateMeeting = onRequest({ cors: true, secrets: [LOANIQ_SA_KEY] }, 
       externalCalendarEventId: nylasEventId ? String(nylasEventId) : `swh_${meetingId}`,
       externalCalendarId: nylasEventId ? 'primary' : 'pending',
       intakeAnswers: {},
-      location: null,
+      location: locationTxt ? { type: 'custom', label: locationTxt } : null,
       remindersSent: [],
       bookerEmail: String(contact.email).trim().toLowerCase(),
       bookerName: contact.name || '',
@@ -6297,7 +6298,7 @@ exports.apptCreateMeeting = onRequest({ cors: true, secrets: [LOANIQ_SA_KEY] }, 
       dueDate: dateKey,
       startTime: `${dateKey}T${hhmm}:00`,
       durationMins: mins,
-      note: 'Scheduled by you · myappointment.ai',
+      note: locationTxt ? `Where: ${locationTxt}` : 'Scheduled by you · myappointment.ai',
       label: `${APPT_MEETING_ACTIVITY} with ${contact.name || contact.email}`,
       status: 'open',
       createdAt: bookedIso,
@@ -6311,7 +6312,7 @@ exports.apptCreateMeeting = onRequest({ cors: true, secrets: [LOANIQ_SA_KEY] }, 
     batch.set(db.doc(`users/${uid}/contacts/${contactId}/activities/appt_sched_${meetingId}`), {
       type: '1-on-1 Booked',
       source: 'myappointment',
-      note: `Scheduled by you for ${whenLabel}`,
+      note: `Scheduled by you for ${whenLabel}${locationTxt ? ' · ' + locationTxt : ''}`,
       points: 0,
       timestamp: bookedIso,
       dateKey: new Date().toLocaleDateString('en-CA', { timeZone: 'America/Chicago' }),
