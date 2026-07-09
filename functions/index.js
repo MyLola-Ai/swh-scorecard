@@ -6120,6 +6120,41 @@ exports.apptMeetingSweep = onSchedule({
   for (const u of usersSnap.docs) {
     const swhUid  = u.id;
     const apptUid = u.data().apptUid;
+
+    // Reconcile pass FIRST — it must run even when there are no new
+    // bookings (that's exactly when late cancels/reschedules happen).
+    // Open myappointment tasks are re-checked against their live
+    // meetings so a dead meeting can never auto-log points.
+    try {
+      const openTasks = await swhDb.collection(`users/${swhUid}/tasks`)
+        .where('type', '==', 'scheduled_activity')
+        .where('source', '==', 'myappointment')
+        .where('status', '==', 'open')
+        .limit(100).get();
+      for (const tDoc of openTasks.docs) {
+        const t = tDoc.data();
+        if (!t.apptMeetingId) continue;
+        const mSnap2 = await lqDb.doc(`users/${apptUid}/meetings/${t.apptMeetingId}`).get();
+        const m2 = mSnap2.exists ? mSnap2.data() : null;
+        if (!m2 || m2.status === 'cancelled' || m2.status === 'canceled') {
+          await tDoc.ref.set({ status: 'canceled', canceledAt: new Date().toISOString() }, { merge: true });
+          console.log(`[apptMeetingSweep] reconcile: canceled task ${tDoc.id} (${swhUid})`);
+          continue;
+        }
+        if (m2.status === 'scheduled' && m2.start) {
+          const sd = m2.start.toDate ? m2.start.toDate() : new Date(m2.start);
+          const dk = sd.toLocaleDateString('en-CA', { timeZone: 'America/Chicago' });
+          const hm = sd.toLocaleTimeString('en-GB', { timeZone: 'America/Chicago', hour: '2-digit', minute: '2-digit' });
+          if (t.dueDate !== dk || (t.startTime || '').slice(11, 16) !== hm) {
+            await tDoc.ref.set({ dueDate: dk, startTime: `${dk}T${hm}:00` }, { merge: true });
+            console.log(`[apptMeetingSweep] reconcile: moved task ${tDoc.id} → ${dk} ${hm} (${swhUid})`);
+          }
+        }
+      }
+    } catch (e) {
+      console.error(`[apptMeetingSweep] reconcile ${swhUid}:`, e.message);
+    }
+
     try {
       const mSnap = await lqDb.collection(`users/${apptUid}/meetings`)
         .where('bookedAt', '>=', sinceTs).get();
@@ -6218,40 +6253,6 @@ exports.apptMeetingSweep = onSchedule({
       }
     } catch (e) {
       console.error(`[apptMeetingSweep] user ${swhUid}:`, e.message);
-    }
-
-    // Reconcile pass: open myappointment tasks vs their live meetings.
-    // Catches cancels/reschedules that happen AFTER the bookedAt window
-    // (the loop above only sees meetings booked in the last 26h), so a
-    // late cancellation can never leave a task that auto-logs points.
-    try {
-      const openTasks = await swhDb.collection(`users/${swhUid}/tasks`)
-        .where('type', '==', 'scheduled_activity')
-        .where('source', '==', 'myappointment')
-        .where('status', '==', 'open')
-        .limit(100).get();
-      for (const tDoc of openTasks.docs) {
-        const t = tDoc.data();
-        if (!t.apptMeetingId) continue;
-        const mSnap2 = await lqDb.doc(`users/${apptUid}/meetings/${t.apptMeetingId}`).get();
-        const m2 = mSnap2.exists ? mSnap2.data() : null;
-        if (!m2 || m2.status === 'cancelled' || m2.status === 'canceled') {
-          await tDoc.ref.set({ status: 'canceled', canceledAt: new Date().toISOString() }, { merge: true });
-          console.log(`[apptMeetingSweep] reconcile: canceled task ${tDoc.id} (${swhUid})`);
-          continue;
-        }
-        if (m2.status === 'scheduled' && m2.start) {
-          const sd = m2.start.toDate ? m2.start.toDate() : new Date(m2.start);
-          const dk = sd.toLocaleDateString('en-CA', { timeZone: 'America/Chicago' });
-          const hm = sd.toLocaleTimeString('en-GB', { timeZone: 'America/Chicago', hour: '2-digit', minute: '2-digit' });
-          if (t.dueDate !== dk || (t.startTime || '').slice(11, 16) !== hm) {
-            await tDoc.ref.set({ dueDate: dk, startTime: `${dk}T${hm}:00` }, { merge: true });
-            console.log(`[apptMeetingSweep] reconcile: moved task ${tDoc.id} → ${dk} ${hm} (${swhUid})`);
-          }
-        }
-      }
-    } catch (e) {
-      console.error(`[apptMeetingSweep] reconcile ${swhUid}:`, e.message);
     }
   }
 });
