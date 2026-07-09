@@ -3799,7 +3799,7 @@ When writing a step message:
 - Match the user's voice (informal, professional, etc.) inferable from any sample notes given.
 - Keep it under 4 sentences for texts, under 1 short paragraph for email.
 - Always reference something specific from the context (their company, what they mentioned, where you met).
-- No pitch, no ask, unless the step explicitly calls for one.`;
+- Include an ask or business content only when the step explicitly calls for one; otherwise keep it purely relational. Never write disclaimers like "no pitch" or "no agenda" into the message itself.`;
 
 const LOLA_BUILD_PLAYBOOK_INSTRUCTIONS = `Build an 8-step follow-through playbook for the relationship type the user describes.
 
@@ -6563,12 +6563,17 @@ GREETING: Use "Hi [First]," for clients, prospects, and newer contacts. Use "Hey
 
 LENGTH: Short. Two to four short paragraphs, most one to three sentences each, roughly 100 to 250 words. One idea per email. Concise is respectful.
 
-STRUCTURE: (1) Warm opener referencing where you met or the last conversation. (2) One genuine helpful-first reason for the note: teach one small thing, share a resource, or just check in. No pitch stacked on it. (3) A single soft next step, or explicitly no ask ("No agenda."). (4) A short warm closing line. (5) Sign-off plus your first name.
+STRUCTURE: (1) Warm opener referencing where you met or the last conversation. (2) One genuine helpful-first reason for the note: teach one small thing, share a resource, or just check in. (3) A single soft next step, or simply end warmly with no ask at all. (4) A short warm closing line. (5) Sign-off plus your first name.
 
 RHYTHM: Short declaratives and the occasional fragment for emphasis. Mix one longer warm clause in, then snap back short. Heavy contractions, active voice, natural speech. Use parentheses for asides. Never use em-dashes.
 
-PRESSURE-REMOVAL PHRASES to draw from: "No rush." "No agenda." "Not trying to sell you anything." "No pitch."
-CARRY-THE-WORK OFFERS to draw from: "I'm one text away," "give me 5 min on a call," "happy to point you in the right direction," "happy to think out loud with you," "let me know if there's ever anything I can help with."
+NEVER ANNOUNCE WHAT THE EMAIL IS NOT: no "No agenda," "No pitch," "Not trying to sell you anything," "This isn't a sales email," or any variant in any construction ("no agenda beyond...", "no agenda here", "zero pitch"). The words "agenda" and "pitch" must not appear anywhere in the email, period. Saying what the email isn't reads exactly like the thing it denies. If there is no ask, just end warmly without announcing it.
+
+FACTS ARE SACRED: Only reference things explicitly present in the context you are given (where you met, notes, FORM details). NEVER invent meetings, conversations, referrals, introductions, favors, names, or shared history. If you have no specific detail to draw on, stay general and honest rather than making something up.
+
+EARLY RELATIONSHIPS (roughly the first half of the follow-through steps, or any first-touch email): zero mortgage or financing content unless their notes show they asked. The only goal is the relationship. Business value can wait until it is earned.
+
+CARRY-THE-WORK OFFERS to draw from (at most one per email, and only once the relationship warrants it): "I'm one text away," "give me 5 min on a call," "happy to point you in the right direction," "happy to think out loud with you," "let me know if there's ever anything I can help with."
 Keep recommendations soft and collaborative: "probably makes the most sense," "Want me to...?" Never "You should" or "I recommend" as a command. Validate the person before suggesting anything.
 
 SIGN-OFFS to rotate: "Thanks, Austen" / "Chat soon, Austen" / "Talk soon, Austen" / just "Austen." On a more formal first touch, "Thanks, Austen Smith." Never "Best regards," "Sincerely," or a title block.
@@ -6613,8 +6618,6 @@ Hope you've been doing well.
 It's been a little while since we last talked, so I just wanted to check in and see how things are going. How's business been?
 
 If anything's changed, if you've got questions about the market, or if someone comes to mind who could use a second opinion on financing, I'm always happy to help.
-
-No agenda. Just wanted to say hello.
 
 Hope you have a great rest of your week.
 
@@ -6979,15 +6982,15 @@ exports.draftContactEmail = onCall({ secrets: [ANTHROPIC_API_KEY] }, async (requ
   const bookingUrl = /^https:\/\/myappointment\.ai\/[\w\-\/]+$/.test(bookingUrlRaw) ? bookingUrlRaw : '';
 
   const INTENT_SITUATIONS = {
-    one_on_one: 'Draft an invitation to get together for a 1-on-1: coffee, lunch, or a quick call in the next week or two. Warm and low-pressure. The point is to get to know them better, not to pitch. Make the ask easy to say yes to and let them pick the time.',
-    check_in:   'Draft a no-agenda check-in. A small kept commitment: you were thinking about them and wanted them to know. Reference something specific they shared (family, work, season of life) if you have it. No ask, no pitch, no "let me know if you need anything" filler. Keep it to a few sentences.',
-    thank_you:  'Draft a genuine thank-you. Use the notes and FORM intel to find what to thank them for (a referral, an introduction, their time, something they taught you). Be specific about what it meant. Gratitude only. No ask, no pivot to business.',
-    reconnect:  'It has been a while since you two connected. Draft a warm re-opening that acknowledges the gap without over-apologizing, brings up something you remember about them, and gives a genuine reason to reconnect. No guilt, no fake urgency.',
+    one_on_one: 'Draft an invitation to get together for a 1-on-1: coffee, lunch, or a quick call in the next week or two. Warm and low-pressure, focused on getting to know them and what they are building. Make the ask easy to say yes to and let them pick the time.',
+    check_in:   'Draft a short check-in: you were thinking about them and wanted them to know. Reference something specific they shared (family, work, season of life) if the context includes it. Do not include any request, offer, or business content. A few sentences is plenty.',
+    thank_you:  'Draft a genuine thank-you. Look ONLY at the notes and FORM intel for what to thank them for; if nothing specific is recorded there, thank them for their time and the conversation when you met, and leave it at that. When you do have a real detail, be specific about what it meant. Gratitude only.',
+    reconnect:  'It has been a while since you two connected. Draft a warm re-opening that acknowledges the gap without over-apologizing, references something you actually know about them from the context, and gives a genuine reason to reconnect. No guilt, no manufactured urgency.',
   };
   const relationshipLine = `Relationship status: ${stepsDone} of 8 follow-through steps completed${daysSince ? `, ${daysSince} days since you met` : ''}. Match the warmth and familiarity to that depth.`;
 
   const autoSituation = allDone
-    ? `You have completed all 8 follow-through steps with this person. They are a real, cultivated relationship — not a prospect to chase. The goal of this email is to keep the relationship warm and prevent it from going stagnant. Find a genuine, specific reason to reach out: a useful resource, a referral opportunity, something tied to what they shared (family, work, hobbies, goals), a milestone worth acknowledging, or a simple human check-in that adds value. No pitch, no agenda — just a real touch that reminds them you think of them.`
+    ? `You have completed all 8 follow-through steps with this person. They are a real, cultivated relationship — not a prospect to chase. The goal of this email is to keep the relationship warm and prevent it from going stagnant. Find a genuine, specific reason to reach out grounded ONLY in what the context below tells you: a useful resource, something tied to what they shared (family, work, hobbies, goals), a milestone worth acknowledging, or a simple human check-in. A real touch that reminds them you think of them, with nothing to sell and no announcement that there is nothing to sell.`
     : `You have completed ${stepsDone} of 8 follow-through steps with this person (${daysSince} days since you met). This is NOT a scripted step — just draft the right email for where you are with them right now. Match the tone and depth to the relationship as it actually stands at this moment.`;
 
   const situation = INTENT_SITUATIONS[draftType]
