@@ -105,6 +105,8 @@ exports.scanBusinessCard = onCall({
   }
   const { imageBase64, mediaType } = request.data || {};
   if (!imageBase64) throw new HttpsError('invalid-argument', 'imageBase64 required');
+  console.log(`[scanBusinessCard] uid=${request.auth.uid} img=${Math.round(imageBase64.length / 1024)}KB type=${mediaType || 'image/jpeg'}`);
+  const t0 = Date.now();
 
   const response = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
@@ -133,14 +135,19 @@ exports.scanBusinessCard = onCall({
     throw new HttpsError('internal', result.error?.message || `Card scan failed (API ${response.status}).`);
   }
   const text = result.content?.find(b => b.type === 'text')?.text || '{}';
+  let parsed = null;
   try {
-    return JSON.parse(text.replace(/```json|```/g, '').trim());
+    parsed = JSON.parse(text.replace(/```json|```/g, '').trim());
   } catch (_) {
     const m = text.match(/\{[\s\S]*\}/);
-    if (m) { try { return JSON.parse(m[0]); } catch (_) {} }
+    if (m) { try { parsed = JSON.parse(m[0]); } catch (_) { /* fall through */ } }
+  }
+  if (!parsed) {
     console.error('scanBusinessCard: unparseable model output', text.slice(0, 300));
     throw new HttpsError('internal', 'Could not parse card data.');
   }
+  console.log(`[scanBusinessCard] ok in ${Date.now() - t0}ms fields=${['firstName', 'lastName', 'phone', 'email'].filter(k => parsed[k]).join(',') || 'none'}`);
+  return parsed;
 });
 
 // ===== Auth helper — verify the Firebase ID token from the Authorization header =====

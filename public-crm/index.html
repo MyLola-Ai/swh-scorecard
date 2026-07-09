@@ -3733,7 +3733,13 @@ const NativeAPI = {
     try {
       const res = await fetch(`${CRM_FUNCTIONS_BASE}/${fnName}`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${this.idToken}` }, body: JSON.stringify(body || {}), signal: ctrl.signal });
       clearTimeout(t);
-      if (!res.ok) { const err = await res.json().catch(() => ({})); if (res.status === 401) { await this.signOut(); throw new Error(err.error || 'Session expired'); } throw new Error(err.error || `HTTP ${res.status}`); }
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        // callable errors nest as {error:{message,status}}; onRequest errors are {error:"..."}
+        const emsg = (err.error && (typeof err.error === 'string' ? err.error : err.error.message)) || `HTTP ${res.status}`;
+        if (res.status === 401) { await this.signOut(); throw new Error(emsg || 'Session expired'); }
+        throw new Error(emsg);
+      }
       return res.json();
     } catch(e) { clearTimeout(t); if (e.name === 'AbortError') throw new Error('Request timed out'); throw e; }
   }
@@ -11080,8 +11086,8 @@ function processCardFile(file) {
     const img = new Image();
     img.onload = () => {
       const canvas = document.createElement('canvas');
-      // Cap at 1600px for API efficiency
-      const maxDim = 1600;
+      // Cap at 1280px — plenty for OCR, halves the upload vs 1600
+      const maxDim = 1280;
       let w = img.width, h = img.height;
       if(w > maxDim || h > maxDim) {
         if(w > h) { h = Math.round(h * maxDim/w); w = maxDim; }
@@ -11090,7 +11096,7 @@ function processCardFile(file) {
       canvas.width = w; canvas.height = h;
       const ctx = canvas.getContext('2d');
       ctx.drawImage(img, 0, 0, w, h);
-      const jpegDataUrl = canvas.toDataURL('image/jpeg', 0.92);
+      const jpegDataUrl = canvas.toDataURL('image/jpeg', 0.85);
       cardImageBase64 = jpegDataUrl.split(',')[1];
       const preview = document.getElementById('card-preview');
       preview.src = jpegDataUrl;
@@ -11117,7 +11123,7 @@ window.scanCard = async function() {
     let info;
     if (isNativeEarly) {
       // scanBusinessCard is an onCall fn — raw HTTP needs the callable envelope: {data} in, {result} out
-      const resp = await NativeAPI.call('scanBusinessCard', { data: { imageBase64: cardImageBase64, mediaType: 'image/jpeg' } }, { timeout: 60000 });
+      const resp = await NativeAPI.call('scanBusinessCard', { data: { imageBase64: cardImageBase64, mediaType: 'image/jpeg' } }, { timeout: 120000 });
       info = resp.result || {};
     } else {
       const scanFn = httpsCallable(functions, 'scanBusinessCard');
@@ -11142,7 +11148,8 @@ window.scanCard = async function() {
     document.getElementById('card-scanning').style.display = 'none';
     document.getElementById('card-preview-wrap').style.display = 'block';
     const errEl = document.getElementById('card-error');
-    errEl.textContent = '⚠️ Could not read the card. Make sure the image is clear and try again.';
+    const detail = (e && typeof e.message === 'string' && e.message && e.message !== 'internal') ? ` (${e.message})` : '';
+    errEl.textContent = `⚠️ Could not read the card${detail}. Check your connection and try again.`;
     errEl.style.display = 'block';
     console.error('Card scan error:', e);
   }
