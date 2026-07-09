@@ -4821,6 +4821,25 @@ async function initUser() {
   try {
     const ns = await getDoc(doc(db,'users',currentUser.uid,'integrations','nylas'));
     crmNylasConnected = ns.exists() && ns.data().status === 'active';
+    // Doc says expired but a grant exists → probe nylasStatus, which live-checks
+    // the grant against Nylas and self-heals a wrongly-flagged doc.
+    if (ns.exists() && !crmNylasConnected) {
+      (async () => {
+        try {
+          const tok = await lolaIdToken();
+          const r = await fetch(`${NYLAS_FN}/nylasStatus`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${tok}` },
+            body: '{}',
+          });
+          const s = await r.json();
+          if (s && s.connected && s.status === 'active') {
+            crmNylasConnected = true;
+            console.log('[nylas] status self-healed to active');
+          }
+        } catch (_) { /* non-fatal */ }
+      })();
+    }
   } catch(_) {}
 }
 

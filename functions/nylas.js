@@ -822,7 +822,11 @@ async function maybeFlagExpired(req, e) {
   const status = e.statusCode || e.status || 0;
   if (status !== 401 && status !== 403) return;
   // A 403 from a missing scope is NOT token expiry. Don't flag the grant.
-  const errMsg = String(e.message || e.body || '').toLowerCase();
+  // Nylas nests the provider's message (e.g. Google's "insufficient
+  // authentication scopes") in providerError while e.message is just
+  // "Forbidden" — check both, or scope errors wrongly kill the grant.
+  const errMsg = (String(e.message || e.body || '') + ' '
+    + String(e.providerError?.error?.message || '')).toLowerCase();
   if (errMsg.includes('scope') || errMsg.includes('permission') || errMsg.includes('insufficient')) return;
   try {
     const header = req.headers.authorization || '';
