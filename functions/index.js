@@ -6689,24 +6689,22 @@ const DEFAULT_STEP_NAMES_SERVER = [
 ];
 const DEFAULT_STEP_PTS_SERVER = [5, 5, 5, 5, 10, 10, 5, 5];
 
-exports.buildFollowThroughQueue = onSchedule({
-  schedule: 'every day 08:00',
-  timeZone: 'America/Chicago',
-  secrets: [ANTHROPIC_API_KEY],
-}, async () => {
+async function runFollowThroughQueueBuild() {
   const todayKey = chicagoTodayKey();
   console.log('[buildFollowThroughQueue] running for', todayKey);
 
-  const grants = await admin.firestore().collectionGroup('integrations')
-    .where('product', '==', 'swh-crm')
-    .where('status', '==', 'active')
-    .get();
-
-  for (const g of grants.docs) {
-    const grantData = g.data();
-    if (!ADMIN_EMAILS.includes(grantData.email)) continue; // V1 gate
-
-    const uid = g.ref.parent.parent.id;
+  // V1 gate: build for ADMIN_EMAILS directly. Drafting needs no email
+  // connection — do NOT key on Nylas grants (Nylas is being replaced by
+  // Unipile/Lola Connect; the send path migrates there, drafts shouldn't
+  // die with the old stack).
+  for (const adminEmail of ADMIN_EMAILS) {
+    let uid = null;
+    try {
+      uid = (await admin.auth().getUserByEmail(adminEmail)).uid;
+    } catch (_) {
+      console.warn('[buildFollowThroughQueue] no auth user for', adminEmail);
+      continue;
+    }
     console.log('[buildFollowThroughQueue] uid', uid);
 
     const [userSnap, pbSnap, contactsSnap] = await Promise.all([
@@ -6807,6 +6805,34 @@ exports.buildFollowThroughQueue = onSchedule({
   }
 
   console.log('[buildFollowThroughQueue] done');
+}
+
+exports.buildFollowThroughQueue = onSchedule({
+  schedule: 'every day 08:00',
+  timeZone: 'America/Chicago',
+  secrets: [ANTHROPIC_API_KEY],
+}, runFollowThroughQueueBuild);
+
+// Manual trigger for the morning draft builder — refills the Morning
+// Queue after an outage instead of waiting for the 8am cron. Idempotent
+// (same builtAt/status skips as the nightly run) and internally gated to
+// ADMIN_EMAILS grants, so any-authenticated-caller is safe.
+exports.buildFollowThroughQueueNow = onRequest({
+  cors: true,
+  secrets: [ANTHROPIC_API_KEY],
+  timeoutSeconds: 540,
+  invoker: 'public',
+}, async (req, res) => {
+  if (req.method === 'OPTIONS') { res.status(204).send(''); return; }
+  try {
+    await requireAuth(req);
+    await runFollowThroughQueueBuild();
+    res.json({ ok: true });
+  } catch (e) {
+    const code = e.statusCode || 500;
+    console.error('[buildFollowThroughQueueNow]', e.message);
+    res.status(code).json({ error: e.message || 'Build failed' });
+  }
 });
 
 // Regenerate a single follow-through draft with the user's revision notes.
