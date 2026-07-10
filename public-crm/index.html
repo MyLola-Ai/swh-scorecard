@@ -1612,6 +1612,11 @@ html.dark-theme .st-sect-head{color:rgba(255,255,255,.55);}
           <div class="content-pad">
             <div class="net-controls" style="margin-top:12px;">
               <div class="search-wrap"><div class="search-icon">🔍</div><input class="search-input" type="text" placeholder="Search name, company, event…" oninput="filterContacts(this.value)" id="net-search"></div>
+              <select id="net-sort" class="filter-chip" onchange="setNetSort(this.value)" style="cursor:pointer;appearance:none;-webkit-appearance:none;font-family:'DM Sans',sans-serif;">
+                <option value="status">Sort: Status</option>
+                <option value="recent">Sort: Recently Added</option>
+                <option value="name">Sort: Name A–Z</option>
+              </select>
               <button class="filter-chip active" onclick="setFilter('all',this)">All</button>
               <button class="filter-chip" onclick="setFilter('aplus',this)" style="font-family:'Playfair Display',serif;font-weight:900;">🏆 A+</button>
               <button class="filter-chip" onclick="setFilter('a',this)" style="font-family:'Playfair Display',serif;font-weight:900;">🥇 A</button>
@@ -2330,6 +2335,22 @@ html.dark-theme .st-sect-head{color:rgba(255,255,255,.55);}
     <div class="ctx-footer">
       <button class="ctx-cancel" onclick="document.getElementById('goal-modal').classList.remove('open')">Cancel</button>
       <button class="ctx-confirm" onclick="saveGoal()">Save Goal ✓</button>
+    </div>
+  </div>
+</div>
+
+<!-- ════ START FOLLOW-THROUGH PROMPT (after adding a contact) ════ -->
+<div class="ctx-overlay" id="ft-start-overlay" onclick="if(event.target===this)dismissFtStartPrompt()">
+  <div class="ctx-box" style="max-width:360px;">
+    <div class="ctx-header">
+      <div class="ctx-handle mobile-only"></div>
+      <div class="ctx-icon">🤝</div>
+      <div class="ctx-title" id="ft-start-title">Start the follow-through?</div>
+      <div class="ctx-subtitle">Don't waste the handshake. Start the clock and queue every follow-through step for this contact.</div>
+    </div>
+    <div class="ctx-footer">
+      <button class="ctx-cancel" onclick="dismissFtStartPrompt()">Not Now</button>
+      <button class="ctx-confirm" onclick="confirmFtStartPrompt()">⏱️ Start Today</button>
     </div>
   </div>
 </div>
@@ -4307,6 +4328,7 @@ let ctxEntries = {}, ctxActIndex = null, ctxChipSelections = {};
 let expandedContactId = null;
 let editingContactId = null;
 let activeFilter = 'all';
+let netSort = localStorage.getItem('swh_net_sort') || 'status';
 let weekPts = 0;        // primary metric — LEAD points only (predicts future business)
 let weekLagPts = 0;     // current results — referrals received, opps won
 let pipeView = 'opps';
@@ -7680,11 +7702,24 @@ window.renderNetwork=function(filterStatus,query){
     const mq=!query||c.name.toLowerCase().includes(query.toLowerCase())||(c.company||'').toLowerCase().includes(query.toLowerCase())||(c.event||'').toLowerCase().includes(query.toLowerCase());
     return ms&&mq;
   });
-  // Sort: A+ first, then A, B, D, then New — within same tier, alphabetical
-  list.sort((a,b) => {
-    const r = statusRank(resolveStatus(a)) - statusRank(resolveStatus(b));
-    return r !== 0 ? r : a.name.localeCompare(b.name);
-  });
+  // Sort per the user's picker: status tiers (default), newest-first, or name.
+  if (netSort === 'recent') {
+    list.sort((a,b) => {
+      const ta = a.addedAt ? Date.parse(a.addedAt) || 0 : 0;
+      const tb = b.addedAt ? Date.parse(b.addedAt) || 0 : 0;
+      return tb !== ta ? tb - ta : a.name.localeCompare(b.name);
+    });
+  } else if (netSort === 'name') {
+    list.sort((a,b) => a.name.localeCompare(b.name));
+  } else {
+    // Status: A+ first, then A, B, D, then New — within same tier, alphabetical
+    list.sort((a,b) => {
+      const r = statusRank(resolveStatus(a)) - statusRank(resolveStatus(b));
+      return r !== 0 ? r : a.name.localeCompare(b.name);
+    });
+  }
+  const sortSel=document.getElementById('net-sort');
+  if(sortSel && sortSel.value!==netSort) sortSel.value=netSort;
   const el=document.getElementById('net-contact-list'); if(!el) return;
   const netSub=document.getElementById('net-mob-sub'); if(netSub) netSub.textContent=`${CONTACTS.length} contact${CONTACTS.length!==1?'s':''}`;  
   // Update counts in filter chips
@@ -8477,6 +8512,42 @@ window.startClock=async function(contactId){
   renderNetwork();showToast('⏱️ 8-Step clock started!');
 };
 
+window.setNetSort=function(v){
+  netSort = (v==='recent'||v==='name') ? v : 'status';
+  localStorage.setItem('swh_net_sort', netSort);
+  expandedContactId=null;
+  renderNetwork();
+};
+
+// ── START-FT PROMPT — offered right after a contact is added (form or card
+// scan) without the campaign checkbox, so no handshake slips through unstarted.
+let _ftPromptContactId = null;
+function promptFtStart(contactId){
+  const c = CONTACTS.find(x=>x.id===contactId);
+  if (!c || c.clockStarted || c.wasted) return;
+  _ftPromptContactId = contactId;
+  const t = document.getElementById('ft-start-title');
+  if (t) t.textContent = `Start follow-through for ${c.name.split(' ')[0]}?`;
+  document.getElementById('ft-start-overlay').classList.add('open');
+}
+window.dismissFtStartPrompt=function(){
+  _ftPromptContactId = null;
+  document.getElementById('ft-start-overlay').classList.remove('open');
+};
+window.confirmFtStartPrompt=async function(){
+  const id = _ftPromptContactId;
+  dismissFtStartPrompt();
+  if (!id) return;
+  try {
+    await startClock(id);
+    const c = CONTACTS.find(x=>x.id===id);
+    if (c && calendarAutoAdd) await addStepsToCalendar(c);
+  } catch(e) {
+    console.error('[ftStartPrompt] failed:', e);
+    showToast('⚠️ Could not start: ' + ((e && e.message) || e));
+  }
+};
+
 window.toggleNeStep=async function(el,contactId,stepIndex){
   const c=CONTACTS.find(x=>x.id===contactId);if(!c)return;
   const pb=playbookFor(c);
@@ -9228,6 +9299,8 @@ async function saveContactImpl(){
     }
   }
   setTimeout(()=>{expandedContactId=ref.id;renderNetwork();},300);
+  // Checkbox skipped → offer the follow-through start once the row has settled
+  if (!startCampaign) setTimeout(()=>promptFtStart(ref.id),350);
 }
 window.saveContact=async()=>{
   try { await saveContactImpl(); }
@@ -11221,6 +11294,8 @@ async function saveScannedContactImpl() {
   await autoLogActivity('Add New Contact', name, ref.id, 'scorecard');
   console.log('[saveScannedContact] autoLogActivity complete');
   setTimeout(()=>{ expandedContactId=ref.id; renderNetwork(); },300);
+  // The scan flow has no campaign checkbox — always offer the follow-through start
+  setTimeout(()=>promptFtStart(ref.id),350);
 }
 window.saveScannedContact = () => saveScannedContactImpl();
 
