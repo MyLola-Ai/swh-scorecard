@@ -857,6 +857,14 @@ function resultPage(title, body, success) {
 // contact (Emails tab). No step/points side effects; the user marks
 // steps intentionally.
 // ============================================================
+// Nylas treats `body` as HTML while our drafts are plain text — sending raw
+// text collapses every paragraph break into one blob on the recipient's end.
+function textBodyToHtml(body) {
+  return escapeHtml(String(body))
+    .replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1">$1</a>')
+    .replace(/\n/g, '<br>');
+}
+
 exports.sendContactEmail = onRequest(
   { cors: true, secrets: [NYLAS_API_KEY], invoker: 'public' },
   async (req, res) => {
@@ -875,10 +883,7 @@ exports.sendContactEmail = onRequest(
       const integration = await loadActiveGrant(uid, res);
       if (!integration) return;
 
-      // Nylas treats body as HTML; drafts are plain text
-      const html = escapeHtml(String(body))
-        .replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1">$1</a>')
-        .replace(/\n/g, '<br>');
+      const html = textBodyToHtml(body);
 
       const nylas = nylasClient();
       const sendResp = await nylas.messages.send({
@@ -953,7 +958,7 @@ exports.sendFollowThroughEmail = onRequest(
         requestBody: {
           to: [{ email: contact.email, name: contact.name }],
           subject: subject || queueDoc.data().draftSubject || 'Checking in',
-          body,
+          body: textBodyToHtml(body),
         },
       });
 
