@@ -6977,6 +6977,9 @@ function renderTasks() {
     for(let i=0;i<8;i++){
       const {done,dueDate,isLate}=getStepStatus(c,i);
       if(done||!dueDate) continue;
+      // A pending Morning Queue card already covers this step — that card is
+      // the task, so a reminder row would be a duplicate.
+      if(FOLLOW_THROUGH_QUEUE.some(q=>q.contactId===c.id&&(q.stepIndex||0)===i&&q.status==='pending')){bucketed=true;continue;}
       if(isLate&&!bucketed){overdueList.push({contact:c,step:i,dueDate});bucketed=true;continue;}
       if(dueDate===todayKey&&!bucketed){dueTodayList.push({contact:c,step:i,dueDate});bucketed=true;continue;}
       if(!bucketed){
@@ -7097,8 +7100,14 @@ function renderTasks() {
     });
   }
 
-  // Morning queue
-  const pendingQueue = FOLLOW_THROUGH_QUEUE.filter(q => q.status === 'pending');
+  // Morning queue — hide (and lazily close) cards whose step the contact
+  // already completed, e.g. sent outside the queue then checked off.
+  const pendingQueue = FOLLOW_THROUGH_QUEUE.filter(q => {
+    if (q.status !== 'pending') return false;
+    const c = CONTACTS.find(x => x.id === q.contactId);
+    if (c && (c.steps||0) > (q.stepIndex||0)) { closeQueueDocsUpTo(q.contactId, c.steps||0); return false; }
+    return true;
+  });
   if (pendingQueue.length > 0) {
     html += `<div class="task-grp-lbl" style="color:#5B5BD6;">✨ Morning Queue <span class="cnt-badge">${pendingQueue.length}</span></div>`;
     pendingQueue.forEach(q => {
@@ -8661,6 +8670,7 @@ window.toggleNeStep=async function(el,contactId,stepIndex){
   c.steps=newSteps;c.lastActivityAt=new Date().toISOString();
   await updateDoc(doc(db,'users',currentUser.uid,'contacts',contactId),{steps:newSteps,lastActivityAt:c.lastActivityAt});
   detectWastedHandshakes();refreshStepsPanel(contactId);
+  if(!wasCompleted){ closeQueueDocsUpTo(contactId,newSteps).then(n=>{ if(n) renderTasks(); }); }
 
   // Log points when completing (not uncompleting) a step.
   // Playbook step names are free-form and usually don't exist in the
@@ -8697,6 +8707,8 @@ window.dismissNeStep = async function(contactId, stepIndex) {
   await updateDoc(doc(db, 'users', currentUser.uid, 'contacts', contactId), { steps: newSteps, lastActivityAt: c.lastActivityAt });
   detectWastedHandshakes();
   refreshStepsPanel(contactId);
+  const closedCount = await closeQueueDocsUpTo(contactId, newSteps);
+  if (closedCount) renderTasks();
   showToast('Step dismissed');
 };
 
@@ -10744,14 +10756,37 @@ window.ftqToggleEdit = function(docId) {
   if (btn) btn.textContent = isOpen ? 'Edit' : 'Done';
 };
 
+// Close pending queue docs for steps the contact has already completed —
+// keeps the Morning Queue in step with the profile step checkboxes.
+async function closeQueueDocsUpTo(contactId, stepsDone) {
+  const stale = FOLLOW_THROUGH_QUEUE.filter(q => q.contactId === contactId && q.status === 'pending' && (q.stepIndex||0) < stepsDone);
+  for (const q of stale) {
+    q.status = 'done';
+    try { await updateDoc(doc(db, 'users', currentUser.uid, 'followThroughQueue', q.id), { status: 'done', closedBy: 'step_completed', closedAt: new Date().toISOString() }); }
+    catch (e) { console.warn('[closeQueueDocsUpTo]', q.id, e); }
+  }
+  return stale.length;
+}
+
 window.ftqSkip = async function(docId) {
   if (!currentUser) return;
   const q = FOLLOW_THROUGH_QUEUE.find(x => x.id === docId);
   if (!q) return;
   q.status = 'skipped';
   await updateDoc(doc(db, 'users', currentUser.uid, 'followThroughQueue', docId), { status: 'skipped' });
+  // Skipping means this touch is handled or not needed — advance the step
+  // (no points) so it doesn't come back as an overdue reminder tomorrow.
+  const c = CONTACTS.find(x => x.id === q.contactId);
+  if (c && (c.steps||0) <= (q.stepIndex||0)) {
+    const pb = playbookFor(c);
+    const newSteps = Math.min(pb.steps.length, (q.stepIndex||0) + 1);
+    c.steps = newSteps;
+    c.lastActivityAt = new Date().toISOString();
+    await updateDoc(doc(db, 'users', currentUser.uid, 'contacts', q.contactId), { steps: newSteps, lastActivityAt: c.lastActivityAt });
+    detectWastedHandshakes();
+  }
   renderTasks();
-  showToast('Skipped');
+  showToast('Skipped. Step marked handled');
 };
 
 // Regenerate a queue draft with revision notes. Opens a modal asking what to
