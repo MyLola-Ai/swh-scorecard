@@ -6583,6 +6583,20 @@ function todayInWords() {
   });
 }
 
+// Groups where Austen is a MEMBER: contacts met there without a guest marker
+// are people he already knows from weekly meetings, not fresh handshakes.
+const MEMBER_GROUPS = ['profit powerhouse'];
+
+function relationshipContextLine(contactEvent, notes) {
+  const ev = String(contactEvent || '').toLowerCase();
+  const nt = String(notes || '').toLowerCase();
+  if (!MEMBER_GROUPS.some((g) => ev.includes(g))) return '';
+  if (nt.includes('guest')) {
+    return 'Relationship context: they visited my BNI chapter (Profit Powerhouse) as a guest, so we did just meet there. First-meeting warmth is right.';
+  }
+  return 'Relationship context: we are BOTH members of the same BNI chapter (Profit Powerhouse) and see each other at weekly meetings. We already know each other. Never write as if we just met: no "good to meet you", "great meeting you", "nice to meet", "good connecting with you", or guest framing. Write as a familiar peer continuing an ongoing relationship. If the step name implies a first meeting, reinterpret it as a warm touchpoint after a recent chapter conversation. Still do not invent specific conversations or details; keep the familiarity general unless my notes give specifics.';
+}
+
 // Per-step link that must appear in the draft, exactly. Keyed off the step
 // name so it works with custom playbook step names (e.g. "The Networking Wire
 // Invitation", "Invite to 1:1").
@@ -6599,7 +6613,7 @@ const VOICE_PROFILE = `You are drafting a networking follow-up email AS Austen S
 
 VOICE: Warm, confident, educational, helpful-first. You are a guide who happens to do mortgages, not a salesperson. Write the way you talk.
 
-GREETING: Use "Hi [First]," for clients, prospects, and newer contacts. Use "Hey [First]," for warm or partner relationships. For a milestone or congrats note, the first name alone on a line is fine. Never "Dear."
+GREETING: Use "Hi [First]," for clients, prospects, and newer contacts. Use "Hey [First]," for warm or partner relationships. For a milestone or congrats note, the first name alone on a line is fine. Never "Dear." If my notes record a nickname or what they go by (e.g. "goes by Greg"), use that instead of the formal first name.
 
 LENGTH: Short. Two to four short paragraphs, most one to two sentences each, roughly 60 to 180 words. One idea per email. Concise is respectful. FIRST-TOUCH ("great meeting you" / step 1) emails are the shortest of all: 40 to 90 words, three or four one-sentence paragraphs, nothing more. Say it was good to meet them, touch one specific detail about THEM, say a proper hello, leave the door open. No paragraph about yourself.
 
@@ -6682,6 +6696,7 @@ Return ONLY valid JSON, no prose, no markdown fences:
     stepDescription ? `Step goal: ${stepDescription}` : '',
     `Contact: ${contactName}${contactCompany ? ' at ' + contactCompany : ''}`,
     contactEvent ? `Where we met: ${contactEvent}` : '',
+    relationshipContextLine(contactEvent, notesPreview),
     `Today is ${todayInWords()}.`,
     meetRecency ? `When we met: ${meetRecency} (already calendar-correct — use this exact time frame when referencing the meeting)` : '',
     `Days since clock started: ${daysSinceClockStart || 0}`,
@@ -7058,6 +7073,7 @@ exports.draftContactEmail = onCall({ secrets: [ANTHROPIC_API_KEY] }, async (requ
     situation,
     `Contact: ${c.name}${c.company ? ' at ' + c.company : ''}`,
     c.event   ? `Where we met: ${c.event}` : '',
+    relationshipContextLine(c.event, c.notes),
     `Today is ${todayInWords()}.`,
     metPhrase ? `When we met: ${metPhrase} (already calendar-correct — use this exact time frame when referencing the meeting)` : '',
     `My name: ${userFirstName}`,
