@@ -3356,6 +3356,7 @@
     if (deleteRow2) deleteRow2.style.display = 'flex';
     if (typeof refreshSettingsSubLabels === 'function') refreshSettingsSubLabels();
     if (typeof refreshCalReminderSub === 'function') refreshCalReminderSub();
+    if (window.refreshLolaConnectStatus) { try { window.refreshLolaConnectStatus(); } catch(_){} }
     document.getElementById('home-date-label').textContent=formatDateLabel(getTodayKey());
     const av=document.getElementById('avatar-initials');
     if(photo) av.innerHTML=`<img src="${photo}" style="width:100%;height:100%;border-radius:50%;object-fit:cover;">`;
@@ -4192,8 +4193,12 @@
   .coaching-dismiss{width:100%;background:var(--gold);border:none;border-radius:16px;padding:17px;font-family:'DM Sans',sans-serif;font-size:17px;font-weight:700;color:var(--navy);cursor:pointer;margin-top:auto;}
   .coaching-dismiss:active{opacity:0.9;}
   /* Toast — centered without transform trick; max-width keeps it from spanning full screen */
-  .toast{position:fixed;top:max(60px, calc(env(safe-area-inset-top) + 12px));left:max(24px, calc(env(safe-area-inset-left) + 16px));right:max(24px, calc(env(safe-area-inset-right) + 16px));width:auto;max-width:min(360px, calc(100vw - 48px));margin:0 auto;background:var(--navy);color:#fff;padding:12px 20px;border-radius:30px;font-size:14px;font-weight:600;box-shadow:0 4px 20px rgba(27,46,75,0.3);z-index:200;transition:opacity 0.3s ease,transform 0.3s ease;opacity:0;transform:translateY(-12px);text-align:center;word-wrap:break-word;}
-  .toast.show{opacity:1;transform:translateY(0);}
+  /* visibility:hidden at rest — hidden state was opacity:0 only, which leaves the
+     invisible pill fully in-viewport over the header at z-index:200 with hit-testing
+     still active (no pointer-events:none), silently swallowing taps. Discrete
+     visibility transition flips after the fade completes — animation unchanged. */
+  .toast{position:fixed;top:max(60px, calc(env(safe-area-inset-top) + 12px));left:max(24px, calc(env(safe-area-inset-left) + 16px));right:max(24px, calc(env(safe-area-inset-right) + 16px));width:auto;max-width:min(360px, calc(100vw - 48px));margin:0 auto;background:var(--navy);color:#fff;padding:12px 20px;border-radius:30px;font-size:14px;font-weight:600;box-shadow:0 4px 20px rgba(27,46,75,0.3);z-index:200;transition:opacity 0.3s ease,transform 0.3s ease,visibility 0.3s;opacity:0;transform:translateY(-12px);visibility:hidden;text-align:center;word-wrap:break-word;}
+  .toast.show{opacity:1;transform:translateY(0);visibility:visible;}
 
   /* ── Hero subtitle — centered, balanced line-break width ─────────────────── */
   .hero-subtitle {
@@ -4748,6 +4753,19 @@
       <div class="settings-row web-only" onclick="openCalReminderModal()">
         <div class="settings-row-left"><div class="settings-row-icon">🗓️</div><div><div class="settings-row-text">Calendar Reminder</div><div class="settings-row-sub" id="settings-cal-reminder-sub">Off</div></div></div>
         <div class="settings-arrow">›</div>
+      </div>
+    </div>
+    <!-- ===== EMAIL, CALENDAR & CONTACTS (Lola Connect P4 beta) — whole section hidden unless beta-enabled ===== -->
+    <div id="settings-lolaconnect-section" style="display:none;">
+      <div style="font-size:12px;font-weight:600;letter-spacing:0.1em;color:var(--text-muted);text-transform:uppercase;margin-bottom:8px;">Email, Calendar &amp; Contacts</div>
+      <div class="settings-card">
+        <div class="settings-row" id="settings-lolaconnect-row">
+          <div class="settings-row-left">
+            <div class="settings-row-icon">✉️</div>
+            <div><div class="settings-row-text">Email &amp; Calendar (Lola Connect · beta)</div><div class="settings-row-sub" id="settings-lolaconnect-sub">Checking…</div></div>
+          </div>
+          <div id="settings-lolaconnect-actions" style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end;"></div>
+        </div>
       </div>
     </div>
     <!-- ===== TEAM SECTION ===== -->
@@ -5541,6 +5559,82 @@
     if (!token) throw new Error('You are not signed in. Sign in and try again.');
     return { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' };
   }
+
+  // ── Lola Connect (P4 beta) — email/calendar via the swh /lolaConnect proxy.
+  // Additive + flag-gated: the whole section stays hidden unless the proxy
+  // reports this user beta-enabled (system/lolaConnect). The native app has no
+  // _getAuthToken in this scope, so the call throws and the section stays hidden.
+  let _lolaConnectConnId = null;
+  async function _lolaConnectCall(op, body) {
+    const headers = await _teamAuthHeader();
+    const res = await fetch(`${FN_BASE}/lolaConnect`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ op, ...(body || {}) }),
+    });
+    return { status: res.status, json: await res.json().catch(() => ({})) };
+  }
+  const _LC_PILL = "padding:6px 10px;background:var(--bg);border:1px solid var(--border);border-radius:8px;font-family:'DM Sans',sans-serif;font-size:12px;font-weight:600;color:var(--text);cursor:pointer;";
+  window.refreshLolaConnectStatus = async function () {
+    const section = document.getElementById('settings-lolaconnect-section');
+    if (!section) return;
+    const sub = document.getElementById('settings-lolaconnect-sub');
+    const actions = document.getElementById('settings-lolaconnect-actions');
+    try {
+      const { status, json } = await _lolaConnectCall('connections.list');
+      if (status === 403) { section.style.display = 'none'; return; } // not beta-enabled
+      section.style.display = '';
+      const conns = (json.result && json.result.connections) || [];
+      const active = conns.find(c => c.status === 'connected');
+      if (active) {
+        _lolaConnectConnId = active.id;
+        if (sub) sub.textContent = 'Connected: ' + (active.email || 'account');
+        if (actions) actions.innerHTML = '<button onclick="lolaConnectDisconnect()" style="' + _LC_PILL + '">Disconnect</button>';
+      } else {
+        _lolaConnectConnId = null;
+        if (sub) sub.textContent = 'Connect Google, Outlook, or IMAP (beta)';
+        if (actions) actions.innerHTML =
+          '<button onclick="lolaConnectConnect(\'google\')" style="' + _LC_PILL + '">Google</button>' +
+          '<button onclick="lolaConnectConnect(\'microsoft\')" style="' + _LC_PILL + '">Outlook</button>' +
+          '<button onclick="lolaConnectConnect(\'imap\')" style="' + _LC_PILL + '">IMAP</button>';
+      }
+    } catch (e) { console.warn('[lolaConnect] status failed:', e.message); }
+  };
+  window.lolaConnectConnect = async function (provider) {
+    const actions = document.getElementById('settings-lolaconnect-actions');
+    const prev = actions ? actions.innerHTML : '';
+    if (actions) actions.innerHTML = '<span style="font-size:12px;color:var(--text-muted);">Opening…</span>';
+    try {
+      const { json } = await _lolaConnectCall('connections.start', { providers: [provider || 'google'] });
+      const url = json.result && json.result.url;
+      if (url) { window.location.href = url; return; }
+      if (window.showToast) showToast('Could not start connection');
+    } catch (e) { if (window.showToast) showToast('Connection error'); }
+    if (actions) actions.innerHTML = prev;
+  };
+  window.lolaConnectDisconnect = async function () {
+    if (!_lolaConnectConnId) return;
+    const actions = document.getElementById('settings-lolaconnect-actions');
+    if (actions) actions.innerHTML = '<span style="font-size:12px;color:var(--text-muted);">Disconnecting…</span>';
+    try { await _lolaConnectCall('connections.disconnect', { connectionId: _lolaConnectConnId }); } catch (_) {}
+    window.refreshLolaConnectStatus();
+  };
+  // Return from hosted auth (?lolaConnect=connected|failed): toast, open
+  // Settings, refresh the card, strip the param. Auth may still be resolving
+  // at +1.8s; showLoggedIn's refresh call settles the final state either way.
+  window.addEventListener('load', () => {
+    setTimeout(() => {
+      try {
+        const p = new URLSearchParams(location.search).get('lolaConnect');
+        if (!p) return;
+        history.replaceState(null, '', location.pathname);
+        if (window.showToast) showToast(p === 'connected' ? '✅ Email & calendar connected' : 'Connection canceled');
+        const navBtn = Array.from(document.querySelectorAll('.nav-item')).find(b => (b.textContent || '').includes('Settings'));
+        if (navBtn) navBtn.click();
+        window.refreshLolaConnectStatus();
+      } catch (_) {}
+    }, 1800);
+  });
 
   // ----- Team-plan config: pricing tiers + modal copy for each team plan -----
   // Mirrors the Stripe price tiers on the server. Server enforces min 3 seats.
