@@ -6556,7 +6556,14 @@ function toDateKey(v) {
 function buildSignature(ud) {
   ud = ud || {};
   if (ud.emailSignature) return String(ud.emailSignature).trim();
-  return [ud.email || '', ud.phone || ''].filter(Boolean).join(' | ');
+  return [ud.email || '', formatSigPhone(ud.phone)].filter(Boolean).join(' | ');
+}
+
+// "+15127736729" reads like a robot; render US numbers as 512-773-6729.
+function formatSigPhone(p) {
+  const d = String(p || '').replace(/\D/g, '');
+  const ten = d.length === 11 && d[0] === '1' ? d.slice(1) : d;
+  return ten.length === 10 ? `${ten.slice(0, 3)}-${ten.slice(3, 6)}-${ten.slice(6)}` : String(p || '').trim();
 }
 
 // English recency for when we met, anchored to today's calendar in the user's
@@ -6594,7 +6601,7 @@ function relationshipContextLine(contactEvent, notes) {
   if (nt.includes('guest')) {
     return 'Relationship context: they visited my BNI chapter (Profit Powerhouse) as a guest, so we did just meet there. First-meeting warmth is right.';
   }
-  return 'Relationship context: we are BOTH members of the same BNI chapter (Profit Powerhouse) and see each other at weekly meetings. We already know each other. Never write as if we just met: no "good to meet you", "great meeting you", "nice to meet", "good connecting with you", or guest framing. Write as a familiar peer continuing an ongoing relationship. If the step name implies a first meeting, reinterpret it as a warm touchpoint after a recent chapter conversation. Still do not invent specific conversations or details; keep the familiarity general unless my notes give specifics.';
+  return 'Relationship context: we are BOTH members of the same BNI chapter (Profit Powerhouse) and see each other at weekly meetings. We already know each other. Never write as if we just met: no "good to meet you", "great meeting you", "nice to meet", "good connecting with you", or guest framing. Write as a familiar peer continuing an ongoing relationship. If the step name implies a first meeting, reinterpret it as a warm touchpoint after a recent chapter conversation. Still do not invent specifics: no made-up conversations, no naming which day the chapter meets, no referencing things that are not in my notes. Keep the familiarity general ("at the meeting", "around the group") unless my notes give real details.';
 }
 
 // Per-step link that must appear in the draft, exactly. Keyed off the step
