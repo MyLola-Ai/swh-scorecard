@@ -6444,6 +6444,13 @@ exports.apptCancelMeeting = onRequest({ cors: true, secrets: [LOANIQ_SA_KEY] }, 
 Object.assign(exports, require('./nylas'));
 
 // ============================================================
+// Lola Connect proxy (P4). Additive + flag-gated (system/lolaConnect).
+// Function: lolaConnect — service-to-service proxy to the loaniq-75a20
+// gateway. Does NOT replace nylas.js; both run until R2 retires Nylas.
+// ============================================================
+Object.assign(exports, require('./lola-connect'));
+
+// ============================================================
 // Relationship grading — server-side foundation
 // ============================================================
 
@@ -6549,7 +6556,31 @@ function toDateKey(v) {
 function buildSignature(ud) {
   ud = ud || {};
   if (ud.emailSignature) return String(ud.emailSignature).trim();
-  return [ud.phone || '', ud.email || ''].filter(Boolean).join('\n');
+  return [ud.email || '', ud.phone || ''].filter(Boolean).join(' | ');
+}
+
+// English recency for when we met, anchored to today's calendar in the user's
+// timezone — the model must never guess "this week" vs "last week" on its own.
+function meetRecencyPhrase(meetKey) {
+  if (!meetKey) return '';
+  const todayKey = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Chicago' });
+  const days = Math.round((new Date(todayKey + 'T12:00:00Z') - new Date(meetKey + 'T12:00:00Z')) / 86400000);
+  if (isNaN(days) || days < 0) return '';
+  if (days === 0) return 'today';
+  if (days === 1) return 'yesterday';
+  const dow = new Date(todayKey + 'T12:00:00Z').getUTCDay(); // days into the current Sun-start week
+  if (days <= dow) return 'earlier this week';
+  if (days <= 7) return 'this past week';
+  if (days <= dow + 7) return 'last week';
+  if (days <= 21) return 'a couple of weeks ago';
+  if (days <= 45) return 'a few weeks back';
+  return 'a while back';
+}
+
+function todayInWords() {
+  return new Date().toLocaleDateString('en-US', {
+    timeZone: 'America/Chicago', weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+  });
 }
 
 // Per-step link that must appear in the draft, exactly. Keyed off the step
@@ -6570,7 +6601,7 @@ VOICE: Warm, confident, educational, helpful-first. You are a guide who happens 
 
 GREETING: Use "Hi [First]," for clients, prospects, and newer contacts. Use "Hey [First]," for warm or partner relationships. For a milestone or congrats note, the first name alone on a line is fine. Never "Dear."
 
-LENGTH: Short. Two to four short paragraphs, most one to three sentences each, roughly 100 to 250 words. One idea per email. Concise is respectful.
+LENGTH: Short. Two to four short paragraphs, most one to two sentences each, roughly 60 to 180 words. One idea per email. Concise is respectful. FIRST-TOUCH ("great meeting you" / step 1) emails are the shortest of all: 40 to 90 words, three or four one-sentence paragraphs, nothing more. Say it was good to meet them, touch one specific detail about THEM, say a proper hello, leave the door open. No paragraph about yourself.
 
 STRUCTURE: (1) Warm opener referencing where you met or the last conversation. (2) One genuine helpful-first reason for the note: teach one small thing, share a resource, or just check in. (3) A single soft next step, or simply end warmly with no ask at all. (4) A short warm closing line. (5) Sign-off plus your first name.
 
@@ -6589,18 +6620,20 @@ SIGN-OFFS to rotate: "Thanks, Austen" / "Chat soon, Austen" / "Talk soon, Austen
 
 NEVER USE: em-dashes, emoji, corporate filler ("I hope this finds you well," "circle back," "touch base," "per our conversation"), urgency or salesy lines ("act now," "don't miss out," "let's hop on a quick call to discuss how I can add value"), hype adjectives ("premier," "world-class," "stunning," "must-see"), menus of multiple asks, markdown headers or bold, or perfectly balanced robotic cadence. Vary your sentence length so it sounds human.
 
+NEVER TALK ABOUT YOURSELF UNPROMPTED: no years in the industry, no experience or tenure ("I've been in the mortgage world for 20 years"), no credentials, no what-I-do or how-I-work paragraph, no self-introduction beyond your name. The email is about them.
+
+TIMING: When the context tells you when you met (e.g. "this past week", "last week", "yesterday"), use that exact time frame naturally in the meet reference. Never guess or substitute a different one; today's date is provided so the phrasing is already calendar-correct.
+
 Examples of how Austen writes (match this voice and rhythm; do not copy verbatim or reuse their specifics):
 
-EXAMPLE (good to meet you):
-Hi John,
+EXAMPLE (good to meet you / step 1 — note how short this is; this is the ceiling, not the floor):
+Hi Ryan,
 
-It was great meeting you today. I always enjoy connecting with people who are out building real relationships, not just chasing the next deal.
+Good to meet you as a guest at BNI this past week. Always nice to run into someone who's actually building something (the restaurant group sounds like a fun world to be in).
 
-As promised, wanted to introduce myself properly. I've been in the mortgage world for over 20 years, but the part I actually care about is helping clients and referral partners understand the why behind a financing decision instead of just quoting rates.
+Wanted to say a proper hello.
 
-If there's ever anything I can do for you, your clients, or even just a quick mortgage question, don't hesitate to reach out. And if you're ever not sure who to call on something, I'm happy to point you in the right direction.
-
-Looking forward to staying in touch.
+Hope to see you back around the group. And if there's ever anything I can help with, please let me know.
 
 Thanks,
 Austen
@@ -6636,7 +6669,7 @@ Austen`;
 // In-process drafter — called by the build job directly, no HTTP overhead.
 async function draftWriteStep(ctx) {
   const { stepName, stepDescription, contactName, contactCompany, contactEvent,
-          notesPreview, form, userFirstName, daysSinceClockStart,
+          notesPreview, form, userFirstName, daysSinceClockStart, meetRecency,
           userFeedback, previousBody, signature, linkUrl } = ctx;
 
   const systemPrompt = VOICE_PROFILE + `
@@ -6649,6 +6682,8 @@ Return ONLY valid JSON, no prose, no markdown fences:
     stepDescription ? `Step goal: ${stepDescription}` : '',
     `Contact: ${contactName}${contactCompany ? ' at ' + contactCompany : ''}`,
     contactEvent ? `Where we met: ${contactEvent}` : '',
+    `Today is ${todayInWords()}.`,
+    meetRecency ? `When we met: ${meetRecency} (already calendar-correct — use this exact time frame when referencing the meeting)` : '',
     `Days since clock started: ${daysSinceClockStart || 0}`,
     notesPreview ? `My notes: ${notesPreview}` : '',
     form && (form.family || form.occupation || form.recreation || form.motivation)
@@ -6719,13 +6754,15 @@ async function runFollowThroughQueueBuild() {
     }
     console.log('[buildFollowThroughQueue] uid', uid);
 
-    const [userSnap, pbSnap, contactsSnap] = await Promise.all([
+    const [userSnap, pbSnap, contactsSnap, settingsSnap] = await Promise.all([
       admin.firestore().doc(`users/${uid}`).get(),
       admin.firestore().collection(`users/${uid}/playbooks`).get(),
       admin.firestore().collection(`users/${uid}/contacts`).get(),
+      admin.firestore().doc(`users/${uid}/config/settings`).get(),
     ]);
 
-    const userDoc = userSnap.exists ? userSnap.data() : {};
+    // Settings (displayName, phone) live in config/settings; root doc has email.
+    const userDoc = { ...(userSnap.exists ? userSnap.data() : {}), ...(settingsSnap.exists ? settingsSnap.data() : {}) };
     const userFirstName = (userDoc.displayName || userDoc.name || 'Austen').split(' ')[0];
 
     const playbooks = {};
@@ -6788,6 +6825,7 @@ async function runFollowThroughQueueBuild() {
           form: c.form || {},
           userFirstName,
           daysSinceClockStart,
+          meetRecency: meetRecencyPhrase(clockKey),
           signature: buildSignature(userDoc),
           linkUrl: stepLink(stepName),
         });
@@ -6862,12 +6900,13 @@ exports.regenerateFollowThroughDraft = onCall({ secrets: [ANTHROPIC_API_KEY] }, 
   if (!qSnap.exists) throw new HttpsError('not-found', 'Queue item not found');
   const q = qSnap.data();
 
-  const [contactSnap, userSnap] = await Promise.all([
+  const [contactSnap, userSnap, settingsSnap] = await Promise.all([
     q.contactId ? db.doc(`users/${uid}/contacts/${q.contactId}`).get() : Promise.resolve(null),
     db.doc(`users/${uid}`).get(),
+    db.doc(`users/${uid}/config/settings`).get(),
   ]);
   const c = (contactSnap && contactSnap.exists) ? contactSnap.data() : {};
-  const ud = userSnap.data() || {};
+  const ud = { ...(userSnap.data() || {}), ...(settingsSnap.data() || {}) };
   const userFirstName = String(ud.displayName || ud.name || 'Austen').split(' ')[0];
 
   const draft = await draftWriteStep({
@@ -6880,6 +6919,7 @@ exports.regenerateFollowThroughDraft = onCall({ secrets: [ANTHROPIC_API_KEY] }, 
     form: c.form || {},
     userFirstName,
     daysSinceClockStart: 0,
+    meetRecency: meetRecencyPhrase(toDateKey(c.clockStarted) || toDateKey(c.addedAt)),
     userFeedback: feedback,
     previousBody: q.draftBody || '',
     signature: buildSignature(ud),
@@ -6907,14 +6947,15 @@ exports.generateStepDraft = onCall({ secrets: [ANTHROPIC_API_KEY] }, async (requ
   const guidance = String(request.data?.guidance || '').slice(0, 500);
   const prevBody = String(request.data?.previousDraft?.body || '').slice(0, 2500);
 
-  const [contactSnap, userSnap, pbSnap] = await Promise.all([
+  const [contactSnap, userSnap, pbSnap, settingsSnap] = await Promise.all([
     db.doc(`users/${uid}/contacts/${contactId}`).get(),
     db.doc(`users/${uid}`).get(),
     db.collection(`users/${uid}/playbooks`).get(),
+    db.doc(`users/${uid}/config/settings`).get(),
   ]);
   if (!contactSnap.exists) throw new HttpsError('not-found', 'Contact not found');
   const c  = contactSnap.data();
-  const ud = userSnap.data() || {};
+  const ud = { ...(userSnap.data() || {}), ...(settingsSnap.data() || {}) };
   const userFirstName = String(ud.displayName || ud.name || 'Austen').split(' ')[0];
 
   const playbooks = {};
@@ -6944,6 +6985,7 @@ exports.generateStepDraft = onCall({ secrets: [ANTHROPIC_API_KEY] }, async (requ
     form:           c.form    || {},
     userFirstName,
     daysSinceClockStart,
+    meetRecency: meetRecencyPhrase(clockKey || toDateKey(c.addedAt)),
     userFeedback: guidance,
     previousBody: prevBody,
     signature: buildSignature(ud),
@@ -6963,13 +7005,14 @@ exports.draftContactEmail = onCall({ secrets: [ANTHROPIC_API_KEY] }, async (requ
   const contactId = String(request.data?.contactId || '').trim();
   if (!contactId) throw new HttpsError('invalid-argument', 'contactId required');
 
-  const [contactSnap, userSnap] = await Promise.all([
+  const [contactSnap, userSnap, settingsSnap] = await Promise.all([
     db.doc(`users/${uid}/contacts/${contactId}`).get(),
     db.doc(`users/${uid}`).get(),
+    db.doc(`users/${uid}/config/settings`).get(),
   ]);
   if (!contactSnap.exists) throw new HttpsError('not-found', 'Contact not found');
   const c  = contactSnap.data();
-  const ud = userSnap.data() || {};
+  const ud = { ...(userSnap.data() || {}), ...(settingsSnap.data() || {}) };
   const userFirstName = String(ud.displayName || ud.name || 'Austen').split(' ')[0];
 
   const stepsDone = c.steps || 0;
@@ -6978,6 +7021,7 @@ exports.draftContactEmail = onCall({ secrets: [ANTHROPIC_API_KEY] }, async (requ
   const daysSince = clockKey
     ? Math.floor((Date.now() - new Date(clockKey + 'T12:00:00Z').getTime()) / 86400000)
     : 0;
+  const metPhrase = meetRecencyPhrase(clockKey || toDateKey(c.addedAt));
 
   // User-picked intent from the Lola Draft modal; 'auto' keeps the
   // step-aware default. Guidance + previousDraft come from Regenerate.
@@ -7014,6 +7058,8 @@ exports.draftContactEmail = onCall({ secrets: [ANTHROPIC_API_KEY] }, async (requ
     situation,
     `Contact: ${c.name}${c.company ? ' at ' + c.company : ''}`,
     c.event   ? `Where we met: ${c.event}` : '',
+    `Today is ${todayInWords()}.`,
+    metPhrase ? `When we met: ${metPhrase} (already calendar-correct — use this exact time frame when referencing the meeting)` : '',
     `My name: ${userFirstName}`,
     c.notes   ? `My notes on them: ${String(c.notes).slice(0, 300)}` : '',
     formParts.length ? `FORM intel — ${formParts.join(' | ')}` : '',
