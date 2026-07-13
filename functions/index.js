@@ -862,7 +862,16 @@ function getDemoStats() {
 }
 
 function renderRecapSubject(s) {
-  return `Your week: ${s.totalPts} pts ${s.goalHit ? '✓' : ''} (${s.tier.name})`.trim();
+  // "Getting Started" reads as a phrase, not a title — no article.
+  const tierName = s.tier.name;
+  const aff = tierName === 'Getting Started'
+    ? "You're Getting Started"
+    : `You're ${/^[aeiou]/i.test(tierName) ? 'an' : 'a'} ${tierName}`;
+  const check = s.goalHit ? ' ✓' : '';
+  const name = s.firstName && s.firstName !== 'there' ? s.firstName : '';
+  return name
+    ? `${name}: ${s.totalPts} pts last week${check} - ${aff}`
+    : `Your week: ${s.totalPts} pts${check} - ${aff}`;
 }
 
 function escHtml(str) { return String(str||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
