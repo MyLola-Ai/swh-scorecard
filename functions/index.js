@@ -6751,7 +6751,12 @@ const DEFAULT_STEP_NAMES_SERVER = [
 ];
 const DEFAULT_STEP_PTS_SERVER = [5, 5, 5, 5, 10, 10, 5, 5];
 
-async function runFollowThroughQueueBuild() {
+async function runFollowThroughQueueBuild(opts) {
+  // force=true rebuilds items already built today (voice/prompt changes need a
+  // refire); sent and skipped items are never touched. The 8am cron passes its
+  // ScheduledEvent here, which has no .force — so crons always run un-forced.
+  const force = !!(opts && opts.force === true);
+  let totalQueued = 0;
   const todayKey = chicagoTodayKey();
   console.log('[buildFollowThroughQueue] running for', todayKey);
 
@@ -6788,6 +6793,8 @@ async function runFollowThroughQueueBuild() {
       if (d.isDefault) defaultPbId = pb.id;
     }
 
+    // Pass 1: collect everything due (cheap Firestore checks, sequential).
+    const dueItems = [];
     for (const cd of contactsSnap.docs) {
       const c = cd.data();
       const contactId = cd.id;
@@ -6813,63 +6820,78 @@ async function runFollowThroughQueueBuild() {
 
       const docId = `${contactId}_${N}`;
       const existingSnap = await admin.firestore().doc(`users/${uid}/followThroughQueue/${docId}`).get();
+      let hadDraft = false;
       if (existingSnap.exists) {
         const ex = existingSnap.data();
         if (ex.status === 'sent' || ex.status === 'skipped') continue;
-        if (ex.builtAt && ex.builtAt.slice(0, 10) === todayKey) continue;
+        if (!force && ex.builtAt && ex.builtAt.slice(0, 10) === todayKey) continue;
+        hadDraft = !!ex.draftBody;
       }
 
       const stepMeta = stepMetas?.[N] || {};
-      const stepName = stepMeta.name || DEFAULT_STEP_NAMES_SERVER[N] || `Step ${N + 1}`;
-      const stepDescription = stepMeta.description || '';
-      const stepPoints = stepMeta.points || DEFAULT_STEP_PTS_SERVER[N] || 5;
-      const notesPreview = c.notes ? String(c.notes).slice(0, 300) : '';
-      const daysSinceClockStart = Math.floor(
-        (Date.now() - new Date(clockKey + 'T12:00:00Z').getTime()) / 86400000
-      );
-
-      let draftSubject = stepName;
-      let draftBody = '';
-      try {
-        const draft = await draftWriteStep({
-          stepName, stepDescription,
-          contactName: c.name,
-          contactCompany: c.company || '',
-          contactEvent: c.event || '',
-          notesPreview,
-          form: c.form || {},
-          userFirstName,
-          daysSinceClockStart,
-          meetRecency: meetRecencyPhrase(clockKey),
-          signature: buildSignature(userDoc),
-          linkUrl: stepLink(stepName),
-        });
-        draftSubject = draft.subject;
-        draftBody = draft.body;
-      } catch (err) {
-        console.error('[buildFollowThroughQueue] draft failed:', c.name, err.message);
-      }
-
-      await admin.firestore().doc(`users/${uid}/followThroughQueue/${docId}`).set({
-        contactId,
-        contactName: c.name,
-        contactEmail: c.email || '',
-        stepIndex: N,
-        stepName,
-        stepPoints,
-        dueDate,
-        draftSubject,
-        draftBody,
-        channel: 'email',
-        status: 'pending',
-        builtAt: new Date().toISOString(),
+      dueItems.push({
+        c, contactId, N, docId, clockKey, dueDate, hadDraft,
+        stepName: stepMeta.name || DEFAULT_STEP_NAMES_SERVER[N] || `Step ${N + 1}`,
+        stepDescription: stepMeta.description || '',
+        stepPoints: stepMeta.points || DEFAULT_STEP_PTS_SERVER[N] || 5,
       });
+    }
 
-      console.log('[buildFollowThroughQueue] queued', c.name, 'step', N + 1);
+    // Pass 2: draft + write in small concurrent chunks — 60 sequential Opus
+    // calls would blow the request timeout on a manual refire.
+    const CHUNK = 5;
+    for (let i = 0; i < dueItems.length; i += CHUNK) {
+      await Promise.all(dueItems.slice(i, i + CHUNK).map(async (item) => {
+        const { c, contactId, N, docId, clockKey, dueDate, hadDraft, stepName, stepDescription, stepPoints } = item;
+        let draftSubject = stepName;
+        let draftBody = '';
+        try {
+          const draft = await draftWriteStep({
+            stepName, stepDescription,
+            contactName: c.name,
+            contactCompany: c.company || '',
+            contactEvent: c.event || '',
+            notesPreview: c.notes ? String(c.notes).slice(0, 300) : '',
+            form: c.form || {},
+            userFirstName,
+            daysSinceClockStart: Math.floor(
+              (Date.now() - new Date(clockKey + 'T12:00:00Z').getTime()) / 86400000
+            ),
+            meetRecency: meetRecencyPhrase(clockKey),
+            signature: buildSignature(userDoc),
+            linkUrl: stepLink(stepName),
+          });
+          draftSubject = draft.subject;
+          draftBody = draft.body;
+        } catch (err) {
+          console.error('[buildFollowThroughQueue] draft failed:', c.name, err.message);
+          // Never overwrite an existing draft with an empty body.
+          if (hadDraft) return;
+        }
+
+        await admin.firestore().doc(`users/${uid}/followThroughQueue/${docId}`).set({
+          contactId,
+          contactName: c.name,
+          contactEmail: c.email || '',
+          stepIndex: N,
+          stepName,
+          stepPoints,
+          dueDate,
+          draftSubject,
+          draftBody,
+          channel: 'email',
+          status: 'pending',
+          builtAt: new Date().toISOString(),
+        });
+
+        totalQueued++;
+        console.log('[buildFollowThroughQueue] queued', c.name, 'step', N + 1, force ? '(forced)' : '');
+      }));
     }
   }
 
-  console.log('[buildFollowThroughQueue] done');
+  console.log('[buildFollowThroughQueue] done, queued', totalQueued);
+  return { queued: totalQueued };
 }
 
 exports.buildFollowThroughQueue = onSchedule({
@@ -6891,8 +6913,9 @@ exports.buildFollowThroughQueueNow = onRequest({
   if (req.method === 'OPTIONS') { res.status(204).send(''); return; }
   try {
     await requireAuth(req);
-    await runFollowThroughQueueBuild();
-    res.json({ ok: true });
+    const force = req.query.force === '1' || req.body?.force === true;
+    const result = await runFollowThroughQueueBuild({ force });
+    res.json({ ok: true, forced: force, ...result });
   } catch (e) {
     const code = e.statusCode || 500;
     console.error('[buildFollowThroughQueueNow]', e.message);
