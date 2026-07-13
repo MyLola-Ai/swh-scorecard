@@ -4755,14 +4755,16 @@
         <div class="settings-arrow">›</div>
       </div>
     </div>
-    <!-- ===== EMAIL, CALENDAR & CONTACTS (Lola Connect P4 beta) — whole section hidden unless beta-enabled ===== -->
+    <!-- ===== CALENDAR (Lola Connect P4 beta) — whole section hidden unless beta-enabled.
+         The Scorecard has no email features, so this surface is calendar-framed;
+         the underlying connection is the same one the CRM's Email & Calendar card uses. -->
     <div id="settings-lolaconnect-section" style="display:none;">
-      <div style="font-size:12px;font-weight:600;letter-spacing:0.1em;color:var(--text-muted);text-transform:uppercase;margin-bottom:8px;">Email, Calendar &amp; Contacts</div>
+      <div style="font-size:12px;font-weight:600;letter-spacing:0.1em;color:var(--text-muted);text-transform:uppercase;margin-bottom:8px;">Calendar</div>
       <div class="settings-card">
         <div class="settings-row" id="settings-lolaconnect-row">
           <div class="settings-row-left">
-            <div class="settings-row-icon">✉️</div>
-            <div><div class="settings-row-text">Email &amp; Calendar (Lola Connect · beta)</div><div class="settings-row-sub" id="settings-lolaconnect-sub">Checking…</div></div>
+            <div class="settings-row-icon">🗓️</div>
+            <div><div class="settings-row-text">Calendar (Lola Connect · beta)</div><div class="settings-row-sub" id="settings-lolaconnect-sub">Checking…</div></div>
           </div>
           <div id="settings-lolaconnect-actions" style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end;"></div>
         </div>
@@ -5592,11 +5594,11 @@
         if (actions) actions.innerHTML = '<button onclick="lolaConnectDisconnect()" style="' + _LC_PILL + '">Disconnect</button>';
       } else {
         _lolaConnectConnId = null;
-        if (sub) sub.textContent = 'Connect Google, Outlook, or IMAP (beta)';
+        // Calendar framing: no IMAP here — IMAP is email-only, it has no calendar.
+        if (sub) sub.textContent = 'Connect your Google or Outlook calendar (beta)';
         if (actions) actions.innerHTML =
           '<button onclick="lolaConnectConnect(\'google\')" style="' + _LC_PILL + '">Google</button>' +
-          '<button onclick="lolaConnectConnect(\'microsoft\')" style="' + _LC_PILL + '">Outlook</button>' +
-          '<button onclick="lolaConnectConnect(\'imap\')" style="' + _LC_PILL + '">IMAP</button>';
+          '<button onclick="lolaConnectConnect(\'microsoft\')" style="' + _LC_PILL + '">Outlook</button>';
       }
     } catch (e) { console.warn('[lolaConnect] status failed:', e.message); }
   };
@@ -5628,7 +5630,7 @@
         const p = new URLSearchParams(location.search).get('lolaConnect');
         if (!p) return;
         history.replaceState(null, '', location.pathname);
-        if (window.showToast) showToast(p === 'connected' ? '✅ Email & calendar connected' : 'Connection canceled');
+        if (window.showToast) showToast(p === 'connected' ? '✅ Calendar connected' : 'Connection canceled');
         const navBtn = Array.from(document.querySelectorAll('.nav-item')).find(b => (b.textContent || '').includes('Settings'));
         if (navBtn) navBtn.click();
         window.refreshLolaConnectStatus();
