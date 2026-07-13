@@ -1729,6 +1729,19 @@ html.dark-theme .st-sect-head{color:rgba(255,255,255,.55);}
                      uncommenting the line below. Nylas backend + mount logic stay live;
                      the mount call no-ops when this element is absent. -->
                 <!-- <div id="nylas-connect-mount" style="margin-bottom:14px;"></div> -->
+                <!-- LOLA CONNECT (P4 beta) — hidden until backend enables the user -->
+                <div class="settings-card" id="settings-lolaconnect-card" style="display:none;margin-bottom:14px;">
+                  <div class="settings-row" id="settings-lolaconnect-row">
+                    <div class="sr-left">
+                      <div class="sr-icon">✉️</div>
+                      <div>
+                        <div class="sr-text">Email &amp; Calendar (Lola Connect · beta)</div>
+                        <div class="sr-sub" id="settings-lolaconnect-sub">Checking…</div>
+                      </div>
+                    </div>
+                    <div id="settings-lolaconnect-actions" style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end;"></div>
+                  </div>
+                </div>
                 <div class="settings-card">
                   <div class="settings-row" onclick="openCalendarTimeModal()"><div class="sr-left"><div class="sr-icon">⏰</div><div><div class="sr-text">Calendar Event Time</div><div class="sr-sub" id="settings-cal-time-sub">7:00 AM · 5 minutes</div></div></div><div class="sr-arrow">›</div></div>
                   <div class="settings-row" onclick="toggleCalendarAutoAdd()" style="cursor:pointer;">
@@ -1780,19 +1793,6 @@ html.dark-theme .st-sect-head{color:rgba(255,255,255,.55);}
                       </div>
                     </div>
                     <button id="settings-mylola-btn" onclick="onMyLolaSettingsClick()" style="padding:6px 12px;background:var(--bg);border:1px solid var(--border);border-radius:8px;font-family:'DM Sans',sans-serif;font-size:12px;font-weight:600;color:var(--navy);cursor:pointer;flex-shrink:0;">Connect</button>
-                  </div>
-                </div>
-                <!-- ===== LOLA CONNECT (P4 beta) — hidden until backend enables the user ===== -->
-                <div class="settings-card" id="settings-lolaconnect-card" style="display:none;margin-top:14px;">
-                  <div class="settings-row" id="settings-lolaconnect-row">
-                    <div class="sr-left">
-                      <div class="sr-icon">✉️</div>
-                      <div>
-                        <div class="sr-text">Email &amp; Calendar (Lola Connect · beta)</div>
-                        <div class="sr-sub" id="settings-lolaconnect-sub">Checking…</div>
-                      </div>
-                    </div>
-                    <div id="settings-lolaconnect-actions" style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end;"></div>
                   </div>
                 </div>
                 <!-- ===== GOAL & TIERS ===== -->
