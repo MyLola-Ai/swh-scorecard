@@ -5040,26 +5040,35 @@ async function loadAllData() {
   // Events (for Event ROI tracking)
   const evSnap = await getDocs(query(collection(db,'users',uid,'events'),orderBy('createdAt','desc')));
   EVENTS = evSnap.docs.map(d=>({id:d.id,...d.data()}));
-  // Custom activities
-  const actSnap = await getDoc(doc(db,'users',uid,'config','activities'));
-  if (actSnap.exists()) {
-    ACTIVITIES = actSnap.data().list || DEFAULT_ACTS;
-    // In-memory only: fill in any system activities missing from older lists.
-    // Do NOT save back — scorecard is the authoritative writer for this doc.
-    DEFAULT_ACTS.forEach(def => {
-      if (def.system && !ACTIVITIES.find(a => a.name === def.name)) {
-        ACTIVITIES.push(def);
-      } else if (def.system) {
-        const idx = ACTIVITIES.findIndex(a => a.name === def.name);
-        if (idx >= 0) ACTIVITIES[idx] = {...ACTIVITIES[idx], ...def};
+  // Custom activities — LIVE listener so scoreboard edits (points, renames,
+  // deletes) reach every open CRM immediately; pickers rebuild from
+  // ACTIVITIES each time they open, so they are always current.
+  await new Promise((resolveActs) => {
+    let first = true;
+    onSnapshot(doc(db,'users',uid,'config','activities'), (actSnap) => {
+      if (actSnap.exists()) {
+        ACTIVITIES = actSnap.data().list || DEFAULT_ACTS;
+        // In-memory only: fill in any system activities missing from older lists.
+        // Do NOT save back — scorecard is the authoritative writer for this doc.
+        DEFAULT_ACTS.forEach(def => {
+          if (def.system && !ACTIVITIES.find(a => a.name === def.name)) {
+            ACTIVITIES.push(def);
+          } else if (def.system) {
+            const idx = ACTIVITIES.findIndex(a => a.name === def.name);
+            if (idx >= 0) ACTIVITIES[idx] = {...ACTIVITIES[idx], ...def};
+          }
+        });
+        // Load custom step names/pts if saved
+        const savedStepNames = actSnap.data().stepNames;
+        const savedStepPts = actSnap.data().stepPts;
+        if(savedStepNames?.length === 8) savedStepNames.forEach((n,i) => { if(n) STEP_NAMES[i] = n; });
+        if(savedStepPts?.length === 8) savedStepPts.forEach((p,i) => { if(p) STEP_PTS[i] = p; });
+        // If the Log Activity picker is open right now, rebuild it in place
+        if (!first && _logActivityContactId) { try { openLogActivityModal(_logActivityContactId); } catch(_){} }
       }
-    });
-    // Load custom step names/pts if saved
-    const savedStepNames = actSnap.data().stepNames;
-    const savedStepPts = actSnap.data().stepPts;
-    if(savedStepNames?.length === 8) savedStepNames.forEach((n,i) => { if(n) STEP_NAMES[i] = n; });
-    if(savedStepPts?.length === 8) savedStepPts.forEach((p,i) => { if(p) STEP_PTS[i] = p; });
-  }
+      if (first) { first = false; resolveActs(); }
+    }, () => { if (first) { first = false; resolveActs(); } });
+  })
   // Live-sync: re-apply whenever scorecard (or another CRM tab) saves activities
   _startCrmActListener(uid);
   // Global catalog overrides — admin-managed pts, icons, lead/lag flags
