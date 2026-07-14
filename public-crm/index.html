@@ -1725,10 +1725,11 @@ html.dark-theme .st-sect-head{color:rgba(255,255,255,.55);}
               <div>
                 <!-- ===== EMAIL, CALENDAR & CONTACTS (NYLAS) ===== -->
                 <div class="st-sect-head" style="margin-top:0">Email, Calendar &amp; Contacts</div>
-                <!-- Legacy Nylas connect card hidden 2026-07-13 ("for now"). Restore by
-                     uncommenting the line below. Nylas backend + mount logic stay live;
-                     the mount call no-ops when this element is absent. -->
-                <!-- <div id="nylas-connect-mount" style="margin-bottom:14px;"></div> -->
+                <!-- Legacy connect card: shown ONLY to users who are NOT Lola Connect
+                     beta-enabled. refreshLolaConnectStatus toggles it (hidden for beta users
+                     who get the Lola Connect card; revealed for everyone else until the flag
+                     flip). Default hidden to avoid a flash for beta users. -->
+                <div id="nylas-connect-mount" style="margin-bottom:14px;display:none;"></div>
                 <!-- LOLA CONNECT (P4 beta) — hidden until backend enables the user -->
                 <div class="settings-card" id="settings-lolaconnect-card" style="display:none;margin-bottom:14px;">
                   <div class="settings-row" id="settings-lolaconnect-row">
@@ -4320,6 +4321,13 @@ async function _lolaConnectCall(op, body) {
   return { status: res.status, json: await res.json().catch(() => ({})) };
 }
 const _LC_PILL = "padding:6px 10px;background:var(--bg);border:1px solid var(--border);border-radius:8px;font-family:'DM Sans',sans-serif;font-size:12px;font-weight:600;color:var(--navy);cursor:pointer;";
+// Show/hide the legacy connect card (nylas-connect-mount). Coupled to the flag:
+// beta users (who get the Lola Connect card) don't see it; everyone else does,
+// so no one loses their email/calendar connect UI before the flag flip.
+function _lcLegacy(show) {
+  const m = document.getElementById('nylas-connect-mount');
+  if (m) m.style.display = show ? '' : 'none';
+}
 window.refreshLolaConnectStatus = async function () {
   const card = document.getElementById('settings-lolaconnect-card');
   if (!card || !currentUser) return;
@@ -4327,8 +4335,9 @@ window.refreshLolaConnectStatus = async function () {
   const actions = document.getElementById('settings-lolaconnect-actions');
   try {
     const { status, json } = await _lolaConnectCall('connections.list');
-    if (status === 403) { card.style.display = 'none'; return; } // not beta-enabled
+    if (status === 403) { card.style.display = 'none'; _lcLegacy(true); return; } // not beta → keep legacy
     card.style.display = '';
+    _lcLegacy(false); // beta user → Lola Connect card replaces the legacy one
     const conns = (json.result && json.result.connections) || [];
     const active = conns.find(c => c.status === 'connected');
     if (active) {
@@ -4343,7 +4352,7 @@ window.refreshLolaConnectStatus = async function () {
         '<button onclick="lolaConnectConnect(\'microsoft\')" style="' + _LC_PILL + '">Outlook</button>' +
         '<button onclick="lolaConnectConnect(\'imap\')" style="' + _LC_PILL + '">IMAP</button>';
     }
-  } catch (e) { console.warn('[lolaConnect] status failed:', e.message); }
+  } catch (e) { console.warn('[lolaConnect] status failed:', e.message); _lcLegacy(true); }
 };
 window.lolaConnectConnect = async function (provider) {
   const actions = document.getElementById('settings-lolaconnect-actions');
@@ -8079,6 +8088,7 @@ function renderActivityTimeline(contactId, list) {
         <div style="display:flex;align-items:center;gap:6px;">
           <div style="font-size:11px;color:var(--muted);white-space:nowrap;">${dateLabel}${timeLabel}</div>
           <button onclick="event.stopPropagation();completeScheduledActivity('${t.id}')" style="padding:3px 8px;border-radius:6px;border:1px solid var(--border);background:#fff;color:var(--navy);font-size:10px;font-weight:700;cursor:pointer;">Done</button>
+          <button onclick="event.stopPropagation();rescheduleScheduledActivity('${t.id}','${contactId}')" style="padding:3px 8px;border-radius:6px;border:1px solid #5B5BD6;background:#fff;color:#5B5BD6;font-size:10px;font-weight:700;cursor:pointer;">Reschedule</button>
           <button onclick="event.stopPropagation();deleteScheduledActivity('${t.id}','${contactId}')" style="padding:3px 8px;border-radius:6px;border:1px solid var(--border);background:#fff;color:var(--red);font-size:10px;font-weight:700;cursor:pointer;">Delete</button>
         </div>
       </div>
@@ -8271,6 +8281,7 @@ let _scheduleActivityContactId = null;
 //    Activity (internal points plan) ──────────────────────────────────
 const APPT_1ON1_ACTIVITY = 'Attend 1:1, Coffee, Lunch, etc.';
 let _saMode = 'meeting';
+let _saRescheduleTaskId = null; // set when the modal was opened via Reschedule
 let _saCanInvite = false;
 let _saBookingUrl = null;
 
@@ -8348,6 +8359,7 @@ window.openScheduleActivityModal = function(contactId) {
   }
   const whereEl = document.getElementById('sa-where');
   if (whereEl) whereEl.value = '';
+  _saRescheduleTaskId = null;
   setSaMode(_saCanInvite ? 'meeting' : 'activity');
 
   document.getElementById('schedule-activity-overlay').classList.add('open');
@@ -8469,11 +8481,22 @@ window.saveScheduleActivity = async function() {
       RELATIONSHIP_TASKS.push({ id: taskId, ...taskData });
     }
 
+    // Rescheduling: the new booking is in — now silently cancel the old one
+    // (old invite gets the provider's standard cancellation email)
+    const reschedId = _saRescheduleTaskId;
+    _saRescheduleTaskId = null;
+    if (reschedId) {
+      try { await deleteScheduledActivity(reschedId, contactId, { skipConfirm: true, silent: true }); }
+      catch (e3) { console.warn('[reschedule] old booking cleanup failed:', e3.message); }
+    }
+
     closeScheduleActivityModal();
     renderTasks();
     renderActivityTimeline(contactId, c._activities || []);
     const _first = (c.name || '').split(' ')[0];
-    showToast(isMeeting
+    showToast(reschedId
+      ? `🔁 ${isMeeting ? '1-2-1 with ' + _first : activityName} moved to ${formatDateShort(date)}${inviteSent ? ' · new invite sent' : ''}`
+      : isMeeting
       ? `🤝 1-2-1 with ${_first} scheduled for ${formatDateShort(date)}${inviteSent ? ' · invite sent' : ''}${bookedThrough ? ' · logs automatically after you meet' : ''}`
       : `📅 ${activityName} scheduled for ${formatDateShort(date)}`);
   } catch (e) {
@@ -8483,8 +8506,30 @@ window.saveScheduleActivity = async function() {
   }
 };
 
-window.deleteScheduledActivity = async function(taskId, contactId) {
+// Reschedule = open the Schedule modal prefilled from the existing booking;
+// on save the new meeting/invite is created first, then the old one is
+// canceled through deleteScheduledActivity (silent, no confirm).
+window.rescheduleScheduledActivity = function(taskId, contactId) {
+  const t = RELATIONSHIP_TASKS.find(x => x.id === taskId);
+  if (!t) return;
+  openScheduleActivityModal(contactId);
+  _saRescheduleTaskId = taskId;
+  const isMeeting = (t.source === 'myappointment' && t.apptMeetingId) || t.activityName === APPT_1ON1_ACTIVITY;
+  setSaMode(isMeeting ? 'meeting' : 'activity');
+  const st = String(t.startTime || '');
+  const dateEl = document.getElementById('sa-date'); if (dateEl) dateEl.value = st.slice(0, 10) || t.dueDate || '';
+  const timeEl = document.getElementById('sa-time'); if (timeEl && st.length >= 16) timeEl.value = st.slice(11, 16);
+  const durEl = document.getElementById('sa-duration'); if (durEl && t.durationMins) durEl.value = String(t.durationMins);
+  const m = String(t.note || '').match(/^Where:\s*([^·]+?)(?:\s*·\s*([\s\S]*))?$/);
+  const whereEl = document.getElementById('sa-where'); if (whereEl) whereEl.value = (m ? m[1] : '').trim();
+  const noteEl = document.getElementById('sa-note'); if (noteEl) noteEl.value = (m ? (m[2] || '') : (t.note || '')).trim();
+  if (!isMeeting) { const typeEl = document.getElementById('sa-type'); if (typeEl && t.activityName) typeEl.value = t.activityName; }
+  const btn = document.getElementById('sa-confirm-btn'); if (btn) btn.textContent = 'Reschedule ✓';
+};
+
+window.deleteScheduledActivity = async function(taskId, contactId, opts) {
   if (!currentUser) return;
+  opts = opts || {};
   const idx = RELATIONSHIP_TASKS.findIndex(x => x.id === taskId);
   if (idx === -1) return;
   const t = RELATIONSHIP_TASKS[idx];
@@ -8492,7 +8537,7 @@ window.deleteScheduledActivity = async function(taskId, contactId) {
   // myappointment-linked: cancel the real meeting and CLOSE the task doc
   // (deleting it would let the sweep re-create the booking)
   if (t.source === 'myappointment' && t.apptMeetingId) {
-    if (!confirm(`Cancel this 1-on-1${t.contactName ? ' with ' + t.contactName : ''}?`)) return;
+    if (!opts.skipConfirm && !confirm(`Cancel this 1-on-1${t.contactName ? ' with ' + t.contactName : ''}?`)) return;
     try {
       const token = await lolaIdToken();
       const r = await fetch(`${CRM_FUNCTIONS_BASE}/apptCancelMeeting`, {
@@ -8514,7 +8559,7 @@ window.deleteScheduledActivity = async function(taskId, contactId) {
       renderTasks();
       const c0 = CONTACTS.find(x => x.id === contactId);
       renderActivityTimeline(contactId, c0 ? (c0._activities || []) : []);
-      showToast('📅 1-on-1 canceled');
+      if (!opts.silent) showToast('📅 1-on-1 canceled');
     } catch (e) {
       showToast('⚠️ Could not cancel: ' + (e.message || 'try again'));
     }
@@ -8526,7 +8571,7 @@ window.deleteScheduledActivity = async function(taskId, contactId) {
   renderTasks();
   const c = CONTACTS.find(x => x.id === contactId);
   renderActivityTimeline(contactId, c ? (c._activities || []) : []);
-  showToast('Scheduled activity removed');
+  if (!opts.silent) showToast('Scheduled activity removed');
 };
 
 window.completeScheduledActivity = async function(taskId) {
