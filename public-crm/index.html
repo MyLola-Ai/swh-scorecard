@@ -8919,7 +8919,17 @@ window.neStepDraftSend = async function() {
     const j = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(j.needsReconnect ? 'Email connection expired. Reconnect in Settings.' : (j.error || `HTTP ${r.status}`));
     btn.textContent = 'Sent ✓';
-    showToast(`📧 Sent to ${c.name}`);
+    // Points + timeline: a sent Lola email is an 8-step touch. Points come
+    // from the user's own catalog value for this activity.
+    try {
+      await autoLogActivity('Perform Other 8 Step Activities', c.name, c.id, 'crm');
+      if (expandedContactId === c.id) {
+        const fresh = await loadContactActivities(c.id);
+        c._activities = fresh;
+        renderActivityTimeline(c.id, fresh);
+      }
+    } catch (e2) { console.warn('[neStepDraftSend] activity log failed:', e2.message); }
+    showToast(`📧 Sent to ${c.name} · activity logged`);
     setTimeout(() => { neStepDraftClose(); btn.disabled = false; btn.textContent = 'Send'; }, 900);
   } catch (e) {
     btn.disabled = false; btn.textContent = 'Send';
