@@ -339,7 +339,10 @@ body{height:100%;min-height:100dvh;background:#111111;overscroll-behavior:none;}
 ════════════════════════════════════════ */
 @media (min-width:768px) {
   .screen{display:none;}
-  .screen.active{display:block;}
+  /* Static + visible so .main-content (overflow-y:auto) does the scrolling —
+     the base .screen is fixed/overflow:hidden for the mobile layout, which
+     left desktop screens without an inner .screen-body unscrollable. */
+  .screen.active{display:block;position:static;overflow:visible;height:auto;}
   .mobile-topbar{display:none;}
   .bottom-nav{display:none;}
   .fab{display:none;}
@@ -1913,9 +1916,10 @@ html.dark-theme .st-sect-head{color:rgba(255,255,255,.55);}
 
 
 <div style="text-align:center;padding:16px 0 8px;color:var(--muted);font-size:11px;line-height:1.8;">SWH CRM · crm.stopwastinghandshakes.com<br><em style="color:var(--gold);">"Handshakes are the seed. Follow through is the harvest."</em></div>
-<div style="display:flex;justify-content:center;padding:14px 0 24px;">
+<div style="display:flex;justify-content:center;padding:14px 0 8px;">
   <span class="lola-badge"><span class="lola-orb"></span><span class="lola-text">powered by</span> <span class="lola-name">Lola</span></span>
 </div>
+<div style="text-align:center;padding:0 0 24px;font-size:11px;letter-spacing:0.04em;color:var(--muted);">1 Peter 4:10-11</div>
               </div>
             </div>
           </div>
