@@ -77,18 +77,24 @@ therefore never use the Web SDK on native. The pattern (implemented in `public-c
 - Native detection: `isNativeEarly` / `window.Capacitor.isNativePlatform()`. Deep link:
   `?screen=tasks` captured to `window._initialScreen`, honored in `showApp()`.
 
-## 5. Payments
+## 5. Payments — STRIPE ONLY (decided by Austen 2026-07-15; IAP retired)
 
-- **IAP (RevenueCat `^13.1`):** products `com.impactleadershipgroup.swh.scorecard.monthly` →
-  scorecard ($10/mo) and `com.impactleadershipgroup.swh.crm.monthly` → pro ($25/mo).
-  `setupRevenueCat(uid)` runs at sign-in on native; if `userPlan !== 'pro'` → `openPaywall('upgrade')`
-  (demo-mode-first paywall is the SWH pattern). Backend: `revenueCatWebhook`
-  (`functions/index.js:2329`, `REVENUECAT_WEBHOOK_AUTH` secret) mirrors entitlements onto
-  `users/{uid}.plan` using the same schema as Stripe.
-- **Web (Stripe):** live price map at `functions/index.js:63-90`: scorecard $10, scorecard_crm $25,
-  team tiers; `STRIPE_TRIAL_DAYS=60`, `TEAM_MIN_SEATS=3`. Stripe and RevenueCat converge on the same
-  `users/{uid}.plan`, so entitlement logic downstream is source-agnostic.
-- Apple takes 15-30% on IAP; RevenueCat free under ~$2.5k/mo tracked revenue.
+- **Stripe is the single billing rail on every surface, including iOS.** The Scorecard app's
+  paywall calls `createCheckoutSession` via NativeAPI and opens Stripe Checkout in Safari
+  (Capacitor's external-navigation policy — external origins leave the webview automatically).
+  Return path: `recheckPlanFromServer()` (paywall "Refresh status" button + an `appStateChange`
+  listener that re-checks silently when the app foregrounds with the paywall open). The billing
+  row in Settings opens the Stripe customer portal the same way. Plan truth = Firestore
+  `users/{uid}.plan`, written by the Stripe webhook.
+- Price map at `functions/index.js:63-90`: scorecard $10, scorecard_crm $25, team tiers;
+  `STRIPE_TRIAL_DAYS=60` (no charge for 60 days; sub pauses if no card added),
+  `TEAM_MIN_SEATS=3`.
+- **Legacy IAP (RevenueCat):** all client-side RC calls removed from public-scorecard 2026-07-15;
+  the function definitions remain behind a LEGACY banner until the RC account is closed. The
+  `revenueCatWebhook` (`functions/index.js:2329`) stays live so any legacy IAP subscriber keeps
+  their entitlement. ASC follow-ups (Austen): remove the IAP products from the App Store listing,
+  don't attach them to the 1.43 version, and provide reviewer demo credentials (app is now
+  account-required with an external purchase link — US storefront rules permit this post-2025).
 
 ## 6. Push notifications
 
@@ -183,6 +189,13 @@ matching the CRM's system activity.
   SWH series; `_DRIP_FROM` Austen with SWH).
 
 ## 10. Roadmap / open items
+
+**Update 2026-07-15 — registration + billing overhaul (in working tree, deploy/commit pending
+the concurrent SWH-thread work in the same file):** native entry is now Create Account / Sign In
+only ("Try for free"/demo removed from iOS; web demo funnel intact per Austen). Signup fast path
+skips getMe/RC round-trips (was 10s+ of spinner). "Continue with Microsoft" is web-only + native
+guard (its Web-SDK popup hangs in the WKWebView — likely the reported signup freeze). Paywall is
+Stripe checkout in Safari (§5). Any 1.43 build must be cut AFTER this lands + `cap sync`.
 
 **Release state (2026-07-03):** Scorecard 1.43 b30 is archive-ready pending Austen's beta week;
 What's New copy is written and with Austen. App Store Connect still pending: the LISTING name change
