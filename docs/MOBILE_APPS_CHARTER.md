@@ -90,11 +90,21 @@ therefore never use the Web SDK on native. The pattern (implemented in `public-c
   `STRIPE_TRIAL_DAYS=60` (no charge for 60 days; sub pauses if no card added),
   `TEAM_MIN_SEATS=3`.
 - **Legacy IAP (RevenueCat):** all client-side RC calls removed from public-scorecard 2026-07-15;
-  the function definitions remain behind a LEGACY banner until the RC account is closed. The
-  `revenueCatWebhook` (`functions/index.js:2329`) stays live so any legacy IAP subscriber keeps
-  their entitlement. ASC follow-ups (Austen): remove the IAP products from the App Store listing,
-  don't attach them to the 1.43 version, and provide reviewer demo credentials (app is now
-  account-required with an external purchase link — US storefront rules permit this post-2025).
+  the function definitions remain behind a LEGACY banner. **Do NOT delete them (CTO directive
+  2026-07-15)** — see the legal caveat below. The `revenueCatWebhook` (`functions/index.js:2329`)
+  stays live so any legacy IAP subscriber keeps their entitlement. ASC follow-ups (Austen): remove
+  the IAP products from the App Store listing, don't attach them to the 1.43 version, and provide
+  reviewer demo credentials (app is now account-required with an external purchase link).
+- **LEGAL CAVEAT (CTO, 2026-07-15) — the US external-purchase-link regime is IN FLUX.** The
+  Apr 2025 contempt ruling forced fee-free external links; the Ninth Circuit (Dec 2025) restored
+  Apple's right to charge a commission on external-link purchases, and SCOTUS took the case for
+  the 2026 term. Stripe-only on iOS is correct TODAY; do not assume the fee-free window survives.
+  If Apple prevails, the options are paying Apple's external-link commission or re-adding IAP —
+  hence the parked RC wiring. Margin planning on mobile subscriptions must not bake in zero
+  Apple take.
+- **Pre-release check (every iOS release):** verify a legacy IAP subscriber still resolves to the
+  correct `users/{uid}.plan` via `revenueCatWebhook` — the single plan-truth invariant must hold
+  for both billing populations.
 
 ## 6. Push notifications
 
@@ -200,7 +210,10 @@ Stripe checkout in Safari (§5). Any 1.43 build must be cut AFTER this lands + `
 **Release state (2026-07-03):** Scorecard 1.43 b30 is archive-ready pending Austen's beta week;
 What's New copy is written and with Austen. App Store Connect still pending: the LISTING name change
 to "The Scorecard" (may need a uniqueness qualifier) + the 1.43 version record + What's New paste.
-CRM App Store prep has NOT started (no version bump, no ASC record work). Old TestFlight/App Store
+CRM App Store prep has NOT started (no version bump, no ASC record work). **BLOCKING item on the
+CRM release checklist (CTO directive 2026-07-15): the Stripe-only conversion — RevenueCat unhook +
+Safari checkout + recheckPlanFromServer pattern from the Scorecard — must land in public-crm before
+App Store prep begins. This thread owns it.** Old TestFlight/App Store
 users (e.g. Danny) are on very old builds; their visual bugs are already fixed at HEAD — ship 1.43
 rather than chase reports against stale binaries.
 
