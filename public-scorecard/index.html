@@ -693,19 +693,27 @@
         return;
       }
 
+      // Profile-first ordering (Austen, 2026-07-15): collect identity BEFORE
+      // the money ask. Incomplete profile → onboarding; saveOnboardingProfile
+      // then routes to the paywall for unpaid users.
+      if (!userProfileOk) {
+        console.log('[boot] profile incomplete — onboarding before paywall');
+        prepOnboarding(); showScreen('onboarding');
+        return;
+      }
+
       if (userPlan === 'scorecard' || userPlan === 'pro') {
         // Firestore shows a paid plan — go straight in.
         console.log('[boot] paid plan from Firestore — navigating in');
       } else {
         // Free/unpaid per Firestore (the single source of truth now that
-        // billing is Stripe-only) — show the plan screen immediately.
+        // billing is Stripe-only) — show the plan screen.
         console.log('[boot] plan is', userPlan, '— showing paywall');
         openPaywall('upgrade');
         return;
       }
 
-      if (!userProfileOk) { prepOnboarding(); showScreen('onboarding'); }
-      else showLoggedIn();
+      showLoggedIn();
       console.log('[boot] navigation complete');
 
     } finally {
@@ -1066,7 +1074,11 @@
         userPlan = 'free';
         activities = normalizeActivities(DEFAULT_ACTIVITIES.map(a => ({...a})));
         todayCounts = {}; history = []; lagHistory = [];
-        openPaywall('upgrade');
+        // Profile-first ordering (Austen, 2026-07-15): fresh signups build
+        // their profile before they see the paywall.
+        closePaywall();
+        prepOnboarding();
+        showScreen('onboarding');
       } else {
         const cred = await withTimeout(createUserWithEmailAndPassword(auth, email, password), 15000, 'createUserWithEmailAndPassword');
         // Initialize user doc so they have a /users/{uid} record from day 1.
@@ -1924,7 +1936,14 @@
     userPhone = phone;
     userSmsOptIn = optIn;
     userProfileOk = true;
-    showLoggedIn();
+    // Profile-first ordering (Austen, 2026-07-15): unpaid users meet the
+    // paywall AFTER completing their profile. Paid users go straight in.
+    if (userPlan === 'scorecard' || userPlan === 'pro') {
+      showLoggedIn();
+    } else {
+      showScreen('home');
+      setTimeout(() => openPaywall('upgrade'), 200);
+    }
   };
 
   // ===== LOAD DATA =====
