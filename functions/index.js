@@ -432,6 +432,87 @@ exports.saveSettings = onRequest({ cors: true }, async (req, res) => {
   } catch (e) { sendErr(res, e); }
 });
 
+// ===== Signup-funnel telemetry =====
+// iOS is login-only (2026-07-15), so the WEB funnel is the only acquisition
+// path. Client beacons attempts/errors (pre-auth, unauthenticated endpoint);
+// completions are counted server-side when the mandatory profile finishes
+// (profileCompletedAt absent → present on config/settings). Lola Helpdesk
+// polls funnelHealth and pages Austen on 'alert'.
+const FUNNEL_EVENTS = new Set(['signup_attempt', 'auth_error', 'demo_start', 'trial_click']);
+const funnelHourKey = (d) => (d || new Date()).toISOString().slice(0, 13);
+
+exports.onProfileCompleted = onDocumentWritten('users/{uid}/config/settings', async (event) => {
+  const before = event.data?.before?.exists ? event.data.before.data() : null;
+  const after = event.data?.after?.exists ? event.data.after.data() : null;
+  if (!after || !after.profileCompletedAt) return;
+  if (before && before.profileCompletedAt) return; // only the first completion counts
+  const now = new Date();
+  await db.collection('_funnel').doc(funnelHourKey(now)).set({
+    signup_complete: admin.firestore.FieldValue.increment(1),
+    updatedAt: now.toISOString(),
+  }, { merge: true });
+  await db.collection('_funnel').doc('meta').set({ lastCompletionAt: now.toISOString() }, { merge: true });
+});
+
+exports.funnelBeacon = onRequest({ cors: true, invoker: 'public' }, async (req, res) => {
+  res.set('Access-Control-Allow-Origin', '*');
+  if (req.method === 'OPTIONS') {
+    res.set('Access-Control-Allow-Methods', 'POST');
+    res.set('Access-Control-Allow-Headers', 'Content-Type');
+    return res.status(204).send('');
+  }
+  if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
+  try {
+    let data = req.body;
+    if (Buffer.isBuffer(data)) data = data.toString('utf8');
+    if (typeof data === 'string') { try { data = JSON.parse(data || '{}'); } catch (_) { data = {}; } }
+    const e = String((data && data.e) || '');
+    if (!FUNNEL_EVENTS.has(e)) return res.status(400).json({ error: 'unknown event' });
+    const update = { [e]: admin.firestore.FieldValue.increment(1), updatedAt: new Date().toISOString() };
+    if (e === 'auth_error' && data.code) {
+      const codeKey = String(data.code).toLowerCase().replace(/[^a-z0-9_/-]/g, '').replace(/[/-]/g, '_').slice(0, 40);
+      if (codeKey) update['err_' + codeKey] = admin.firestore.FieldValue.increment(1);
+    }
+    await db.collection('_funnel').doc(funnelHourKey()).set(update, { merge: true });
+    res.json({ ok: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+exports.funnelHealth = onRequest({ cors: true, invoker: 'public' }, async (req, res) => {
+  res.set('Access-Control-Allow-Origin', '*');
+  try {
+    const now = Date.now();
+    const hourRefs = [];
+    for (let i = 0; i < 24; i++) hourRefs.push(db.collection('_funnel').doc(funnelHourKey(new Date(now - i * 3600000))));
+    const snaps = await db.getAll(...hourRefs);
+    const sum = (docs, field) => docs.reduce((t, s) => t + ((s.exists && s.data()[field]) || 0), 0);
+    const last6 = snaps.slice(0, 6);
+    const errorCodes6h = {};
+    for (const s of last6) {
+      if (!s.exists) continue;
+      for (const [k, v] of Object.entries(s.data())) if (k.startsWith('err_')) errorCodes6h[k] = (errorCodes6h[k] || 0) + v;
+    }
+    const meta = await db.collection('_funnel').doc('meta').get();
+    const out = {
+      ok: true,
+      attempts6h: sum(last6, 'signup_attempt'),
+      completions6h: sum(last6, 'signup_complete'),
+      authErrors6h: sum(last6, 'auth_error'),
+      authErrors1h: sum(snaps.slice(0, 1), 'auth_error'),
+      attempts24h: sum(snaps, 'signup_attempt'),
+      completions24h: sum(snaps, 'signup_complete'),
+      authErrors24h: sum(snaps, 'auth_error'),
+      errorCodes6h,
+      lastCompletionAt: (meta.exists && meta.data().lastCompletionAt) || null,
+      generatedAt: new Date().toISOString(),
+    };
+    out.status = (out.attempts6h >= 5 && out.completions6h === 0) || out.authErrors1h >= 15 ? 'alert'
+      : (out.attempts24h >= 10 && out.completions24h === 0) || out.authErrors6h >= 20 ? 'warn'
+      : 'ok';
+    res.json(out);
+  } catch (err) { res.status(500).json({ ok: false, error: err.message }); }
+});
+
 // ===== Waitlist signup — plain HTTP endpoint that bypasses Firebase SDK on the client =====
 // The iOS app's WKWebView can't initialize Firebase Auth (Google APIs iframe blocked
 // by capacitor:// CORS), which means Firestore writes hang waiting for auth state.

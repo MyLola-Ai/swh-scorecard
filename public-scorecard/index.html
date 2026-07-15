@@ -875,6 +875,21 @@
     }
   };
 
+  // ── Signup-funnel beacons (web only) — Lola Helpdesk watches funnelHealth.
+  // iOS is login-only, so the web funnel is the ONLY acquisition path; a broken
+  // signup page must page Austen instead of silently zeroing new users.
+  // Pre-auth events → unauthenticated endpoint; text/plain keeps sendBeacon a
+  // simple request (no CORS preflight, which sendBeacon cannot perform).
+  window.swhFunnel = function(e, code) {
+    try {
+      if (isNativeEarly) return;
+      const body = JSON.stringify(code ? { e, code: String(code).slice(0, 40) } : { e });
+      const url = 'https://us-central1-swh-scoreboard.cloudfunctions.net/funnelBeacon';
+      if (navigator.sendBeacon) navigator.sendBeacon(url, new Blob([body], { type: 'text/plain' }));
+      else fetch(url, { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body, keepalive: true }).catch(() => {});
+    } catch (_) {}
+  };
+
   window.signInWithGoogleNative = async function() {
     const btn = document.getElementById('signin-google-btn');
     if (btn) { btn.disabled = true; btn.style.opacity = '0.6'; }
@@ -886,6 +901,7 @@
       } else {
         // Web: use Firebase Auth popup. Requires Google provider enabled in Firebase console
         // (it already is, since iOS uses the same auth).
+        if (window._signMode === 'up') swhFunnel('signup_attempt');
         const provider = new GoogleAuthProvider();
         await signInWithPopup(auth, provider);
         document.getElementById('paywall-modal').classList.remove('open');
@@ -896,6 +912,7 @@
       const msg = e.message || 'Google sign-in failed';
       // 'popup-closed-by-user' / 'cancelled-popup-request' aren't real errors — silence them.
       if (!/cancel|popup-closed/i.test(msg) && !/auth\/cancelled-popup-request/i.test(e.code || '')) {
+        swhFunnel('auth_error', e.code || 'google');
         showToast('⚠️ ' + msg);
       }
     } finally {
@@ -915,6 +932,7 @@
         // Web: Apple sign-in requires a Services ID configured at developer.apple.com
         // PLUS the apple.com provider enabled in Firebase Auth. If either is missing, the
         // call throws auth/operation-not-allowed and we fall back to a helpful toast.
+        if (window._signMode === 'up') swhFunnel('signup_attempt');
         const provider = new OAuthProvider('apple.com');
         provider.addScope('email');
         provider.addScope('name');
@@ -925,6 +943,7 @@
       console.error('[apple signin] failed:', e);
       const code = e.code || '';
       const msg = e.message || 'Apple sign-in failed';
+      if (!/cancel|popup-closed/i.test(msg) && !/cancelled-popup-request/i.test(code)) swhFunnel('auth_error', code || 'apple');
       if (/cancel|popup-closed/i.test(msg) || /auth\/cancelled-popup-request/i.test(code)) {
         // user cancelled — silent
       } else if (/operation-not-allowed/i.test(code)) {
@@ -946,6 +965,7 @@
     const btn = document.getElementById('signin-ms-btn');
     if (btn) { btn.disabled = true; btn.style.opacity = '0.6'; }
     try {
+      if (window._signMode === 'up') swhFunnel('signup_attempt');
       const msProvider = new OAuthProvider('microsoft.com');
       msProvider.setCustomParameters({ tenant: 'common', prompt: 'select_account' });
       msProvider.addScope('email');
@@ -955,6 +975,7 @@
       document.getElementById('paywall-modal').classList.remove('open');
     } catch(e) {
       console.error('[ms signin] failed:', e);
+      if (e.code !== 'auth/popup-closed-by-user' && e.code !== 'auth/cancelled-popup-request') swhFunnel('auth_error', e.code || 'microsoft');
       if (e.code === 'auth/popup-closed-by-user' || e.code === 'auth/cancelled-popup-request') {
         // user cancelled — silent
       } else if ((e.message || '').includes('AADSTS')) {
@@ -1000,6 +1021,7 @@
       }
     } catch(e) {
       console.error('[signin] failed:', e);
+      swhFunnel('auth_error', e.code || 'email_signin');
       const code = e.code || '';
       let msg = e.message || 'Sign in failed';
       if (code === 'auth/invalid-credential' || code === 'auth/wrong-password' || code === 'auth/user-not-found') msg = 'Email or password is incorrect';
@@ -1065,6 +1087,7 @@
     const password = document.getElementById('signin-password').value || '';
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { showToast('⚠️ Enter a valid email'); return; }
     if (password.length < 6) { showToast('⚠️ Password must be at least 6 characters'); return; }
+    swhFunnel('signup_attempt');
     const btn = document.getElementById('signin-submit-btn');
     btn.disabled = true; btn.textContent = 'Creating account…';
     try {
@@ -1086,6 +1109,7 @@
       showToast('✅ Account created');
     } catch(e) {
       console.error('[signup] failed:', e);
+      swhFunnel('auth_error', e.code || 'email_signup');
       const code = e.code || '';
       let msg = e.message || 'Sign up failed';
       if (code === 'auth/email-already-in-use') msg = 'An account already exists with that email. Try signing in instead.';
