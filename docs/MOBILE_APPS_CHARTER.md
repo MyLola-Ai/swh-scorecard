@@ -215,10 +215,18 @@ acceptable but unadvertised. Any 1.43 build must be cut AFTER 45ccfd0 + `cap syn
 **Release state (2026-07-03):** Scorecard 1.43 b30 is archive-ready pending Austen's beta week;
 What's New copy is written and with Austen. App Store Connect still pending: the LISTING name change
 to "The Scorecard" (may need a uniqueness qualifier) + the 1.43 version record + What's New paste.
-CRM App Store prep has NOT started (no version bump, no ASC record work). **BLOCKING item on the
-CRM release checklist (CTO directive 2026-07-15): the Stripe-only conversion — RevenueCat unhook +
-Safari checkout + recheckPlanFromServer pattern from the Scorecard — must land in public-crm before
-App Store prep begins. This thread owns it.** Old TestFlight/App Store
+CRM App Store prep has NOT started (no version bump, no ASC record work). **BLOCKING pair on the
+CRM release checklist (CTO ratified 2026-07-15), this thread owns it:**
+1. **Stripe-only conversion** — RevenueCat unhook + Safari checkout + recheckPlanFromServer
+   pattern from the Scorecard — must land in public-crm before App Store prep begins.
+2. **Login-only posture** — same as the Scorecard: no account creation on iOS, single Sign In
+   entry, web pointer for new accounts.
+Plus riders: the legacy-IAP plan-resolution check (§5) runs before every release; guideline 4.8
+parity (Sign in with Apple offered wherever Google is) — **confirmed compliant in the Scorecard
+2026-07-15** (Google + Apple adjacent in the native auth form, Apple hidden only on Android) —
+must be re-verified on CRM; the implicit-account edge (first Google/Apple sign-in creates the
+Firebase account) must get the SAME onboarding → paywall path on CRM, and in-app account
+deletion (deleteAccountSelf, present in the Scorecard) must cover those users there too. Old TestFlight/App Store
 users (e.g. Danny) are on very old builds; their visual bugs are already fixed at HEAD — ship 1.43
 rather than chase reports against stale binaries.
 
