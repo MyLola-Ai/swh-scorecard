@@ -200,12 +200,17 @@ matching the CRM's system activity.
 
 ## 10. Roadmap / open items
 
-**Update 2026-07-15 — registration + billing overhaul (in working tree, deploy/commit pending
-the concurrent SWH-thread work in the same file):** native entry is now Create Account / Sign In
-only ("Try for free"/demo removed from iOS; web demo funnel intact per Austen). Signup fast path
-skips getMe/RC round-trips (was 10s+ of spinner). "Continue with Microsoft" is web-only + native
-guard (its Web-SDK popup hangs in the WKWebView — likely the reported signup freeze). Paywall is
-Stripe checkout in Safari (§5). Any 1.43 build must be cut AFTER this lands + `cap sync`.
+**Update 2026-07-15 — registration + billing overhaul (ALL LANDED: c3222d2 carried the
+registration/Stripe work, 2c2e724 profile-first, 45ccfd0 login-only; deployed + synced):**
+the iOS app is **LOGIN-ONLY** (Austen). Native entry = single Sign In CTA + plain-text pointer
+to stopwastinghandshakes.com for account creation; the auth form's create-account toggle is
+web-only; submitEmailSignUp is guarded on native. "Try for free"/demo removed from iOS earlier
+the same day (web demo funnel intact). "Continue with Microsoft" is web-only + native guard
+(its Web-SDK popup hangs in the WKWebView — likely the reported signup freeze). Signed-in
+users route profile-first: incomplete profile → onboarding → (if unpaid) Stripe paywall (§5).
+KNOWN EDGE: Google/Apple sign-in still implicitly creates a Firebase account for a brand-new
+user (client-side unavoidable); such users fall into the onboarding → paywall flow, which is
+acceptable but unadvertised. Any 1.43 build must be cut AFTER 45ccfd0 + `cap sync` (done).
 
 **Release state (2026-07-03):** Scorecard 1.43 b30 is archive-ready pending Austen's beta week;
 What's New copy is written and with Austen. App Store Connect still pending: the LISTING name change
