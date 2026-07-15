@@ -393,8 +393,16 @@ exports.saveSettings = onRequest({ cors: true }, async (req, res) => {
     const uid = decoded.uid;
     const { phone, smsOptIn, weeklyGoal, displayName,
             weekStartDay, weeklyEmailEnabled, weeklyEmailDay, weeklyEmailHour, weeklyEmailTimezone,
-            accountabilityPartners, calendarAutoLog } = req.body || {};
+            accountabilityPartners, calendarAutoLog,
+            firstName, lastName, company, industry, email, profileCompletedAt } = req.body || {};
     const update = {};
+    // Mandatory-profile fields (onboarding gate)
+    if (typeof firstName === 'string') update.firstName = firstName.slice(0, 60);
+    if (typeof lastName === 'string') update.lastName = lastName.slice(0, 60);
+    if (typeof company === 'string') update.company = company.slice(0, 120);
+    if (typeof industry === 'string') update.industry = industry.slice(0, 60);
+    if (typeof email === 'string') update.email = email.slice(0, 200);
+    if (typeof profileCompletedAt === 'string') update.profileCompletedAt = profileCompletedAt.slice(0, 40);
     if (typeof phone === 'string') update.phone = phone;
     if (typeof smsOptIn === 'boolean') update.smsOptIn = smsOptIn;
     if (typeof weeklyGoal === 'number' && weeklyGoal > 0 && weeklyGoal < 10000) update.weeklyGoal = weeklyGoal;

@@ -472,6 +472,9 @@
   let lagHistory = [];
   let weeklyGoal = 150;
   let userPhone = '';
+  let userProfileOk = false;
+  // Mandatory profile: first/last/company/industry/phone (email rides sign-in)
+  const computeProfileOk = (s) => !!(s && s.firstName && s.lastName && s.company && s.industry && s.phone);
   let userSmsOptIn = false;
   let editingDate = null;
   let _savingInterval = null;
@@ -634,6 +637,7 @@
       lagHistory = me.lagHistory || [];
       weeklyGoal = me.settings.weeklyGoal || 150;
       userPhone = me.settings.phone || '';
+      userProfileOk = computeProfileOk(me.settings || {});
       userSmsOptIn = me.settings.smsOptIn || false;
       _pushReminderOptIn = me.settings.pushReminderOptIn ?? true;
       _emailReminderOptIn = me.settings.emailReminderOptIn || false;
@@ -646,12 +650,11 @@
       userAccountabilityPartners = Array.isArray(me.settings.accountabilityPartners) ? [...me.settings.accountabilityPartners] : [];
       demoMode = false;
 
-      // ── Stage 3: start RC setup in background (non-blocking) ───────────────
-      // RC is started here so it has time to configure while we do routing below.
-      // We never await it directly — it has its own 6s timeout inside setupRevenueCat.
-      // The plan gate below will race against it with a short wait.
-      console.log('[boot] RC setup starting in background for uid', me.uid);
-      const _rcSetupPromise = setupRevenueCat(me.uid);
+      // ── Stage 3: background services ────────────────────────────────────────
+      // (RevenueCat/IAP removed 2026-07 — Stripe is the only billing rail.
+      // The plan comes from Firestore via getMe; the Stripe webhook keeps it
+      // current. Legacy IAP subscribers stay entitled through the RC webhook
+      // server-side; no client-side RC calls remain.)
 
       // Push notifications — fire and forget, never blocks boot
       initPushNotifications(me.uid).catch(() => {});
@@ -691,29 +694,17 @@
       }
 
       if (userPlan === 'scorecard' || userPlan === 'pro') {
-        // Firestore already shows a paid plan — go straight in.
+        // Firestore shows a paid plan — go straight in.
         console.log('[boot] paid plan from Firestore — navigating in');
       } else {
-        // Firestore says free/unpaid. Wait up to 4s for RC to finish configuring,
-        // then do one entitlement check. If RC confirms a subscription, let them in.
-        // If RC is unavailable or says no subscription, show paywall.
-        // RC must NEVER block the loading screen indefinitely.
-        console.log('[boot] plan is', userPlan, '— waiting up to 4s for RC');
-        try {
-          await Promise.race([_rcSetupPromise, new Promise(r => setTimeout(r, 4000))]);
-        } catch(e) { console.warn('[boot] RC setup race failed:', e.message); }
-        console.log('[boot] RC ready:', _rcConfigured, '— reconciling entitlements');
-        const rcConfirmed = await reconcileEntitlementsFromRC(); // 8s timeout inside
-        console.log('[boot] RC reconcile result:', rcConfirmed, 'userPlan now:', userPlan);
-        if (!rcConfirmed || (userPlan !== 'scorecard' && userPlan !== 'pro')) {
-          console.log('[boot] no active entitlement — showing paywall');
-          openPaywall('upgrade');
-          return;
-        }
-        console.log('[boot] RC confirmed subscription — navigating in');
+        // Free/unpaid per Firestore (the single source of truth now that
+        // billing is Stripe-only) — show the plan screen immediately.
+        console.log('[boot] plan is', userPlan, '— showing paywall');
+        openPaywall('upgrade');
+        return;
       }
 
-      if (!userPhone) showScreen('onboarding');
+      if (!userProfileOk) { prepOnboarding(); showScreen('onboarding'); }
       else showLoggedIn();
       console.log('[boot] navigation complete');
 
@@ -815,8 +806,6 @@
       document.getElementById('paywall-waitlist').style.display = 'none';
       document.getElementById('paywall-signin').style.display = 'none';
       document.getElementById('paywall-success').style.display = 'none';
-      // Pre-load RC offerings so the button is ready before the user taps it.
-      if (isNativeEarly && !_rcOfferingsLoaded) loadRCOfferings().catch(() => {});
     }
   };
   window.closePaywall = function() { document.getElementById('paywall-modal').classList.remove('open'); };
@@ -1077,7 +1066,6 @@
         userPlan = 'free';
         activities = normalizeActivities(DEFAULT_ACTIVITIES.map(a => ({...a})));
         todayCounts = {}; history = []; lagHistory = [];
-        setupRevenueCat(NativeAPI.uid).catch(() => {});
         openPaywall('upgrade');
       } else {
         const cred = await withTimeout(createUserWithEmailAndPassword(auth, email, password), 15000, 'createUserWithEmailAndPassword');
@@ -1218,12 +1206,13 @@
   // CTAs in iOS apps. iOS subscribers sign in to an account purchased outside the app.
   window.startUpgrade = async function(plan) {
     try {
-      if (isNative()) {
-        // On native: open the in-app paywall with IAP purchase options.
-        openPaywall('upgrade');
+      if (isNative() && !NativeAPI.isReady) {
+        // Native: checkout needs an authenticated session for the Bearer token.
+        showToast('⚠️ Sign in first');
+        openPaywall('signin');
         return;
       }
-      if (!auth.currentUser || auth.currentUser.isAnonymous) {
+      if (!isNative() && (!auth.currentUser || auth.currentUser.isAnonymous)) {
         // Web: not signed in yet. Save the intent and route them to sign-in.
         // After they sign in (or sign up via Google), we auto-resume the checkout.
         window._pendingTrialPlan = plan;
@@ -1252,7 +1241,10 @@
         url = data.url;
       }
       if (!url) throw new Error('No checkout URL returned');
-      // Redirect to Stripe (web) or open in system browser (native, if we hit this path)
+      // Web: redirect to Stripe. Native: checkout.stripe.com is an external
+      // origin, so Capacitor's navigation policy opens it in Safari and the
+      // webview stays on the app (same mechanism as the Terms links). The
+      // appStateChange listener re-checks the plan when the user returns.
       if (isNative() && window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Browser) {
         await window.Capacitor.Plugins.Browser.open({ url });
       } else {
@@ -1265,22 +1257,13 @@
   };
 
   // ── BILLING ROW (Settings) ──
-  // On WEB: routes to checkout (no sub) or portal (active sub).
-  // On NATIVE iOS: opens IAP paywall (subscribe) or shows restore option (active sub).
+  // Stripe everywhere (IAP removed 2026-07): portal for active subs,
+  // checkout/paywall otherwise. Portal + checkout open in Safari on native.
   window.onBillingRowClick = function() {
-    if (isNative()) {
-      if (userPlan === 'scorecard' || userPlan === 'pro') {
-        // Active subscriber — offer restore in case they need it on a new device
-        if (confirm('Your subscription is active. Would you like to restore purchases on this device?')) {
-          iosRestorePurchases();
-        }
-      } else {
-        openPaywall('upgrade');
-      }
-      return;
-    }
     if (userPlan === 'scorecard' || userPlan === 'pro') {
       openBillingPortal();
+    } else if (isNative()) {
+      openPaywall('upgrade');
     } else {
       startUpgrade('scorecard');
     }
@@ -1288,7 +1271,8 @@
 
   // Refresh the Settings billing-row label based on userPlan + auth state.
   // Hidden in demo / signed-out mode; shown for signed-in users.
-  // On native: shows account status only — no prices, no "Subscribe" or "Upgrade" copy.
+  // Same copy on web and native now that billing is Stripe-only (the IAP-era
+  // "no prices on iOS" restriction no longer applies to external purchases).
   window.refreshBillingRow = function() {
     const row = document.getElementById('settings-billing-row');
     const txt = document.getElementById('settings-billing-text');
@@ -1300,14 +1284,6 @@
       return;
     }
     row.style.display = 'flex';
-    if (isNative()) {
-      // Compliance copy on iOS — no prices, no "subscribe", no marketing
-      txt.textContent = 'Account';
-      if (userPlan === 'pro') sub.textContent = 'Scorecard · active';
-      else if (userPlan === 'scorecard') sub.textContent = 'Scorecard · active';
-      else sub.textContent = 'Subscription required';
-      return;
-    }
     if (userPlan === 'pro') {
       txt.textContent = 'Scorecard CRM';
       sub.textContent = 'Manage subscription · $25/mo';
@@ -1320,16 +1296,15 @@
     }
   };
 
-  // ── STRIPE CUSTOMER PORTAL (Web only) ──
+  // ── STRIPE CUSTOMER PORTAL ──
   // Opens the Stripe-hosted portal for managing an active subscription.
-  // Disabled on native iOS — Apple 3.1.1 disallows external purchase / management links.
+  // On native the portal opens in Safari (same external-navigation policy as
+  // checkout); Stripe-only billing means no IAP restrictions apply.
   window.openBillingPortal = async function() {
     try {
       if (isNative()) {
-        showToast('Account management is handled outside of this app.');
-        return;
-      }
-      if (!auth.currentUser || auth.currentUser.isAnonymous) {
+        if (!NativeAPI.isReady) { showToast('⚠️ Sign in first'); return; }
+      } else if (!auth.currentUser || auth.currentUser.isAnonymous) {
         showToast('⚠️ Sign in first');
         return;
       }
@@ -1425,6 +1400,12 @@
     // Caller is responsible for closing the modal or re-opening with openPaywall().
   }
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // LEGACY IAP (RevenueCat) — retired 2026-07, Stripe is the only billing rail.
+  // Nothing below here is invoked anymore (UI buttons and boot calls removed).
+  // Kept temporarily so legacy references can't break; delete this whole block
+  // once the RevenueCat account is closed and legacy IAP subs have migrated.
+  // ─────────────────────────────────────────────────────────────────────────
   async function setupRevenueCat(uid) {
     if (!isNativeEarly) return; // web path uses Stripe, not RC
     if (_rcConfigured) return;  // idempotent
@@ -1771,7 +1752,7 @@
         showToast(alreadyOwned ? '✅ Subscription verified!' : '✅ Subscription active!');
         setTimeout(() => {
           document.getElementById('paywall-modal').classList.remove('open');
-          if (!userPhone) showScreen('onboarding');
+          if (!userProfileOk) { prepOnboarding(); showScreen('onboarding'); }
           else showLoggedIn();
         }, 600);
         return;
@@ -1797,7 +1778,7 @@
         showToast('✅ Subscription restored!');
         setTimeout(() => {
           document.getElementById('paywall-modal').classList.remove('open');
-          if (!userPhone) showScreen('onboarding');
+          if (!userProfileOk) { prepOnboarding(); showScreen('onboarding'); }
           else showLoggedIn();
         }, 600);
       } else {
@@ -1901,26 +1882,48 @@
     }
   };
 
-  window.saveOnboardingPhone = async () => {
-    const rawPhone = document.getElementById('onboarding-phone-input').value.trim().replace(/\D/g,'');
-    const phone = rawPhone ? '+1' + rawPhone : '';
-    const optIn = rawPhone.length === 10;
-    userPhone = phone;
-    userSmsOptIn = optIn;
-    const displayName = currentUser.displayName || '';
+  // Prefill the mandatory profile form from sign-in + any saved settings
+  window.prepOnboarding = () => {
+    const u = (typeof currentUser !== 'undefined' && currentUser) || {};
+    const dn = String(u.displayName || '').trim().split(/\s+/).filter(Boolean);
+    const setIf = (id, v) => { const el = document.getElementById(id); if (el && !el.value && v) el.value = v; };
+    setIf('ob-first', dn[0]);
+    setIf('ob-last', dn.slice(1).join(' '));
+    setIf('ob-phone', (userPhone || '').replace(/^\+1/, ''));
+    const em = document.getElementById('ob-email');
+    if (em) em.textContent = u.email || '';
+  };
+  window.saveOnboardingProfile = async () => {
+    const val = (id) => (document.getElementById(id)?.value || '').trim();
+    const firstName = val('ob-first'), lastName = val('ob-last'), company = val('ob-company'), industry = val('ob-industry');
+    const rawPhone = val('ob-phone').replace(/\D/g, '');
+    const err = document.getElementById('ob-error');
+    const fail = (msg) => { if (err) { err.textContent = msg; err.style.display = 'block'; } };
+    if (err) err.style.display = 'none';
+    if (!firstName || !lastName) return fail('Please enter your first and last name.');
+    if (!company) return fail('Please enter your company name.');
+    if (rawPhone.length !== 10) return fail('Please enter a valid 10-digit mobile number.');
+    if (!industry) return fail('Please select your industry.');
+    const phone = '+1' + rawPhone;
+    const optIn = !!document.getElementById('ob-sms')?.checked;
+    const displayName = firstName + ' ' + lastName;
+    const payload = { firstName, lastName, displayName, company, industry, phone, smsOptIn: optIn,
+      email: (currentUser && currentUser.email) || '', profileCompletedAt: new Date().toISOString(), weeklyGoal };
+    const btn = document.getElementById('ob-save-btn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
     try {
       if (isNativeEarly) {
-        await NativeAPI.call('saveSettings', { phone, smsOptIn: optIn, displayName, weeklyGoal });
+        await NativeAPI.call('saveSettings', payload);
       } else {
-        await setDoc(doc(db,'users',currentUser.uid,'config','settings'),{phone, smsOptIn: optIn, displayName, weeklyGoal},{merge:true});
+        await setDoc(doc(db,'users',currentUser.uid,'config','settings'), payload, {merge:true});
       }
     } catch(e) {
-      showToast('⚠️ Could not save: ' + (e.message || 'unknown'));
-      return;
+      if (btn) { btn.disabled = false; btn.textContent = 'Start Building →'; }
+      return fail('Could not save: ' + (e.message || 'try again'));
     }
-    showLoggedIn();
-  };
-  window.skipOnboarding = () => {
+    userPhone = phone;
+    userSmsOptIn = optIn;
+    userProfileOk = true;
     showLoggedIn();
   };
 
@@ -1985,6 +1988,7 @@
       const s = cfgDoc.data();
       weeklyGoal = s.weeklyGoal || 150;
       userPhone = s.phone || '';
+      userProfileOk = computeProfileOk(s);
       userSmsOptIn = s.smsOptIn || false;
       userWeekStartDay = s.weekStartDay || 'monday';
       userWeeklyEmailEnabled = s.weeklyEmailEnabled ?? true;
@@ -3694,9 +3698,54 @@
   }
   window.showNativeSignIn = showNativeSignIn;
 
+  // ── STRIPE RETURN PATH (native) ──
+  // Checkout happens in Safari, so the app never sees a redirect. Two ways
+  // back in: the paywall's "Refresh status" button calls this directly, and
+  // the appStateChange listener below calls it silently when the app resumes
+  // with the paywall open. The Stripe webhook writes plan to Firestore, so
+  // one getMe round-trip is the whole check.
+  window.recheckPlanFromServer = async function(opts) {
+    const silent = !!(opts && opts.silent);
+    if (!isNativeEarly || !NativeAPI.isReady) return false;
+    if (!silent) showToast('⏳ Checking subscription…');
+    try {
+      const me = await NativeAPI.call('getMe', null, { timeout: 10000 });
+      userPlan = me.plan || 'free';
+      if (userPlan === 'scorecard' || userPlan === 'pro') {
+        currentUser = currentUser || { uid: me.uid, email: me.email, displayName: (me.settings && me.settings.displayName) || '' };
+        userPhone = (me.settings && me.settings.phone) || userPhone || '';
+        closePaywall();
+        showToast('✅ Subscription active. Welcome!');
+        if (!userProfileOk) { prepOnboarding(); showScreen('onboarding'); }
+        else showLoggedIn();
+        return true;
+      }
+      if (!silent) showToast('No active subscription yet. Finish checkout in Safari, then tap refresh again');
+      return false;
+    } catch(e) {
+      if (!silent) showToast('⚠️ ' + (e.message || 'Could not check subscription'));
+      return false;
+    }
+  };
+
   if (isNativeEarly) {
     showNativeSignIn();
     bootNative();
+    // Re-check the plan whenever the app returns to the foreground with the
+    // paywall open — this is the post-checkout return from Safari.
+    try {
+      const CapApp = window.Capacitor.Plugins.App;
+      if (CapApp && typeof CapApp.addListener === 'function') {
+        CapApp.addListener('appStateChange', ({ isActive }) => {
+          if (!isActive) return;
+          const paywallOpen = document.getElementById('paywall-modal')?.classList.contains('open');
+          if (paywallOpen && NativeAPI.isReady && userPlan !== 'scorecard' && userPlan !== 'pro') {
+            recheckPlanFromServer({ silent: true });
+          }
+        });
+        console.log('[stripe] appStateChange plan recheck registered');
+      }
+    } catch(e) { console.warn('[stripe] appStateChange listener setup failed:', e.message); }
   } else {
     // SNAPSHOT the cross-product hand-off state BEFORE we consume the token
     // (consumption strips the hash). The flag drives the extended auth
@@ -3772,26 +3821,9 @@
           return;
         }
         showLoader(false);
-        // On native: if Firestore says 'free', check RevenueCat before gating.
-        // Handles users who purchased before signing in — Apple/RC have the entitlement
-        // but Firestore hasn't been updated yet. reconcileEntitlementsFromRC() now
-        // writes to Firestore directly when it finds an active entitlement.
-        // If iosPurchase is currently syncing, suppress the plan gate here — the purchase
-        // flow is already showing the "Syncing…" paywall and will navigate on its own.
-        if (_syncingSubscription) { console.log('[onAuth] purchase sync in progress — skipping plan gate'); return; }
+        // Plan comes from Firestore only (Stripe webhook keeps it current;
+        // IAP/RevenueCat removed 2026-07).
         console.log('[onAuth] plan gate — userPlan:', userPlan, 'isNativeEarly:', isNativeEarly);
-        if (isNativeEarly && (userPlan === 'free' || !userPlan)) {
-          // RC runs with a 5s budget — if it doesn't respond, proceed with Firestore plan
-          try {
-            if (!_rcConfigured) {
-              console.log('[onAuth] RC not configured — setting up with 5s budget');
-              await Promise.race([setupRevenueCat(user.uid), new Promise(r => setTimeout(r, 5000))]);
-            }
-            console.log('[onAuth] reconciling RC entitlements');
-            await reconcileEntitlementsFromRC(); // 8s timeout inside
-            console.log('[onAuth] RC reconcile done — userPlan now:', userPlan);
-          } catch(e) { console.warn('[onAuth] RC check failed (non-fatal):', e.message); }
-        }
         // If user clicked "Start free trial" before signing in, resume that flow now
         // that we have a Firebase uid. This delivers the smoothest signup-to-checkout UX.
         if (window._pendingTrialPlan && (userPlan === 'free' || userPlan === 'demo' || !userPlan)) {
@@ -3806,8 +3838,8 @@
           console.log('[onAuth] no active plan — showing paywall/upgrade');
           document.getElementById('bottom-nav').style.display='none';
           if (isNativeEarly) {
-            // Signed-in iOS user with no paid plan — go straight to the IAP paywall.
-            // screen-upgrade is the unauthenticated landing; openPaywall has the IAP button.
+            // Signed-in iOS user with no paid plan — go straight to the plan paywall.
+            // screen-upgrade is the unauthenticated landing; openPaywall has the Stripe CTA.
             showScreen('home');
             setTimeout(() => openPaywall('upgrade'), 400);
           } else {
@@ -3817,7 +3849,7 @@
           return;
         }
         console.log('[onAuth] navigating to', userPhone ? 'showLoggedIn' : 'onboarding');
-        if (!userPhone) showScreen('onboarding');
+        if (!userProfileOk) { prepOnboarding(); showScreen('onboarding'); }
         else showLoggedIn();
         // Refresh Team nav visibility + redeem any pending invite token now that we're signed in
         setTimeout(() => { try { window.updateTeamNavVisibility && window.updateTeamNavVisibility(); } catch(_){} }, 300);
@@ -4562,18 +4594,43 @@
 
 <!-- HOME -->
 <div id="screen-onboarding" class="screen" style="background:linear-gradient(160deg,var(--navy) 0%,#000 100%);display:none;flex-direction:column;align-items:center;justify-content:flex-start;padding:max(88px, calc(env(safe-area-inset-top) + 48px)) 32px max(56px, calc(env(safe-area-inset-bottom) + 32px));min-height:100vh;overflow-y:auto;box-sizing:border-box;">
-  <img src="/assets/swh-logo-dark.svg" style="width:72px;height:72px;border-radius:18px;margin-bottom:24px;" alt="SWH">
-  <div style="font-family:'Playfair Display',serif;font-size:24px;font-weight:900;color:#fff;text-align:center;margin-bottom:8px;">One Last Thing</div>
-  <div style="color:rgba(255,255,255,0.55);font-size:14px;text-align:center;margin-bottom:32px;line-height:1.6;">Want a daily text reminder at 5pm if you haven't logged your points? No spam. Only fires when you haven't logged.</div>
-  <div style="width:100%;margin-bottom:16px;">
-    <div style="font-size:13px;font-weight:600;color:rgba(255,255,255,0.6);margin-bottom:8px;">Your Mobile Number</div>
-    <div style="display:flex;align-items:center;border-radius:14px;background:#fff;overflow:hidden;">
-      <div style="padding:16px 14px;font-size:16px;font-weight:700;color:var(--navy);background:#f0f0f0;flex-shrink:0;">+1</div>
-      <input type="tel" id="onboarding-phone-input" placeholder="(555) 000-0000" maxlength="10" style="flex:1;padding:16px;border:none;font-family:'DM Sans',sans-serif;font-size:16px;color:var(--navy);outline:none;">
+  <img src="/assets/swh-logo-dark.svg" style="width:64px;height:64px;border-radius:16px;margin-bottom:18px;" alt="SWH">
+  <div style="font-family:'Playfair Display',serif;font-size:24px;font-weight:900;color:#fff;text-align:center;margin-bottom:8px;">Set Up Your Profile</div>
+  <div style="color:rgba(255,255,255,0.55);font-size:14px;text-align:center;margin-bottom:24px;line-height:1.6;">Tell us who you are so your follow-through, reports, and team features work right. All fields are required.</div>
+  <div style="width:100%;max-width:420px;">
+    <div style="display:flex;gap:10px;margin-bottom:12px;">
+      <input type="text" id="ob-first" placeholder="First name" autocomplete="given-name" style="flex:1;min-width:0;padding:15px 16px;border:none;border-radius:14px;font-family:'DM Sans',sans-serif;font-size:15px;color:var(--navy);outline:none;">
+      <input type="text" id="ob-last" placeholder="Last name" autocomplete="family-name" style="flex:1;min-width:0;padding:15px 16px;border:none;border-radius:14px;font-family:'DM Sans',sans-serif;font-size:15px;color:var(--navy);outline:none;">
     </div>
+    <input type="text" id="ob-company" placeholder="Company name" autocomplete="organization" style="width:100%;box-sizing:border-box;padding:15px 16px;border:none;border-radius:14px;font-family:'DM Sans',sans-serif;font-size:15px;color:var(--navy);outline:none;margin-bottom:12px;">
+    <div id="ob-email" title="From your sign-in" style="width:100%;box-sizing:border-box;padding:15px 16px;border-radius:14px;background:rgba(255,255,255,0.08);color:rgba(255,255,255,0.75);font-size:14px;margin-bottom:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">you@company.com</div>
+    <div style="display:flex;align-items:center;border-radius:14px;background:#fff;overflow:hidden;margin-bottom:12px;">
+      <div style="padding:15px 14px;font-size:15px;font-weight:700;color:var(--navy);background:#f0f0f0;flex-shrink:0;">+1</div>
+      <input type="tel" id="ob-phone" placeholder="(555) 000-0000" maxlength="14" autocomplete="tel-national" style="flex:1;min-width:0;padding:15px 16px;border:none;font-family:'DM Sans',sans-serif;font-size:15px;color:var(--navy);outline:none;">
+    </div>
+    <select id="ob-industry" style="width:100%;box-sizing:border-box;padding:15px 16px;border:none;border-radius:14px;font-family:'DM Sans',sans-serif;font-size:15px;color:var(--navy);outline:none;margin-bottom:12px;background:#fff;appearance:none;-webkit-appearance:none;">
+      <option value="">Select your industry</option>
+      <option>Real Estate</option>
+      <option>Mortgage & Lending</option>
+      <option>Insurance</option>
+      <option>Financial Services</option>
+      <option>Legal</option>
+      <option>Title & Escrow</option>
+      <option>Construction & Home Services</option>
+      <option>Health & Wellness</option>
+      <option>Marketing & Media</option>
+      <option>Technology</option>
+      <option>Coaching & Consulting</option>
+      <option>Nonprofit & Community</option>
+      <option>Other</option>
+    </select>
+    <label style="display:flex;align-items:flex-start;gap:10px;margin:2px 2px 18px;cursor:pointer;">
+      <input type="checkbox" id="ob-sms" checked style="width:17px;height:17px;accent-color:var(--gold);flex-shrink:0;margin-top:1px;">
+      <span style="color:rgba(255,255,255,0.55);font-size:12.5px;line-height:1.5;">Text me a 5pm reminder on days I haven't logged my points. No spam, it only fires when I forget.</span>
+    </label>
+    <div id="ob-error" style="display:none;color:#ffb3ba;font-size:13px;font-weight:600;margin-bottom:12px;text-align:center;"></div>
+    <button onclick="saveOnboardingProfile()" id="ob-save-btn" style="width:100%;background:linear-gradient(135deg,var(--gold),#b8252f);border:none;border-radius:14px;padding:16px;font-family:'DM Sans',sans-serif;font-size:16px;font-weight:700;color:#fff;cursor:pointer;">Start Building →</button>
   </div>
-  <button onclick="saveOnboardingPhone()" style="width:100%;background:linear-gradient(135deg,var(--gold),#b8252f);border:none;border-radius:14px;padding:16px;font-family:'DM Sans',sans-serif;font-size:16px;font-weight:700;color:var(--navy);cursor:pointer;margin-bottom:12px;">Yes, Remind Me Daily 📱</button>
-  <button onclick="skipOnboarding()" style="width:100%;background:transparent;border:none;padding:12px;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:600;color:rgba(255,255,255,0.4);cursor:pointer;">Skip for now</button>
 </div>
 
 <!-- HOME -->
@@ -5213,9 +5270,9 @@
         <img src="/assets/swh-logo-dark.svg" style="width:56px;height:56px;border-radius:14px;background:#1a1a1a;" alt="SWH">
       </div>
       <div id="paywall-headline" class="web-only" style="font-family:'Playfair Display',serif;font-size:24px;font-weight:900;text-align:center;line-height:1.2;color:#fff;">Start your free 60-day trial</div>
-      <div class="native-only" style="font-family:'Playfair Display',serif;font-size:24px;font-weight:900;text-align:center;line-height:1.2;color:#fff;">Choose your plan</div>
+      <div class="native-only" style="font-family:'Playfair Display',serif;font-size:24px;font-weight:900;text-align:center;line-height:1.2;color:#fff;">Start your free trial</div>
       <div class="web-only" style="font-size:13px;color:rgba(255,255,255,0.6);text-align:center;margin-top:10px;line-height:1.6;">Track real activity. Build the habit. See your weekly tier climb.</div>
-      <div class="native-only" style="font-size:13px;color:rgba(255,255,255,0.6);text-align:center;margin-top:10px;line-height:1.6;">Start your free trial. Cancel anytime.</div>
+      <div class="native-only" style="font-size:13px;color:rgba(255,255,255,0.6);text-align:center;margin-top:10px;line-height:1.6;">Full access to the Scorecard. Cancel anytime.</div>
 
       <div class="web-only" style="display:flex;flex-direction:column;gap:10px;margin:22px 0 8px;">
         <div style="display:flex;align-items:center;gap:10px;font-size:13px;color:rgba(255,255,255,0.85);"><span style="color:var(--gold);font-weight:800;">✓</span> Daily activity tracking</div>
@@ -5225,33 +5282,28 @@
       </div>
 
       <div class="web-only" style="background:rgba(230,57,70,0.10);border:1px solid rgba(230,57,70,0.30);border-radius:12px;padding:12px 14px;margin:18px 0;text-align:center;">
-        <div style="font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--gold);">30-Day Free Trial</div>
+        <div style="font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--gold);">60-Day Free Trial</div>
         <div style="font-size:13px;color:rgba(255,255,255,0.85);margin-top:4px;">Then $10/month. Cancel anytime.</div>
       </div>
 
-      <!-- NATIVE iOS: single-tier Apple IAP (RevenueCat). Scorecard only for v1.
-           Button starts disabled/loading — setIAPButtonState('ready') enables it once
-           loadRCOfferings() succeeds. -->
+      <!-- NATIVE iOS: Stripe checkout (IAP/RevenueCat removed 2026-07).
+           Checkout opens in Safari via Capacitor's external-navigation policy;
+           the appStateChange listener re-checks the plan when the app resumes. -->
       <div class="native-only" style="display:flex;flex-direction:column;gap:10px;margin:22px 0 8px;">
-        <button id="iap-subscribe-btn" onclick="iosPurchase('scorecard')" disabled
-          style="position:relative;width:100%;padding:18px 20px;background:linear-gradient(135deg,var(--gold),#b8252f);border:none;border-radius:14px;font-family:'DM Sans',sans-serif;cursor:default;text-align:left;display:flex;align-items:center;gap:14px;box-shadow:0 4px 18px rgba(230,57,70,0.35);opacity:0.6;">
-          <div style="font-size:24px;">⚡</div>
-          <div style="flex:1;">
-            <div id="iap-btn-label" style="font-size:15px;font-weight:800;color:#fff;">Loading…</div>
-            <div id="iap-btn-sub" style="font-size:12px;color:rgba(255,255,255,0.9);line-height:1.4;margin-top:2px;"></div>
-          </div>
-          <div style="color:#fff;font-size:18px;font-weight:800;">→</div>
-        </button>
-        <div style="font-size:11px;color:rgba(255,255,255,0.45);text-align:center;line-height:1.5;margin-top:4px;">
+        <div style="background:rgba(230,57,70,0.10);border:1px solid rgba(230,57,70,0.30);border-radius:12px;padding:12px 14px;text-align:center;">
+          <div style="font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--gold);">60-Day Free Trial</div>
+          <div style="font-size:13px;color:rgba(255,255,255,0.85);margin-top:4px;">Then $10/month. Cancel anytime.</div>
+        </div>
+        <div style="font-size:11px;color:rgba(255,255,255,0.45);text-align:center;line-height:1.5;">
           Daily activity tracking · Weekly tier · Coaching insights · SMS reminders
         </div>
       </div>
 
-      <!-- Web: Start free trial → Stripe Checkout (Scorecard $10/mo). Sign in is secondary.
-           Native iOS: sign-in is secondary (under IAP). -->
-      <button class="web-only" onclick="startUpgrade('scorecard')" style="width:100%;padding:15px;background:linear-gradient(135deg,var(--gold),#b8252f);border:none;border-radius:14px;font-family:'DM Sans',sans-serif;font-size:15px;font-weight:800;color:#fff;cursor:pointer;box-shadow:0 4px 18px rgba(230,57,70,0.35);">Start free trial →</button>
+      <!-- Start free trial → Stripe Checkout (Scorecard $10/mo) on BOTH web and native.
+           On native the checkout page opens in Safari. -->
+      <button onclick="startUpgrade('scorecard')" style="width:100%;padding:15px;background:linear-gradient(135deg,var(--gold),#b8252f);border:none;border-radius:14px;font-family:'DM Sans',sans-serif;font-size:15px;font-weight:800;color:#fff;cursor:pointer;box-shadow:0 4px 18px rgba(230,57,70,0.35);">Start free trial →</button>
       <button onclick="showSignInForm()" style="width:100%;margin-top:10px;padding:14px;background:transparent;border:1.5px solid rgba(255,255,255,0.18);border-radius:14px;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:600;color:rgba(255,255,255,0.85);cursor:pointer;">Already a member? Sign in</button>
-      <button class="native-only" onclick="iosRestorePurchases()" style="width:100%;margin-top:8px;background:transparent;border:none;font-size:12px;font-weight:600;color:rgba(255,255,255,0.5);cursor:pointer;padding:8px;text-decoration:underline;">Restore purchases</button>
+      <button class="native-only" onclick="recheckPlanFromServer()" style="width:100%;margin-top:8px;background:transparent;border:none;font-size:12px;font-weight:600;color:rgba(255,255,255,0.5);cursor:pointer;padding:8px;text-decoration:underline;">Already subscribed? Refresh status</button>
       <button class="web-only" onclick="closePaywall()" style="width:100%;margin-top:8px;background:transparent;border:none;font-size:13px;color:rgba(255,255,255,0.4);cursor:pointer;padding:8px;">Keep exploring the demo</button>
       <button class="native-only" onclick="closePaywall()" style="width:100%;margin-top:8px;background:transparent;border:none;font-size:13px;color:rgba(255,255,255,0.4);cursor:pointer;padding:8px;">Not now</button>
       <div class="native-only" style="margin-top:12px;text-align:center;font-size:11px;color:rgba(255,255,255,0.3);line-height:1.6;">
@@ -5259,7 +5311,9 @@
         <a href="https://stopwastinghandshakes.com/terms" target="_blank" style="color:rgba(255,255,255,0.5);text-decoration:underline;">Terms of Use</a>
         and
         <a href="https://stopwastinghandshakes.com/privacy" target="_blank" style="color:rgba(255,255,255,0.5);text-decoration:underline;">Privacy Policy</a>.
-        Subscription auto-renews monthly at $9.99 unless cancelled.
+        Checkout is handled securely by Stripe in your browser. After your 60-day
+        trial the subscription renews monthly at $10 unless cancelled. Manage or
+        cancel anytime from Settings.
       </div>
 
     </div>
