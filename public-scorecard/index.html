@@ -571,10 +571,10 @@
   // session persistence and the NativeAPI adapter for sign-in / data calls.
   // Web: Firebase Auth + Firestore SDK as before.
   //
-  // Strategy on native: enter demo mode IMMEDIATELY so the user always sees
-  // a working app within ~50ms. Then asynchronously check Preferences for a
-  // stored session and upgrade to authenticated state if found. This way any
-  // hang in Preferences/getMe leaves the user in a usable demo, not a spinner.
+  // Strategy on native: show the sign-in/sign-up entry screen immediately
+  // (no demo mode on native), then asynchronously restore a stored session
+  // from Preferences and route in if one exists. Any hang in Preferences or
+  // getMe leaves the user on a usable entry screen, never a spinner.
   async function bootNative() {
     // Reset volatile purchase flags on every cold start so a killed mid-purchase
     // session never leaves the app permanently stuck in syncing state.
@@ -941,6 +941,11 @@
   };
 
   window.signInWithMicrosoftWeb = async function() {
+    if (isNativeEarly) {
+      // Web SDK popup auth hangs inside the WKWebView — never attempt it on native.
+      showToast('⚠️ Microsoft sign-in isn\'t available in the app yet. Use Google, Apple, or email');
+      return;
+    }
     const btn = document.getElementById('signin-ms-btn');
     if (btn) { btn.disabled = true; btn.style.opacity = '0.6'; }
     try {
@@ -1041,6 +1046,11 @@
     if (modal) modal.scrollTop = 0;
   }
 
+  // Entry-screen CTAs — open the auth form in an explicit mode so the form
+  // always matches the button the user tapped.
+  window.openSignIn = function() { window._signMode = 'in'; applySignMode(); openPaywall('signin'); };
+  window.openSignUp = function() { window._signMode = 'up'; applySignMode(); openPaywall('signin'); };
+
   // Single submit dispatcher — routes to sign-in or sign-up based on mode.
   window.submitSigninForm = function() {
     if (window._signMode === 'up') return submitEmailSignUp();
@@ -1056,15 +1066,19 @@
     btn.disabled = true; btn.textContent = 'Creating account…';
     try {
       if (isNativeEarly) {
-        // REST signup path through NativeAPI — same shape as signIn
-        if (typeof NativeAPI.signUp === 'function') {
-          await NativeAPI.signUp(email, password);
-        } else {
-          // Fallback: use Firebase Web SDK directly (works on web; iOS will likely hit init issues)
-          await withTimeout(createUserWithEmailAndPassword(auth, email, password), 15000, 'createUserWithEmailAndPassword');
-        }
-        document.getElementById('paywall-modal').classList.remove('open');
-        await bootNative();
+        // REST signup through NativeAPI, then straight to the plan screen.
+        // Do NOT run bootNative() here: a brand-new account has plan 'free'
+        // and no data, and bootNative's getMe + RC-reconcile round-trips put
+        // 10s+ of spinner between "Create account" and the paywall (the
+        // reported first-run freeze). Seed the known-fresh state directly.
+        await NativeAPI.signUp(email, password);
+        currentUser = { uid: NativeAPI.uid, email: NativeAPI.email, displayName: '' };
+        demoMode = false;
+        userPlan = 'free';
+        activities = normalizeActivities(DEFAULT_ACTIVITIES.map(a => ({...a})));
+        todayCounts = {}; history = []; lagHistory = [];
+        setupRevenueCat(NativeAPI.uid).catch(() => {});
+        openPaywall('upgrade');
       } else {
         const cred = await withTimeout(createUserWithEmailAndPassword(auth, email, password), 15000, 'createUserWithEmailAndPassword');
         // Initialize user doc so they have a /users/{uid} record from day 1.
@@ -3818,12 +3832,6 @@
     });
   }
 
-  // ── TRY FOR FREE (demo mode entry from welcome screen) ──
-  window.enterDemoModeAndGo = function() {
-    enterDemoMode();
-    showScreen('home');
-  };
-
   // ── NATIVE INPUT FOCUS — scroll focused inputs into view above keyboard ──
   // WKWebView doesn't auto-scroll inputs into view like Safari does.
   if (isNativeEarly) {
@@ -4507,12 +4515,11 @@
     <!-- Subtitle — 16px below headline. width:100% ensures text-align:center works against
          the full container width, not just the content-shrunk box. -->
     <p class="hero-subtitle">Track every connection. Build real networking momentum.</p>
-    <!-- Sign In — 32px below subtitle -->
-    <button onclick="openPaywall('signin')" style="margin-top:32px;width:100%;padding:16px 24px;background:linear-gradient(135deg,#EC1825,#C8101B);border:none;border-radius:14px;font-family:'DM Sans',sans-serif;font-size:16px;font-weight:800;color:#fff;cursor:pointer;box-shadow:0 6px 18px rgba(236,24,37,0.35);">Sign In</button>
-    <!-- Try for Free — 16px below Sign In -->
-    <button onclick="enterDemoModeAndGo()" style="margin-top:16px;width:100%;padding:15px 24px;background:transparent;border:1.5px solid rgba(255,255,255,0.25);border-radius:14px;font-family:'DM Sans',sans-serif;font-size:15px;font-weight:700;color:rgba(255,255,255,0.85);cursor:pointer;">Try for free</button>
-    <!-- Helper text — 20px below Try for Free -->
-    <p style="color:rgba(255,255,255,0.30);font-size:11px;line-height:1.5;margin:20px 0 0;width:100%;text-align:center;">No account needed to try. Sign up to save your data.</p>
+    <!-- Create Account — 32px below subtitle. Primary CTA: new users first.
+         Demo/"Try for free" was removed 2026-07: entry is sign up or sign in only. -->
+    <button onclick="openSignUp()" style="margin-top:32px;width:100%;padding:16px 24px;background:linear-gradient(135deg,#EC1825,#C8101B);border:none;border-radius:14px;font-family:'DM Sans',sans-serif;font-size:16px;font-weight:800;color:#fff;cursor:pointer;box-shadow:0 6px 18px rgba(236,24,37,0.35);">Create Account</button>
+    <!-- Sign In — 16px below Create Account -->
+    <button onclick="openSignIn()" style="margin-top:16px;width:100%;padding:15px 24px;background:transparent;border:1.5px solid rgba(255,255,255,0.25);border-radius:14px;font-family:'DM Sans',sans-serif;font-size:15px;font-weight:700;color:rgba(255,255,255,0.85);cursor:pointer;">Sign In</button>
     <!-- Sign Out — 24px below helper text; inside this block so no trailing whitespace on screen -->
     <button onclick="doLogout()" style="background:transparent;border:none;font-size:13px;font-weight:600;color:rgba(255,255,255,0.40);cursor:pointer;margin-top:24px;padding:8px 16px;">Sign out</button>
     <!-- Legal links — required by App Store guideline 3.1.2(c); must be visible before
@@ -4833,6 +4840,7 @@
     <div style="display:flex;justify-content:center;padding:22px 0 6px;">
       <span class="lola-badge"><span class="lola-orb"></span><span class="lola-text">powered by</span> <span class="lola-name">Lola</span></span>
     </div>
+    <div style="text-align:center;padding:4px 0 10px;font-size:11px;letter-spacing:0.04em;color:var(--text-muted);">1 Peter 4:10-11</div>
   </div>
 </div>
 
@@ -5244,7 +5252,8 @@
       <button class="web-only" onclick="startUpgrade('scorecard')" style="width:100%;padding:15px;background:linear-gradient(135deg,var(--gold),#b8252f);border:none;border-radius:14px;font-family:'DM Sans',sans-serif;font-size:15px;font-weight:800;color:#fff;cursor:pointer;box-shadow:0 4px 18px rgba(230,57,70,0.35);">Start free trial →</button>
       <button onclick="showSignInForm()" style="width:100%;margin-top:10px;padding:14px;background:transparent;border:1.5px solid rgba(255,255,255,0.18);border-radius:14px;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:600;color:rgba(255,255,255,0.85);cursor:pointer;">Already a member? Sign in</button>
       <button class="native-only" onclick="iosRestorePurchases()" style="width:100%;margin-top:8px;background:transparent;border:none;font-size:12px;font-weight:600;color:rgba(255,255,255,0.5);cursor:pointer;padding:8px;text-decoration:underline;">Restore purchases</button>
-      <button onclick="closePaywall()" style="width:100%;margin-top:8px;background:transparent;border:none;font-size:13px;color:rgba(255,255,255,0.4);cursor:pointer;padding:8px;">Keep exploring the demo</button>
+      <button class="web-only" onclick="closePaywall()" style="width:100%;margin-top:8px;background:transparent;border:none;font-size:13px;color:rgba(255,255,255,0.4);cursor:pointer;padding:8px;">Keep exploring the demo</button>
+      <button class="native-only" onclick="closePaywall()" style="width:100%;margin-top:8px;background:transparent;border:none;font-size:13px;color:rgba(255,255,255,0.4);cursor:pointer;padding:8px;">Not now</button>
       <div class="native-only" style="margin-top:12px;text-align:center;font-size:11px;color:rgba(255,255,255,0.3);line-height:1.6;">
         By subscribing you agree to our
         <a href="https://stopwastinghandshakes.com/terms" target="_blank" style="color:rgba(255,255,255,0.5);text-decoration:underline;">Terms of Use</a>
@@ -5289,7 +5298,9 @@
         Continue with Apple
       </button>
 
-      <button id="signin-ms-btn" onclick="signInWithMicrosoftWeb()" style="width:100%;margin-top:10px;padding:14px;background:rgba(255,255,255,0.08);border:1.5px solid rgba(255,255,255,0.2);border-radius:14px;display:flex;align-items:center;justify-content:center;gap:10px;font-family:'DM Sans',sans-serif;font-size:15px;font-weight:600;color:#fff;cursor:pointer;">
+      <!-- Web only: signInWithPopup hangs in the native WKWebView (capacitor:// origin);
+           the FirebaseAuthentication plugin only carries Google + Apple on native. -->
+      <button id="signin-ms-btn" class="web-only" onclick="signInWithMicrosoftWeb()" style="width:100%;margin-top:10px;padding:14px;background:rgba(255,255,255,0.08);border:1.5px solid rgba(255,255,255,0.2);border-radius:14px;display:flex;align-items:center;justify-content:center;gap:10px;font-family:'DM Sans',sans-serif;font-size:15px;font-weight:600;color:#fff;cursor:pointer;">
         <svg viewBox="0 0 23 23" style="width:18px;height:18px;"><rect x="1" y="1" width="10" height="10" fill="#F25022"/><rect x="12" y="1" width="10" height="10" fill="#7FBA00"/><rect x="1" y="12" width="10" height="10" fill="#00A4EF"/><rect x="12" y="12" width="10" height="10" fill="#FFB900"/></svg>
         Continue with Microsoft
       </button>
