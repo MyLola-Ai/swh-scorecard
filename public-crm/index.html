@@ -2362,6 +2362,35 @@ html.dark-theme .st-sect-head{color:rgba(255,255,255,.55);}
   </div>
 </div>
 
+<!-- ════ MANDATORY PROFILE GATE (mirrors Scorecard onboarding) ════ -->
+<div id="profile-gate" style="display:none;position:fixed;inset:0;z-index:350;background:linear-gradient(160deg,#1a1a1a 0%,#000 100%);overflow-y:auto;">
+  <div style="max-width:440px;margin:0 auto;padding:max(56px, calc(env(safe-area-inset-top) + 32px)) 28px 56px;display:flex;flex-direction:column;align-items:center;">
+    <div style="font-family:'Playfair Display',serif;font-size:24px;font-weight:900;color:#fff;text-align:center;margin:0 0 8px;">Set Up Your Profile</div>
+    <div style="color:rgba(255,255,255,0.55);font-size:14px;text-align:center;margin-bottom:24px;line-height:1.6;">Tell us who you are so your follow-through, reports, and team features work right. All fields are required.</div>
+    <div style="width:100%;">
+      <div style="display:flex;gap:10px;margin-bottom:12px;">
+        <input type="text" id="pg-first" placeholder="First name" autocomplete="given-name" style="flex:1;min-width:0;padding:15px 16px;border:none;border-radius:14px;font-family:'DM Sans',sans-serif;font-size:15px;color:#1a1a1a;outline:none;">
+        <input type="text" id="pg-last" placeholder="Last name" autocomplete="family-name" style="flex:1;min-width:0;padding:15px 16px;border:none;border-radius:14px;font-family:'DM Sans',sans-serif;font-size:15px;color:#1a1a1a;outline:none;">
+      </div>
+      <input type="text" id="pg-company" placeholder="Company name" autocomplete="organization" style="width:100%;box-sizing:border-box;padding:15px 16px;border:none;border-radius:14px;font-family:'DM Sans',sans-serif;font-size:15px;color:#1a1a1a;outline:none;margin-bottom:12px;">
+      <div id="pg-email" title="From your sign-in" style="width:100%;box-sizing:border-box;padding:15px 16px;border-radius:14px;background:rgba(255,255,255,0.08);color:rgba(255,255,255,0.75);font-size:14px;margin-bottom:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">you@company.com</div>
+      <div style="display:flex;align-items:center;border-radius:14px;background:#fff;overflow:hidden;margin-bottom:12px;">
+        <div style="padding:15px 14px;font-size:15px;font-weight:700;color:#1a1a1a;background:#f0f0f0;flex-shrink:0;">+1</div>
+        <input type="tel" id="pg-phone" placeholder="(555) 000-0000" maxlength="14" autocomplete="tel-national" style="flex:1;min-width:0;padding:15px 16px;border:none;font-family:'DM Sans',sans-serif;font-size:15px;color:#1a1a1a;outline:none;">
+      </div>
+      <select id="pg-industry" style="width:100%;box-sizing:border-box;padding:15px 16px;border:none;border-radius:14px;font-family:'DM Sans',sans-serif;font-size:15px;color:#1a1a1a;outline:none;margin-bottom:12px;background:#fff;appearance:none;-webkit-appearance:none;">
+        <option value="">Select your industry</option>
+      </select>
+      <label style="display:flex;align-items:flex-start;gap:10px;margin:2px 2px 18px;cursor:pointer;">
+        <input type="checkbox" id="pg-sms" checked style="width:17px;height:17px;accent-color:#E63946;flex-shrink:0;margin-top:1px;">
+        <span style="color:rgba(255,255,255,0.55);font-size:12.5px;line-height:1.5;">Text me a 5pm reminder on days I haven't logged my points. No spam, it only fires when I forget.</span>
+      </label>
+      <div id="pg-error" style="display:none;color:#ffb3ba;font-size:13px;font-weight:600;margin-bottom:12px;text-align:center;"></div>
+      <button onclick="saveProfileGate()" id="pg-save-btn" style="width:100%;background:linear-gradient(135deg,#E63946,#b8252f);border:none;border-radius:14px;padding:16px;font-family:'DM Sans',sans-serif;font-size:16px;font-weight:700;color:#fff;cursor:pointer;">Start Building →</button>
+    </div>
+  </div>
+</div>
+
 <!-- ════ START FOLLOW-THROUGH PROMPT (after adding a contact) ════ -->
 <div class="ctx-overlay" id="ft-start-overlay" onclick="if(event.target===this)dismissFtStartPrompt()">
   <div class="ctx-box" style="max-width:360px;">
@@ -4944,7 +4973,12 @@ async function initUser() {
       calendarAutoAdd = s.calendarAutoAdd === true;
       updateCalAutoAddToggle();
     }
-  } catch(e) { console.log('[crm] config/settings load failed:', e.message); }
+    // Mandatory profile (same rule as Scorecard onboarding): first/last/
+    // company/industry/phone. Load failure defaults to OK so a transient
+    // error can never lock the app.
+    const _ps = cfgSnap.exists() ? cfgSnap.data() : {};
+    window._crmProfileOk = !!(_ps.firstName && _ps.lastName && _ps.company && _ps.industry && _ps.phone);
+  } catch(e) { console.log('[crm] config/settings load failed:', e.message); window._crmProfileOk = true; }
   // Load Nylas connection status for calendar (non-blocking)
   try {
     const ns = await getDoc(doc(db,'users',currentUser.uid,'integrations','nylas'));
@@ -5087,6 +5121,8 @@ async function loadAllData() {
   try { window.refreshGmailStatus && window.refreshGmailStatus(); } catch(_){}
   try { window.refreshOutlookStatus && window.refreshOutlookStatus(); } catch(_){}
   try { window.refreshLolaConnectStatus && window.refreshLolaConnectStatus(); } catch(_){}
+  // Mandatory profile gate — blocks the app until the six fields are saved
+  if (window._crmProfileOk === false) { try { showProfileGate(); } catch(_){} }
   // Returned from a Lola Connect hosted-auth redirect (?lolaConnect=connected|failed):
   // open Settings, toast, strip the param. Card refresh above shows the new state.
   try {
@@ -8717,6 +8753,49 @@ window.confirmFtStartPrompt=async function(){
     console.error('[ftStartPrompt] failed:', e);
     showToast('⚠️ Could not start: ' + ((e && e.message) || e));
   }
+};
+
+// ── MANDATORY PROFILE GATE — mirrors the Scorecard onboarding ──
+const PG_INDUSTRIES = ['Real Estate','Mortgage & Lending','Insurance','Financial Services','Legal','Title & Escrow','Construction & Home Services','Health & Wellness','Marketing & Media','Technology','Coaching & Consulting','Nonprofit & Community','Other'];
+function showProfileGate() {
+  const g = document.getElementById('profile-gate');
+  if (!g || !currentUser) return;
+  const sel = document.getElementById('pg-industry');
+  if (sel && sel.options.length <= 1) PG_INDUSTRIES.forEach(i => { const o = document.createElement('option'); o.textContent = i; sel.appendChild(o); });
+  const dn = String(currentUser.displayName || '').trim().split(/\s+/).filter(Boolean);
+  const setIf = (id, v) => { const el = document.getElementById(id); if (el && !el.value && v) el.value = v; };
+  setIf('pg-first', dn[0]);
+  setIf('pg-last', dn.slice(1).join(' '));
+  const em = document.getElementById('pg-email');
+  if (em) em.textContent = currentUser.email || '';
+  g.style.display = 'block';
+}
+window.saveProfileGate = async function() {
+  const val = (id) => (document.getElementById(id)?.value || '').trim();
+  const firstName = val('pg-first'), lastName = val('pg-last'), company = val('pg-company'), industry = val('pg-industry');
+  const rawPhone = val('pg-phone').replace(/\D/g, '');
+  const err = document.getElementById('pg-error');
+  const fail = (m) => { if (err) { err.textContent = m; err.style.display = 'block'; } };
+  if (err) err.style.display = 'none';
+  if (!firstName || !lastName) return fail('Please enter your first and last name.');
+  if (!company) return fail('Please enter your company name.');
+  if (rawPhone.length !== 10) return fail('Please enter a valid 10-digit mobile number.');
+  if (!industry) return fail('Please select your industry.');
+  const btn = document.getElementById('pg-save-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+  try {
+    await setDoc(doc(db, 'users', currentUser.uid, 'config', 'settings'), {
+      firstName, lastName, displayName: firstName + ' ' + lastName, company, industry,
+      phone: '+1' + rawPhone, smsOptIn: !!document.getElementById('pg-sms')?.checked,
+      email: currentUser.email || '', profileCompletedAt: new Date().toISOString(),
+    }, { merge: true });
+  } catch (e) {
+    if (btn) { btn.disabled = false; btn.textContent = 'Start Building →'; }
+    return fail('Could not save: ' + (e.message || 'try again'));
+  }
+  window._crmProfileOk = true;
+  document.getElementById('profile-gate').style.display = 'none';
+  showToast('✅ Profile saved');
 };
 
 window.toggleNeStep=async function(el,contactId,stepIndex){
