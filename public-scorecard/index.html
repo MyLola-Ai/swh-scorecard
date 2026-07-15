@@ -1043,10 +1043,10 @@
     if (modal) modal.scrollTop = 0;
   }
 
-  // Entry-screen CTAs — open the auth form in an explicit mode so the form
-  // always matches the button the user tapped.
+  // Entry-screen CTA — opens the auth form in sign-in mode. iOS is a
+  // login-only app (Austen, 2026-07-15): account creation is web-only, so
+  // there is no sign-up entry point on native.
   window.openSignIn = function() { window._signMode = 'in'; applySignMode(); openPaywall('signin'); };
-  window.openSignUp = function() { window._signMode = 'up'; applySignMode(); openPaywall('signin'); };
 
   // Single submit dispatcher — routes to sign-in or sign-up based on mode.
   window.submitSigninForm = function() {
@@ -1055,6 +1055,12 @@
   };
 
   window.submitEmailSignUp = async function() {
+    if (isNativeEarly) {
+      // LOGIN-ONLY APP (Austen, 2026-07-15): no account creation on iOS.
+      // The sign-up UI is web-only; this guard covers any residual path.
+      showToast('Create your account at stopwastinghandshakes.com, then sign in here');
+      return;
+    }
     const email = (document.getElementById('signin-email').value || '').trim().toLowerCase();
     const password = document.getElementById('signin-password').value || '';
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { showToast('⚠️ Enter a valid email'); return; }
@@ -1062,24 +1068,7 @@
     const btn = document.getElementById('signin-submit-btn');
     btn.disabled = true; btn.textContent = 'Creating account…';
     try {
-      if (isNativeEarly) {
-        // REST signup through NativeAPI, then straight to the plan screen.
-        // Do NOT run bootNative() here: a brand-new account has plan 'free'
-        // and no data, and bootNative's getMe + RC-reconcile round-trips put
-        // 10s+ of spinner between "Create account" and the paywall (the
-        // reported first-run freeze). Seed the known-fresh state directly.
-        await NativeAPI.signUp(email, password);
-        currentUser = { uid: NativeAPI.uid, email: NativeAPI.email, displayName: '' };
-        demoMode = false;
-        userPlan = 'free';
-        activities = normalizeActivities(DEFAULT_ACTIVITIES.map(a => ({...a})));
-        todayCounts = {}; history = []; lagHistory = [];
-        // Profile-first ordering (Austen, 2026-07-15): fresh signups build
-        // their profile before they see the paywall.
-        closePaywall();
-        prepOnboarding();
-        showScreen('onboarding');
-      } else {
+      {
         const cred = await withTimeout(createUserWithEmailAndPassword(auth, email, password), 15000, 'createUserWithEmailAndPassword');
         // Initialize user doc so they have a /users/{uid} record from day 1.
         // `doc` + `setDoc` are already imported at the top of this module from
@@ -4566,11 +4555,12 @@
     <!-- Subtitle — 16px below headline. width:100% ensures text-align:center works against
          the full container width, not just the content-shrunk box. -->
     <p class="hero-subtitle">Track every connection. Build real networking momentum.</p>
-    <!-- Create Account — 32px below subtitle. Primary CTA: new users first.
-         Demo/"Try for free" was removed 2026-07: entry is sign up or sign in only. -->
-    <button onclick="openSignUp()" style="margin-top:32px;width:100%;padding:16px 24px;background:linear-gradient(135deg,#EC1825,#C8101B);border:none;border-radius:14px;font-family:'DM Sans',sans-serif;font-size:16px;font-weight:800;color:#fff;cursor:pointer;box-shadow:0 6px 18px rgba(236,24,37,0.35);">Create Account</button>
-    <!-- Sign In — 16px below Create Account -->
-    <button onclick="openSignIn()" style="margin-top:16px;width:100%;padding:15px 24px;background:transparent;border:1.5px solid rgba(255,255,255,0.25);border-radius:14px;font-family:'DM Sans',sans-serif;font-size:15px;font-weight:700;color:rgba(255,255,255,0.85);cursor:pointer;">Sign In</button>
+    <!-- Sign In — 32px below subtitle. LOGIN-ONLY APP (Austen, 2026-07-15):
+         no account creation on iOS; sign-up lives on the web. Demo/"Try for
+         free" was removed 2026-07 as well. -->
+    <button onclick="openSignIn()" style="margin-top:32px;width:100%;padding:16px 24px;background:linear-gradient(135deg,#EC1825,#C8101B);border:none;border-radius:14px;font-family:'DM Sans',sans-serif;font-size:16px;font-weight:800;color:#fff;cursor:pointer;box-shadow:0 6px 18px rgba(236,24,37,0.35);">Sign In</button>
+    <!-- Helper — where new users create an account (plain text, not a link) -->
+    <p style="color:rgba(255,255,255,0.35);font-size:12px;line-height:1.6;margin:16px 0 0;width:100%;text-align:center;">New to SWH? Create your account at stopwastinghandshakes.com</p>
     <!-- Sign Out — 24px below helper text; inside this block so no trailing whitespace on screen -->
     <button onclick="doLogout()" style="background:transparent;border:none;font-size:13px;font-weight:600;color:rgba(255,255,255,0.40);cursor:pointer;margin-top:24px;padding:8px 16px;">Sign out</button>
     <!-- Legal links — required by App Store guideline 3.1.2(c); must be visible before
@@ -5396,8 +5386,9 @@
       </div>
       <button id="signin-submit-btn" onclick="submitSigninForm()" style="width:100%;margin-top:16px;padding:14px;background:linear-gradient(135deg,var(--gold),#b8252f);border:none;border-radius:14px;font-family:'DM Sans',sans-serif;font-size:15px;font-weight:800;color:#fff;cursor:pointer;">Sign in with email</button>
       <button id="signin-forgot-btn" onclick="sendPasswordReset()" style="width:100%;margin-top:10px;background:transparent;border:none;font-size:13px;color:rgba(255,255,255,0.55);cursor:pointer;padding:8px;font-weight:600;">Forgot password?</button>
-      <!-- Sign-in / Create Account toggle — visible on both web and native iOS -->
-      <div style="text-align:center;margin-top:14px;padding-top:14px;border-top:1px solid rgba(255,255,255,0.08);">
+      <!-- Sign-in / Create Account toggle — WEB ONLY (iOS is login-only per
+           Austen 2026-07-15; account creation happens on the web) -->
+      <div class="web-only" style="text-align:center;margin-top:14px;padding-top:14px;border-top:1px solid rgba(255,255,255,0.08);">
         <span id="signmode-hint" style="font-size:12px;color:rgba(255,255,255,0.5);">Don't have an account?</span>
         <button id="signmode-toggle" onclick="toggleSignMode()" style="background:transparent;border:none;font-size:13px;font-weight:700;color:var(--gold);cursor:pointer;padding:6px 8px;margin-left:4px;">Create one →</button>
       </div>
