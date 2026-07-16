@@ -246,18 +246,21 @@ acceptable but unadvertised. Any 1.43 build must be cut AFTER 45ccfd0 + `cap syn
 **Release state (2026-07-03):** Scorecard 1.43 b30 is archive-ready pending Austen's beta week;
 What's New copy is written and with Austen. App Store Connect still pending: the LISTING name change
 to "The Scorecard" (may need a uniqueness qualifier) + the 1.43 version record + What's New paste.
-CRM App Store prep has NOT started (no version bump, no ASC record work). **BLOCKING pair on the
-CRM release checklist (CTO ratified 2026-07-15), this thread owns it:**
-1. **Stripe-only conversion** — RevenueCat unhook + Safari checkout + recheckPlanFromServer
-   pattern from the Scorecard — must land in public-crm before App Store prep begins.
-2. **Login-only posture** — same as the Scorecard: no account creation on iOS, single Sign In
-   entry, web pointer for new accounts.
-Plus riders: the legacy-IAP plan-resolution check (§5) runs before every release; guideline 4.8
-parity (Sign in with Apple offered wherever Google is) — **confirmed compliant in the Scorecard
-2026-07-15** (Google + Apple adjacent in the native auth form, Apple hidden only on Android) —
-must be re-verified on CRM; the implicit-account edge (first Google/Apple sign-in creates the
-Firebase account) must get the SAME onboarding → paywall path on CRM, and in-app account
-deletion (deleteAccountSelf, present in the Scorecard) must cover those users there too. Old TestFlight/App Store
+**CRM CONVERSION LANDED 2026-07-16 (`be290ed` + `6ac1fb3`, deployed to hosting:crm, ios-crm
+bundle synced):** the ratified triple is code-complete — Stripe-only (RC invocations removed,
+LEGACY banner, revenueCatWebhook stays live), login-only (signup steering web-only + native
+guards incl. doMicrosoftLogin), 3.1.3(f) (native upgrade screen renders neutral "Subscription
+required", team pricing web-only, paywall modal neutralized to a status sheet). New plumbing:
+recheckCrmPlanFromServer / recheckCrmAccountState / appStateChange re-check / Account-required
+screen for bare implicit accounts. Also fixed in passing: a plan-gate bypass (.bottom-nav sits
+outside #app-shell and became tappable once the IAP modal overlay was gone — now hidden while
+gated), and **in-app account deletion added** (5.1.1(v), confirmDeleteCrmAccount →
+deleteAccountSelf). 4.8 parity verified on CRM native (Google + Apple, MS hidden).
+**Remaining for CRM App Store prep:** device build + beta verification (same two runs as the
+Scorecard: bare identity → Account required; paid account → full access), ASC record + version
+bump, 3.1.3(f)-clean metadata, reviewer demo credentials, legacy-IAP plan-resolution check.
+NOTE: the CRM's profile-menu "💳 Subscription" item routes to a nonexistent screen (silent
+no-op, pre-existing) — cosmetic, SWH thread's surface. Old TestFlight/App Store
 users (e.g. Danny) are on very old builds; their visual bugs are already fixed at HEAD — ship 1.43
 rather than chase reports against stale binaries.
 
