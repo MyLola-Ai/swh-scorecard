@@ -693,6 +693,18 @@
         return;
       }
 
+      // ACCOUNT POLICY (Austen, 2026-07-15): a web-created account is required
+      // to get in. A "bare" account = the implicit-creation edge (first-time
+      // Google/Apple sign-in, never signed up on web): no profile, no plan,
+      // no legacy phone, no logged history. Legit older accounts have phone
+      // and/or history and fall through to the normal gates.
+      const _paidPlan = (userPlan === 'scorecard' || userPlan === 'pro');
+      if (!_paidPlan && !userProfileOk && !userPhone && (!history || history.length === 0)) {
+        console.log('[boot] bare account — showing account-required screen');
+        showAccountRequired();
+        return;
+      }
+
       // Profile-first ordering (Austen, 2026-07-15): collect identity BEFORE
       // the money ask. Incomplete profile → onboarding; saveOnboardingProfile
       // then routes to the paywall for unpaid users.
@@ -3738,6 +3750,43 @@
   }
   window.showNativeSignIn = showNativeSignIn;
 
+  // ── ACCOUNT-REQUIRED STATE (native) ──
+  // Shown when a sign-in resolves to a "bare" account (implicit first-time
+  // Google/Apple creation; person never signed up on the web). Web signup
+  // will ADOPT the identity later, so nothing is deleted client-side.
+  function showAccountRequired() {
+    try { document.getElementById('loader').style.display = 'none'; } catch(_){}
+    try { document.getElementById('bottom-nav').style.display = 'none'; } catch(_){}
+    try { closePaywall(); } catch(_){}
+    showScreen('account-required');
+  }
+  // Re-check after the user creates their account on the web. If the identity
+  // has been adopted (profile/plan/phone appeared), re-run the full native
+  // boot so data loads and the normal gates route them (same pattern as the
+  // sign-in handlers, which also re-run bootNative).
+  window.recheckAccountState = async function(opts) {
+    const silent = !!(opts && opts.silent);
+    if (!isNativeEarly || !NativeAPI.isReady) return false;
+    if (!silent) showToast('⏳ Checking your account…');
+    try {
+      const me = await NativeAPI.call('getMe', null, { timeout: 10000 });
+      const plan = me.plan || 'free';
+      const profileOk = (typeof computeProfileOk === 'function') ? computeProfileOk(me.settings || {}) : false;
+      const phone = (me.settings && me.settings.phone) || '';
+      const adopted = (plan === 'scorecard' || plan === 'pro') || profileOk || !!phone;
+      if (!adopted) {
+        if (!silent) showToast('No SWH account found for this sign-in yet');
+        return false;
+      }
+      showToast('✅ Account found. Loading…');
+      await bootNative();
+      return true;
+    } catch(e) {
+      if (!silent) showToast('⚠️ ' + (e.message || 'Could not check your account'));
+      return false;
+    }
+  };
+
   // ── STRIPE RETURN PATH (native) ──
   // Checkout happens in Safari, so the app never sees a redirect. Two ways
   // back in: the paywall's "Refresh status" button calls this directly, and
@@ -3779,8 +3828,10 @@
         CapApp.addListener('appStateChange', ({ isActive }) => {
           if (!isActive) return;
           const paywallOpen = document.getElementById('paywall-modal')?.classList.contains('open');
-          if (paywallOpen && NativeAPI.isReady && userPlan !== 'scorecard' && userPlan !== 'pro') {
-            recheckPlanFromServer({ silent: true });
+          const acctReqActive = document.getElementById('screen-account-required')?.classList.contains('active');
+          if (NativeAPI.isReady && userPlan !== 'scorecard' && userPlan !== 'pro') {
+            if (acctReqActive) recheckAccountState({ silent: true });
+            else if (paywallOpen) recheckPlanFromServer({ silent: true });
           }
         });
         console.log('[stripe] appStateChange plan recheck registered');
@@ -4571,6 +4622,22 @@
 </div>
 
 <!-- UPGRADE / PLAN-GATE SCREEN -->
+<!-- ACCOUNT REQUIRED — native state for "bare" accounts (implicit first-time
+     Google/Apple sign-in by someone who never signed up on the web). Policy
+     (Austen, 2026-07-15): a web-created account is required to get in. Do NOT
+     delete the bare Firebase account client-side — web signup ADOPTS the same
+     identity later (profile + trial attach). Plain-text domain pointer is the
+     approved account-language copy (no link, no pricing). -->
+<div id="screen-account-required" class="screen" style="display:none;flex-direction:column;align-items:center;justify-content:flex-start;min-height:100vh;width:100%;padding:max(48px,12vh) 24px max(48px,calc(env(safe-area-inset-bottom) + 24px));background:linear-gradient(160deg,var(--navy) 0%,#000 100%);box-sizing:border-box;">
+  <img src="assets/swh/swh-lockup-dark.png" style="width:80px;height:80px;margin-bottom:24px;" alt="SWH">
+  <div style="margin-top:0;width:100%;max-width:340px;text-align:center;display:flex;flex-direction:column;align-items:center;">
+    <div style="font-family:'Playfair Display',serif;font-size:28px;font-weight:900;color:#fff;line-height:1.2;">Account required</div>
+    <p class="hero-subtitle">This app is for SWH members. Create your account at stopwastinghandshakes.com first, then come back and sign in.</p>
+    <button onclick="recheckAccountState()" style="margin-top:32px;width:100%;padding:16px 24px;background:linear-gradient(135deg,#EC1825,#C8101B);border:none;border-radius:14px;font-family:'DM Sans',sans-serif;font-size:16px;font-weight:800;color:#fff;cursor:pointer;box-shadow:0 6px 18px rgba(236,24,37,0.35);">I have an account now</button>
+    <button onclick="doLogout()" style="margin-top:16px;width:100%;padding:15px 24px;background:transparent;border:1.5px solid rgba(255,255,255,0.25);border-radius:14px;font-family:'DM Sans',sans-serif;font-size:15px;font-weight:700;color:rgba(255,255,255,0.85);cursor:pointer;">Sign in with a different account</button>
+  </div>
+</div>
+
 <div id="screen-upgrade" class="screen" style="display:none;flex-direction:column;align-items:center;justify-content:flex-start;min-height:100vh;width:100%;padding:max(48px,12vh) 24px max(48px,calc(env(safe-area-inset-bottom) + 24px));background:linear-gradient(160deg,var(--navy) 0%,#000 100%);box-sizing:border-box;">
   <!-- Logo — shared by web and native; spacing differs via margin-bottom -->
   <img src="assets/swh/swh-lockup-dark.png" style="width:80px;height:80px;margin-bottom:24px;" alt="SWH">
@@ -4591,8 +4658,9 @@
          no account creation on iOS; sign-up lives on the web. Demo/"Try for
          free" was removed 2026-07 as well. -->
     <button onclick="openSignIn()" style="margin-top:32px;width:100%;padding:16px 24px;background:linear-gradient(135deg,#EC1825,#C8101B);border:none;border-radius:14px;font-family:'DM Sans',sans-serif;font-size:16px;font-weight:800;color:#fff;cursor:pointer;box-shadow:0 6px 18px rgba(236,24,37,0.35);">Sign In</button>
-    <!-- Helper — 3.1.3(f): no URL, no signup steering (Netflix pattern) -->
-    <p style="color:rgba(255,255,255,0.35);font-size:12px;line-height:1.6;margin:16px 0 0;width:100%;text-align:center;">Accounts can't be created in the app.</p>
+    <!-- Helper — plain-text domain pointer, CTO-approved 2026-07-15 as ACCOUNT
+         language (not purchase language): no link, no pricing, 3.1.3(f)-safe. -->
+    <p style="color:rgba(255,255,255,0.35);font-size:12px;line-height:1.6;margin:16px 0 0;width:100%;text-align:center;">New to SWH? Create your account at stopwastinghandshakes.com, then sign in here.</p>
     <!-- Sign Out — 24px below helper text; inside this block so no trailing whitespace on screen -->
     <button onclick="doLogout()" style="background:transparent;border:none;font-size:13px;font-weight:600;color:rgba(255,255,255,0.40);cursor:pointer;margin-top:24px;padding:8px 16px;">Sign out</button>
     <!-- Legal links — required by App Store guideline 3.1.2(c); must be visible before
@@ -5616,7 +5684,7 @@
     document.querySelectorAll('.screen').forEach(s=>{s.classList.remove('active');s.style.display='none';});
     const el = document.getElementById('screen-'+name);
     el.classList.add('active');
-    el.style.display = (name==='login'||name==='onboarding'||name==='upgrade') ? 'flex' : 'block';
+    el.style.display = (name==='login'||name==='onboarding'||name==='upgrade'||name==='account-required') ? 'flex' : 'block';
     // Always reset scroll to top when switching screens so the page never
     // opens mid-list due to browser scroll restoration or a prior scroll position.
     window.scrollTo({ top: 0, behavior: 'instant' });
