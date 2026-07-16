@@ -1932,6 +1932,9 @@ html.dark-theme .st-sect-head{color:rgba(255,255,255,.55);}
                   <div class="settings-row" id="settings-billing-row" onclick="onBillingRowClick()"><div class="sr-left"><div class="sr-icon">💳</div><div><div class="sr-text" id="settings-billing-text">Subscription</div><div class="sr-sub" id="settings-billing-sub">Loading plan…</div></div></div><div class="sr-arrow">›</div></div>
                   <div class="settings-row" onclick="window.location.href='help.html'"><div class="sr-left"><div class="sr-icon">❓</div><div><div class="sr-text">Help &amp; Guides</div><div class="sr-sub">How the CRM works</div></div></div><div class="sr-arrow">›</div></div>
                   <div class="settings-row" onclick="doLogout()"><div class="sr-left"><div class="sr-icon">🚪</div><div><div class="sr-text" style="color:var(--red);">Sign Out</div></div></div></div>
+                  <!-- Delete Account — Apple Guideline 5.1.1(v) requires in-app deletion
+                       for account-based apps (covers implicit Google/Apple accounts too) -->
+                  <div class="settings-row" onclick="confirmDeleteCrmAccount()"><div class="sr-left"><div class="sr-icon">⚠️</div><div><div class="sr-text" style="color:var(--red);">Delete Account</div><div class="sr-sub">Permanently delete your account and all data</div></div></div><div class="sr-arrow">›</div></div>
 
                 </div>
 
@@ -4602,6 +4605,32 @@ async function _onCrmSignedIn(user) {
     NativeAPI.call('enrollOnboardingDrip', {}).catch(() => {});
   }
 }
+
+// ── ACCOUNT DELETION (Apple 5.1.1(v); same backend as the Scorecard) ──
+window.confirmDeleteCrmAccount = async function() {
+  const confirmed = confirm(
+    'Delete your SWH account?\n\nThis permanently removes your account and all CRM data. This cannot be undone.'
+  );
+  if (!confirmed) return;
+  try {
+    const idToken = currentUser ? await currentUser.getIdToken() : null;
+    if (!idToken) { showToast('⚠️ Sign in required'); return; }
+    showToast('⏳ Deleting account…');
+    const res = await fetch('https://us-central1-swh-scoreboard.cloudfunctions.net/deleteAccountSelf', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + idToken, 'Content-Type': 'application/json' }
+    });
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      throw new Error(d.error || 'Delete failed');
+    }
+    showToast('Account deleted');
+    doLogout();
+  } catch (e) {
+    console.error('[deleteAccount]', e);
+    showToast('⚠️ ' + (e.message || 'Could not delete account. Contact support'));
+  }
+};
 
 // ── STRIPE RETURN PATH + ACCOUNT-REQUIRED (native, 3.1.3(f)) ──
 // The app never sells anything; it only reflects account/subscription state.
