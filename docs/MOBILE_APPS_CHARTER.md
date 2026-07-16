@@ -79,13 +79,18 @@ therefore never use the Web SDK on native. The pattern (implemented in `public-c
 
 ## 5. Payments — STRIPE ONLY (decided by Austen 2026-07-15; IAP retired)
 
-- **Stripe is the single billing rail on every surface, including iOS.** The Scorecard app's
-  paywall calls `createCheckoutSession` via NativeAPI and opens Stripe Checkout in Safari
-  (Capacitor's external-navigation policy — external origins leave the webview automatically).
-  Return path: `recheckPlanFromServer()` (paywall "Refresh status" button + an `appStateChange`
-  listener that re-checks silently when the app foregrounds with the paywall open). The billing
-  row in Settings opens the Stripe customer portal the same way. Plan truth = Firestore
-  `users/{uid}.plan`, written by the Stripe webhook.
+- **Stripe is the single billing rail — and the iOS app is a 3.1.3(f) FREE STAND-ALONE
+  COMPANION APP (adopted 2026-07-15, superseding the brief Safari-checkout design from earlier
+  the same day).** The native app has NO purchasing, NO pricing, and NO purchase
+  calls-to-action anywhere: the paywall is a neutral "Subscription required" status screen
+  (sign in / refresh status / Not now / Terms+Privacy), `startUpgrade` and `openBillingPortal`
+  are gated off on native with neutral toasts, the Settings billing row shows status only, and
+  the entry helper is Netflix-style ("Accounts can't be created in the app", no URL). All
+  purchasing/management happens on the web. Return path when a user subscribes on the web:
+  `recheckPlanFromServer()` (paywall "Refresh status" button + an `appStateChange` listener
+  that re-checks silently on foreground). Plan truth = Firestore `users/{uid}.plan`, written
+  by the Stripe webhook. **Do not reintroduce prices, purchase links, or signup URLs on native
+  without a deliberate posture decision — 3.1.3(f) eligibility requires their absence.**
 - Price map at `functions/index.js:63-90`: scorecard $10, scorecard_crm $25, team tiers;
   `STRIPE_TRIAL_DAYS=60` (no charge for 60 days; sub pauses if no card added),
   `TEAM_MIN_SEATS=3`.
