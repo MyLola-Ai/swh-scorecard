@@ -30,6 +30,20 @@ Secrets are set by Austen via CLI/console only, never pasted in chat.
 | SWH CRM | `ios-crm/` | `com.impactleadershipgroup.swh.crm` | pbxproj v1.0 b1 (TestFlight builds ahead; branch "build-21-subscription-debug" era) | `../public-crm` | **Active beta** (live on Austen's device 2026-07-03) |
 | SWH Scorecard | `ios-scorecard/` | `com.impactleadershipgroup.swh.scorecard` | **v1.43 b30**, CFBundleDisplayName "The Scorecard" | `../public-scorecard` | **Archive-ready** pending Austen's beta week; has the only **Android** platform (`@capacitor/android ^8.4.0`) |
 | SWH Combined | `ios-combined/` | `com.impactleadershipgroup.swh.combined` | v1.0 b1 | `../public-scorecard` | Shell/experiment; fate undecided |
+| **Lola (personal chat)** | `~/loaniq/apps/lola/` | `com.mortgagedude.lola` | v0.1 (pre-TestFlight) | `../../tools/lola-chat` | **Austen-only internal tool** (assigned to this thread 2026-07-15); TestFlight target, no App Store listing, no purchase surface |
+
+**Lola app exceptions to the house patterns (important):** Capacitor **6** (not 8); auth is a pasted
+`LOLA_ADMIN_TOKEN` bearer (single-user, no accounts at all — Scorecard login-only concerns don't
+arise); and it runs in **`server.url` mode** (`lola-chat-loaniq.web.app`), so unlike every other
+app the §3 bundled-assets gotcha is INVERTED: every `hosting:lola-chat` web deploy is live in the
+installed app on next launch, and the local bundle is only a fallback that engages if `server.url`
+is ever commented out (e.g. for App Store submission). CTO Channel spec: `~/loaniq/docs/CTO_CHANNEL.md`
+(VA thread implementing; the app inherits it via the shared `lolaPersonalChat` backend — this
+thread's verification bar is the `CTO:` ack + numbered morning-brief section rendering on device).
+Known build risk on Austen's Mac: `pod install` currently fails (Ruby 4.0.3 / CocoaPods 1.16.2
+gem-activation error) — must be fixed before the next Xcode build of this app. Bundle ID is under
+the old Mortgage Dude naming; it is NOT yet registered in ASC, so decide the final ID (e.g. a
+MyQueso-era one) BEFORE the first TestFlight upload cements it.
 
 All three: Capacitor **8.3.x**, same plugin set: `@capacitor-firebase/authentication ^8.2`,
 `@revenuecat/purchases-capacitor ^13.1`, app, preferences, push-notifications, splash-screen,
