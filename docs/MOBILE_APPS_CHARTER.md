@@ -102,6 +102,12 @@ therefore never use the Web SDK on native. The pattern (implemented in `public-c
   If Apple prevails, the options are paying Apple's external-link commission or re-adding IAP —
   hence the parked RC wiring. Margin planning on mobile subscriptions must not bake in zero
   Apple take.
+  **IAP-fallback blueprint (per Apple's "Offering a Subscription Across Multiple Apps," reviewed
+  2026-07-15):** there is no automatic cross-app subscription — you create EQUIVALENT products in
+  EACH app and propagate entitlement server-side, which is exactly what `users/{uid}.plan` +
+  webhooks already do. So the fallback = recreate both tiers as products in BOTH apps + un-park
+  the RC wiring; zero new architecture. Hard constraint: cross-app IAP requires all SWH apps
+  under ONE Apple developer account — the MyQueso entity re-filing must keep them together.
 - **Pre-release check (every iOS release):** verify a legacy IAP subscriber still resolves to the
   correct `users/{uid}.plan` via `revenueCatWebhook` — the single plan-truth invariant must hold
   for both billing populations.
