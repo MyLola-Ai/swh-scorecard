@@ -1078,9 +1078,9 @@
 
   window.submitEmailSignUp = async function() {
     if (isNativeEarly) {
-      // LOGIN-ONLY APP (Austen, 2026-07-15): no account creation on iOS.
+      // LOGIN-ONLY + 3.1.3(f): no account creation on iOS, no signup steering.
       // The sign-up UI is web-only; this guard covers any residual path.
-      showToast('Create your account at stopwastinghandshakes.com, then sign in here');
+      showToast('Accounts can\'t be created in the app. Sign in with your SWH account');
       return;
     }
     const email = (document.getElementById('signin-email').value || '').trim().toLowerCase();
@@ -1231,10 +1231,10 @@
   // CTAs in iOS apps. iOS subscribers sign in to an account purchased outside the app.
   window.startUpgrade = async function(plan) {
     try {
-      if (isNative() && !NativeAPI.isReady) {
-        // Native: checkout needs an authenticated session for the Bearer token.
-        showToast('⚠️ Sign in first');
-        openPaywall('signin');
+      if (isNative()) {
+        // 3.1.3(f) free stand-alone companion app: NO purchasing from the app
+        // and no purchase calls-to-action. Purchases happen on the web only.
+        showToast('Subscriptions are managed outside of this app');
         return;
       }
       if (!isNative() && (!auth.currentUser || auth.currentUser.isAnonymous)) {
@@ -1296,8 +1296,8 @@
 
   // Refresh the Settings billing-row label based on userPlan + auth state.
   // Hidden in demo / signed-out mode; shown for signed-in users.
-  // Same copy on web and native now that billing is Stripe-only (the IAP-era
-  // "no prices on iOS" restriction no longer applies to external purchases).
+  // Native shows STATUS ONLY — no prices, no subscribe/upgrade copy — per the
+  // 3.1.3(f) free stand-alone companion posture (adopted 2026-07-15).
   window.refreshBillingRow = function() {
     const row = document.getElementById('settings-billing-row');
     const txt = document.getElementById('settings-billing-text');
@@ -1309,6 +1309,12 @@
       return;
     }
     row.style.display = 'flex';
+    if (isNative()) {
+      txt.textContent = 'Account';
+      if (userPlan === 'pro' || userPlan === 'scorecard') sub.textContent = 'Subscription active';
+      else sub.textContent = 'No active subscription';
+      return;
+    }
     if (userPlan === 'pro') {
       txt.textContent = 'Scorecard CRM';
       sub.textContent = 'Manage subscription · $25/mo';
@@ -1321,15 +1327,17 @@
     }
   };
 
-  // ── STRIPE CUSTOMER PORTAL ──
+  // ── STRIPE CUSTOMER PORTAL (Web only) ──
   // Opens the Stripe-hosted portal for managing an active subscription.
-  // On native the portal opens in Safari (same external-navigation policy as
-  // checkout); Stripe-only billing means no IAP restrictions apply.
+  // Gated off on native per 3.1.3(f): the companion app carries no purchase
+  // or payment-management links; the account is managed on the web.
   window.openBillingPortal = async function() {
     try {
       if (isNative()) {
-        if (!NativeAPI.isReady) { showToast('⚠️ Sign in first'); return; }
-      } else if (!auth.currentUser || auth.currentUser.isAnonymous) {
+        showToast('Your account is managed outside of this app');
+        return;
+      }
+      if (!auth.currentUser || auth.currentUser.isAnonymous) {
         showToast('⚠️ Sign in first');
         return;
       }
@@ -3752,7 +3760,7 @@
         else showLoggedIn();
         return true;
       }
-      if (!silent) showToast('No active subscription yet. Finish checkout in Safari, then tap refresh again');
+      if (!silent) showToast('No active subscription found on your account yet');
       return false;
     } catch(e) {
       if (!silent) showToast('⚠️ ' + (e.message || 'Could not check subscription'));
@@ -4583,8 +4591,8 @@
          no account creation on iOS; sign-up lives on the web. Demo/"Try for
          free" was removed 2026-07 as well. -->
     <button onclick="openSignIn()" style="margin-top:32px;width:100%;padding:16px 24px;background:linear-gradient(135deg,#EC1825,#C8101B);border:none;border-radius:14px;font-family:'DM Sans',sans-serif;font-size:16px;font-weight:800;color:#fff;cursor:pointer;box-shadow:0 6px 18px rgba(236,24,37,0.35);">Sign In</button>
-    <!-- Helper — where new users create an account (plain text, not a link) -->
-    <p style="color:rgba(255,255,255,0.35);font-size:12px;line-height:1.6;margin:16px 0 0;width:100%;text-align:center;">New to SWH? Create your account at stopwastinghandshakes.com</p>
+    <!-- Helper — 3.1.3(f): no URL, no signup steering (Netflix pattern) -->
+    <p style="color:rgba(255,255,255,0.35);font-size:12px;line-height:1.6;margin:16px 0 0;width:100%;text-align:center;">Accounts can't be created in the app.</p>
     <!-- Sign Out — 24px below helper text; inside this block so no trailing whitespace on screen -->
     <button onclick="doLogout()" style="background:transparent;border:none;font-size:13px;font-weight:600;color:rgba(255,255,255,0.40);cursor:pointer;margin-top:24px;padding:8px 16px;">Sign out</button>
     <!-- Legal links — required by App Store guideline 3.1.2(c); must be visible before
@@ -5303,9 +5311,9 @@
         <img src="/assets/swh-logo-dark.svg" style="width:56px;height:56px;border-radius:14px;background:#1a1a1a;" alt="SWH">
       </div>
       <div id="paywall-headline" class="web-only" style="font-family:'Playfair Display',serif;font-size:24px;font-weight:900;text-align:center;line-height:1.2;color:#fff;">Start your free 60-day trial</div>
-      <div class="native-only" style="font-family:'Playfair Display',serif;font-size:24px;font-weight:900;text-align:center;line-height:1.2;color:#fff;">Start your free trial</div>
+      <div class="native-only" style="font-family:'Playfair Display',serif;font-size:24px;font-weight:900;text-align:center;line-height:1.2;color:#fff;">Subscription required</div>
       <div class="web-only" style="font-size:13px;color:rgba(255,255,255,0.6);text-align:center;margin-top:10px;line-height:1.6;">Track real activity. Build the habit. See your weekly tier climb.</div>
-      <div class="native-only" style="font-size:13px;color:rgba(255,255,255,0.6);text-align:center;margin-top:10px;line-height:1.6;">Full access to the Scorecard. Cancel anytime.</div>
+      <div class="native-only" style="font-size:13px;color:rgba(255,255,255,0.6);text-align:center;margin-top:10px;line-height:1.6;">This app is a companion to your SWH account. Sign in with an account that has an active subscription to continue.</div>
 
       <div class="web-only" style="display:flex;flex-direction:column;gap:10px;margin:22px 0 8px;">
         <div style="display:flex;align-items:center;gap:10px;font-size:13px;color:rgba(255,255,255,0.85);"><span style="color:var(--gold);font-weight:800;">✓</span> Daily activity tracking</div>
@@ -5319,34 +5327,21 @@
         <div style="font-size:13px;color:rgba(255,255,255,0.85);margin-top:4px;">Then $10/month. Cancel anytime.</div>
       </div>
 
-      <!-- NATIVE iOS: Stripe checkout (IAP/RevenueCat removed 2026-07).
-           Checkout opens in Safari via Capacitor's external-navigation policy;
-           the appStateChange listener re-checks the plan when the app resumes. -->
-      <div class="native-only" style="display:flex;flex-direction:column;gap:10px;margin:22px 0 8px;">
-        <div style="background:rgba(230,57,70,0.10);border:1px solid rgba(230,57,70,0.30);border-radius:12px;padding:12px 14px;text-align:center;">
-          <div style="font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--gold);">60-Day Free Trial</div>
-          <div style="font-size:13px;color:rgba(255,255,255,0.85);margin-top:4px;">Then $10/month. Cancel anytime.</div>
-        </div>
-        <div style="font-size:11px;color:rgba(255,255,255,0.45);text-align:center;line-height:1.5;">
-          Daily activity tracking · Weekly tier · Coaching insights · SMS reminders
-        </div>
-      </div>
+      <!-- NATIVE iOS: 3.1.3(f) free stand-alone companion app (adopted 2026-07-15).
+           NO purchasing in the app, NO pricing, NO purchase calls-to-action — the
+           app only reflects subscription state. Purchases happen on the web; the
+           appStateChange listener re-checks the plan when the app resumes. -->
 
-      <!-- Start free trial → Stripe Checkout (Scorecard $10/mo) on BOTH web and native.
-           On native the checkout page opens in Safari. -->
-      <button onclick="startUpgrade('scorecard')" style="width:100%;padding:15px;background:linear-gradient(135deg,var(--gold),#b8252f);border:none;border-radius:14px;font-family:'DM Sans',sans-serif;font-size:15px;font-weight:800;color:#fff;cursor:pointer;box-shadow:0 4px 18px rgba(230,57,70,0.35);">Start free trial →</button>
+      <!-- Start free trial → Stripe Checkout (Scorecard $10/mo). WEB ONLY per 3.1.3(f). -->
+      <button class="web-only" onclick="startUpgrade('scorecard')" style="width:100%;padding:15px;background:linear-gradient(135deg,var(--gold),#b8252f);border:none;border-radius:14px;font-family:'DM Sans',sans-serif;font-size:15px;font-weight:800;color:#fff;cursor:pointer;box-shadow:0 4px 18px rgba(230,57,70,0.35);">Start free trial →</button>
       <button onclick="showSignInForm()" style="width:100%;margin-top:10px;padding:14px;background:transparent;border:1.5px solid rgba(255,255,255,0.18);border-radius:14px;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:600;color:rgba(255,255,255,0.85);cursor:pointer;">Already a member? Sign in</button>
       <button class="native-only" onclick="recheckPlanFromServer()" style="width:100%;margin-top:8px;background:transparent;border:none;font-size:12px;font-weight:600;color:rgba(255,255,255,0.5);cursor:pointer;padding:8px;text-decoration:underline;">Already subscribed? Refresh status</button>
       <button class="web-only" onclick="closePaywall()" style="width:100%;margin-top:8px;background:transparent;border:none;font-size:13px;color:rgba(255,255,255,0.4);cursor:pointer;padding:8px;">Keep exploring the demo</button>
       <button class="native-only" onclick="closePaywall()" style="width:100%;margin-top:8px;background:transparent;border:none;font-size:13px;color:rgba(255,255,255,0.4);cursor:pointer;padding:8px;">Not now</button>
       <div class="native-only" style="margin-top:12px;text-align:center;font-size:11px;color:rgba(255,255,255,0.3);line-height:1.6;">
-        By subscribing you agree to our
         <a href="https://stopwastinghandshakes.com/terms" target="_blank" style="color:rgba(255,255,255,0.5);text-decoration:underline;">Terms of Use</a>
-        and
-        <a href="https://stopwastinghandshakes.com/privacy" target="_blank" style="color:rgba(255,255,255,0.5);text-decoration:underline;">Privacy Policy</a>.
-        Checkout is handled securely by Stripe in your browser. After your 60-day
-        trial the subscription renews monthly at $10 unless cancelled. Manage or
-        cancel anytime from Settings.
+        ·
+        <a href="https://stopwastinghandshakes.com/privacy" target="_blank" style="color:rgba(255,255,255,0.5);text-decoration:underline;">Privacy Policy</a>
       </div>
 
     </div>
