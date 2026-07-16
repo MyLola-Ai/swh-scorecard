@@ -448,7 +448,9 @@ exports.saveSettings = onRequest({ cors: true }, async (req, res) => {
 const FUNNEL_EVENTS = new Set(['signup_attempt', 'auth_error', 'demo_start', 'trial_click']);
 const funnelHourKey = (d) => (d || new Date()).toISOString().slice(0, 13);
 
-exports.onProfileCompleted = onDocumentWritten('users/{uid}/config/settings', async (event) => {
+exports.onProfileCompleted = onDocumentWritten(
+  { document: 'users/{uid}/config/settings', secrets: [OAUTH_STATE_SECRET] },
+  async (event) => {
   const before = event.data?.before?.exists ? event.data.before.data() : null;
   const after = event.data?.after?.exists ? event.data.after.data() : null;
   if (!after || !after.profileCompletedAt) return;
@@ -459,6 +461,42 @@ exports.onProfileCompleted = onDocumentWritten('users/{uid}/config/settings', as
     updatedAt: now.toISOString(),
   }, { merge: true });
   await db.collection('_funnel').doc('meta').set({ lastCompletionAt: now.toISOString() }, { merge: true });
+
+  // Welcome email (funnel part b) — leads with Get the app. Single-fire is
+  // guaranteed by the profileCompletedAt transition guard above; the
+  // welcomeEmailQueuedAt stamp double-guards and lets e2e verify the path.
+  try {
+    const uid = event.params.uid;
+    const userRef = db.collection('users').doc(uid);
+    const userSnap = await userRef.get();
+    const u = userSnap.exists ? userSnap.data() : {};
+    if (u.welcomeEmailQueuedAt) return;
+    const email = after.email || u.email || '';
+    if (!email) return;
+    if (/@example\.com$/i.test(email)) {
+      // e2e/test identities: exercise the whole path minus the real send
+      await userRef.set({ welcomeEmailQueuedAt: 'skipped_test' }, { merge: true });
+      return;
+    }
+    const cfgSnap = await db.doc('platform/appConfig').get();
+    const iosAppUrl = (cfgSnap.exists && cfgSnap.data().iosAppUrl) || '';
+    const firstName = after.firstName || String(after.displayName || '').split(' ')[0] || 'there';
+    const unsubUrl = _makeUnsubUrl(uid, OAUTH_STATE_SECRET.value());
+    await db.collection('mail').add({
+      from: _DRIP_FROM,
+      replyTo: _DRIP_REPLY,
+      to: [email],
+      message: {
+        subject: 'Welcome to SWH. Your 60-day trial is live',
+        html: _buildWelcomeHtml(firstName, iosAppUrl, unsubUrl, _PREFS_URL),
+        text: _buildWelcomeText(firstName, iosAppUrl, unsubUrl),
+      },
+    });
+    await userRef.set({ welcomeEmailQueuedAt: new Date().toISOString() }, { merge: true });
+    console.log('[welcomeEmail] queued for', uid);
+  } catch (e) {
+    console.error('[welcomeEmail] failed:', e.message);
+  }
 });
 
 exports.funnelBeacon = onRequest({ cors: true, invoker: 'public' }, async (req, res) => {
@@ -7336,6 +7374,93 @@ function _makeUnsubUrl(uid, secret) {
   const crypto = require('crypto');
   const sig = crypto.createHmac('sha256', secret).update(uid + ':onboarding').digest('hex').slice(0, 32);
   return `${_UNSUB_BASE}?uid=${encodeURIComponent(uid)}&cat=onboarding&t=${sig}`;
+}
+
+// Welcome email (sent once, on profile completion) — leads with Get the app.
+// Same SWH shell as the drip so the brand reads consistent. iosAppUrl comes
+// from platform/appConfig and ships dark (promise copy) until 1.43 is live.
+function _buildWelcomeHtml(firstName, iosAppUrl, unsubUrl, prefsUrl) {
+  const fn = escHtml(firstName || 'there');
+  const appBlock = iosAppUrl
+    ? `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:0 0 26px;background:#0a0a0a;border-radius:12px;"><tr><td style="padding:22px 24px;">
+        <p style="margin:0 0 6px;font:700 16px/1.3 Arial,sans-serif;color:#ffffff;">SWH lives on your phone</p>
+        <p style="margin:0 0 16px;font:400 13.5px/1.55 Arial,sans-serif;color:#bbbbbb;">Log the handshake the moment it happens. Get the iPhone app and your Scorecard is always in your pocket.</p>
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
+          <td bgcolor="#ffffff" style="background:#ffffff;border-radius:8px;">
+            <a href="${iosAppUrl}" style="display:inline-block;padding:13px 26px;font:700 14px/1 Arial,sans-serif;color:#0a0a0a;text-decoration:none;">Download the iPhone app &rarr;</a>
+          </td></tr></table>
+      </td></tr></table>`
+    : `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:0 0 26px;background:#0a0a0a;border-radius:12px;"><tr><td style="padding:22px 24px;">
+        <p style="margin:0 0 6px;font:700 16px/1.3 Arial,sans-serif;color:#ffffff;">The iPhone app is almost here</p>
+        <p style="margin:0;font:400 13.5px/1.55 Arial,sans-serif;color:#bbbbbb;">You will get the download link the moment it goes live. Until then, everything works at app.stopwastinghandshakes.com.</p>
+      </td></tr></table>`;
+  return `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<title>Welcome to SWH</title>
+</head>
+<body style="margin:0;padding:0;background:#e9e9ec;-webkit-font-smoothing:antialiased;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#0a0a0a" style="background:#0a0a0a;">
+<tr><td align="center" style="padding:26px 16px 40px;">
+<table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:600px;max-width:600px;background:#ffffff;border-radius:16px;overflow:hidden;">
+  <tr><td style="display:none;font-size:1px;color:#ffffff;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;">Your 60-day free trial is active. Here is where to start.</td></tr>
+  <tr><td style="background:#0a0a0a;padding:16px 30px;">
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
+      <td valign="middle" style="padding-right:11px;"><img src="${_ARROWS_URL}" width="26" height="28" alt="SWH" style="display:block;border:0;"></td>
+      <td valign="middle" style="font:bold 20px/1 Georgia,serif;color:#ffffff;letter-spacing:.04em;">SWH</td>
+      <td valign="middle" style="padding-left:13px;"><span style="font:600 11px/1 Arial,sans-serif;color:#9a9a9a;letter-spacing:.1em;text-transform:uppercase;">Stop&nbsp;Wasting&nbsp;Handshakes</span></td>
+    </tr></table>
+  </td></tr>
+  <tr><td style="padding:34px 30px 24px;">
+    <h1 style="margin:0 0 18px;font:bold 23px/1.25 Arial,sans-serif;color:#1a1a1a;">Welcome to SWH, ${fn}.</h1>
+    <p style="margin:0 0 16px;font:400 15px/1.6 Arial,sans-serif;color:#333;">Your 60-day free trial is active. Every feature is unlocked, no card needed. Relationships are built, not harvested, and now you have the scoreboard for it.</p>
+    ${appBlock}
+    <p style="margin:0 0 10px;font:700 14px/1.4 Arial,sans-serif;color:#1a1a1a;">Three moves to start strong:</p>
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:0 0 24px;"><tr>
+      <td style="border-left:3px solid #E63946;background:#fcf3f4;padding:12px 16px;border-radius:0 6px 6px 0;">
+        <p style="margin:0 0 7px;font:400 14px/1.55 Arial,sans-serif;color:#444;"><span style="font-weight:700;color:#E63946;">1.</span> Log today's points. Every conversation, follow-through, and meeting counts.</p>
+        <p style="margin:0 0 7px;font:400 14px/1.55 Arial,sans-serif;color:#444;"><span style="font-weight:700;color:#E63946;">2.</span> Add the people you met this week. Do not let those handshakes go to waste.</p>
+        <p style="margin:0;font:400 14px/1.55 Arial,sans-serif;color:#444;"><span style="font-weight:700;color:#E63946;">3.</span> Set your weekly goal. 150 points is the sweet spot for most networkers.</p>
+      </td></tr></table>
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
+      <td bgcolor="#E63946" style="background:#E63946;border-radius:8px;">
+        <a href="https://app.stopwastinghandshakes.com" style="display:inline-block;padding:13px 26px;font:700 14px/1 Arial,sans-serif;color:#ffffff;text-decoration:none;">Open your Scorecard &rarr;</a>
+      </td></tr></table>
+  </td></tr>
+  <tr><td style="padding:22px 30px 26px;border-top:1px solid #eeeeee;">
+    <p style="margin:0 0 6px;font:400 12px/1.5 Arial,sans-serif;color:#9a9a9a;">Sent by SWH &middot; Stop Wasting Handshakes</p>
+    <p style="margin:0 0 6px;font:400 12px/1.5 Arial,sans-serif;color:#bbbbbb;">8600 N FM 620 #411, Austin, TX 78726</p>
+    <p style="margin:0;font:400 12px/1.5 Arial,sans-serif;color:#9a9a9a;">
+      <a href="${unsubUrl}" style="color:#E63946;text-decoration:underline;">Unsubscribe</a> &nbsp;&middot;&nbsp;
+      <a href="${prefsUrl}" style="color:#9a9a9a;text-decoration:underline;">Manage preferences</a>
+    </p>
+  </td></tr>
+</table>
+</td></tr>
+</table>
+</body></html>`;
+}
+
+function _buildWelcomeText(firstName, iosAppUrl, unsubUrl) {
+  const fn = firstName || 'there';
+  const appLine = iosAppUrl
+    ? `Get the iPhone app: ${iosAppUrl}`
+    : 'The iPhone app is almost here. You will get the download link the moment it goes live.';
+  return `Welcome to SWH, ${fn}.
+
+Your 60-day free trial is active. Every feature is unlocked, no card needed.
+
+${appLine}
+
+Three moves to start strong:
+1. Log today's points. Every conversation, follow-through, and meeting counts.
+2. Add the people you met this week. Do not let those handshakes go to waste.
+3. Set your weekly goal. 150 points is the sweet spot for most networkers.
+
+Open your Scorecard: https://app.stopwastinghandshakes.com
+
+Unsubscribe: ${unsubUrl}`;
 }
 
 function _buildDripHtml(entry, firstName, unsubUrl, prefsUrl) {

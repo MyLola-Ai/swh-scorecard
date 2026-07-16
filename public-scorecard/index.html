@@ -1988,13 +1988,33 @@
     userSmsOptIn = optIn;
     userProfileOk = true;
     // Profile-first ordering (Austen, 2026-07-15): unpaid users meet the
-    // paywall AFTER completing their profile. Paid users go straight in.
+    // paywall AFTER completing their profile. Paid users go straight in —
+    // on web through the Get-the-app step (no-ops while the URL ships dark).
     if (userPlan === 'scorecard' || userPlan === 'pro') {
-      showLoggedIn();
+      if (!isNativeEarly && window.showGetApp) showGetApp();
+      else showLoggedIn();
     } else {
       showScreen('home');
       setTimeout(() => openPaywall('upgrade'), 200);
     }
+  };
+
+  // Post-signup Get-the-app step (web only). platform/appConfig.iosAppUrl is
+  // the switch: unset/unreadable = dark, route straight into the app. Flip it
+  // in the console the day 1.43 clears App Store review.
+  window.showGetApp = async function() {
+    try {
+      if (isNativeEarly) return showLoggedIn();
+      let url = '';
+      try {
+        const cfg = await getDoc(doc(db, 'platform', 'appConfig'));
+        url = (cfg.exists() && cfg.data().iosAppUrl) || '';
+      } catch (_) {}
+      if (!url) return showLoggedIn();
+      const btn = document.getElementById('ga-appstore');
+      if (btn) btn.onclick = () => { window.open(url, '_blank'); };
+      showScreen('getapp');
+    } catch (_) { showLoggedIn(); }
   };
 
   // ===== LOAD DATA =====
@@ -4788,6 +4808,15 @@
     <div id="ob-error" style="display:none;color:#ffb3ba;font-size:13px;font-weight:600;margin-bottom:12px;text-align:center;"></div>
     <button onclick="saveOnboardingProfile()" id="ob-save-btn" style="width:100%;background:linear-gradient(135deg,var(--gold),#b8252f);border:none;border-radius:14px;padding:16px;font-family:'DM Sans',sans-serif;font-size:16px;font-weight:700;color:#fff;cursor:pointer;">Start Building →</button>
   </div>
+</div>
+
+<!-- GET THE APP — post-signup step (web). Dark until platform/appConfig.iosAppUrl is set. -->
+<div id="screen-getapp" class="screen" style="background:linear-gradient(160deg,var(--navy) 0%,#000 100%);display:none;flex-direction:column;align-items:center;justify-content:flex-start;padding:max(88px, calc(env(safe-area-inset-top) + 48px)) 32px max(56px, calc(env(safe-area-inset-bottom) + 32px));min-height:100vh;overflow-y:auto;box-sizing:border-box;">
+  <img src="/assets/swh-logo-dark.svg" style="width:64px;height:64px;border-radius:16px;margin-bottom:18px;" alt="SWH">
+  <div style="font-family:'Playfair Display',serif;font-size:26px;font-weight:900;color:#fff;text-align:center;margin-bottom:8px;">You're in.</div>
+  <div style="color:rgba(255,255,255,0.6);font-size:14.5px;text-align:center;margin-bottom:28px;line-height:1.6;max-width:400px;">Your 60-day free trial is active. SWH works best on your phone, where the handshakes actually happen.</div>
+  <button id="ga-appstore" style="width:100%;max-width:400px;background:#fff;border:none;border-radius:14px;padding:16px;font-family:'DM Sans',sans-serif;font-size:16px;font-weight:700;color:#1a1a1a;cursor:pointer;margin-bottom:12px;">Download the iPhone app</button>
+  <button onclick="showLoggedIn()" style="width:100%;max-width:400px;background:transparent;border:1.5px solid rgba(255,255,255,0.25);border-radius:14px;padding:14px;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:600;color:rgba(255,255,255,0.8);cursor:pointer;">Continue on the web &rarr;</button>
 </div>
 
 <!-- HOME -->
