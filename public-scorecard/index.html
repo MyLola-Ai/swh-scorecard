@@ -1124,7 +1124,19 @@
       swhFunnel('auth_error', e.code || 'email_signup');
       const code = e.code || '';
       let msg = e.message || 'Sign up failed';
-      if (code === 'auth/email-already-in-use') msg = 'An account already exists with that email. Try signing in instead.';
+      if (code === 'auth/email-already-in-use') {
+        // Adoption path: the identity may be a bare app-first account. If the
+        // password matches, sign in — the boot hook adopts it (trial guards
+        // are server-side) and the profile gate completes identity.
+        try {
+          await withTimeout(signInWithEmailAndPassword(auth, email, password), 15000, 'adoptSignIn');
+          document.getElementById('paywall-modal').classList.remove('open');
+          showToast('✅ Welcome back. Finishing your setup');
+          return;
+        } catch (_) {
+          msg = 'An account already exists with that email. Try signing in instead.';
+        }
+      }
       else if (code === 'auth/weak-password') msg = 'Password must be at least 6 characters';
       else if (code === 'auth/invalid-email') msg = 'Email looks invalid';
       else if (code === 'auth/network-request-failed') msg = 'Network error. Check your connection';
@@ -1325,6 +1337,12 @@
       txt.textContent = 'Account';
       if (userPlan === 'pro' || userPlan === 'scorecard') sub.textContent = 'Subscription active';
       else sub.textContent = 'No active subscription';
+      return;
+    }
+    if (window._trialInfo && window._trialInfo.active) {
+      txt.textContent = 'Free trial';
+      sub.textContent = 'Full access · ends ' + (window._trialInfo.endsAt ? new Date(window._trialInfo.endsAt).toLocaleDateString() : 'soon');
+      row.onclick = () => openPaywall('upgrade');
       return;
     }
     if (userPlan === 'pro') {
@@ -1985,6 +2003,18 @@
     const userDoc = await getDoc(doc(db,'users',uid));
     const userData = userDoc.exists() ? userDoc.data() : {};
     userPlan = userData.plan || 'pro';
+    // No-card web trial: unexpired maps to full scorecard access; expired to
+    // free (paywall). _trialCandidate marks accounts eligible for adoption —
+    // the server re-checks every guard, this just avoids a pointless call.
+    window._trialInfo = null;
+    if (userData.plan === 'trial') {
+      const _tActive = userData.trialEndsAt && new Date(userData.trialEndsAt) > new Date();
+      userPlan = _tActive ? 'scorecard' : 'free';
+      window._trialInfo = { endsAt: userData.trialEndsAt || null, active: !!_tActive };
+    }
+    window._trialCandidate = !userData.trialStartedAt && !userData.teamId
+      && !userData.stripeSubscriptionId && !userData.subscriptionStatus
+      && (!userData.plan || userData.plan === 'free');
     // Team membership grants Scorecard access — check the team doc.
     if (userData.teamId && userPlan === 'free') {
       try {
@@ -3912,6 +3942,24 @@
           return;
         }
         showLoader(false);
+        // Web adoption: ANY web authentication of a bare, never-trialed account
+        // starts the one-time 60-day trial (signup or signin — users don't know
+        // the difference and neither should the funnel). Server enforces every
+        // guard; the single stamp is the atomic adoption marker for iOS.
+        if (window._trialCandidate) {
+          try {
+            const _tok = await user.getIdToken();
+            const _r = await fetch('https://us-central1-swh-scoreboard.cloudfunctions.net/ensureWebTrial', {
+              method: 'POST', headers: { 'Authorization': 'Bearer ' + _tok },
+            });
+            const _j = await _r.json().catch(() => ({}));
+            if (_j && _j.adopted) {
+              userPlan = 'scorecard';
+              window._trialInfo = { endsAt: _j.trialEndsAt, active: true };
+              showToast('🎉 Your 60-day free trial is active');
+            }
+          } catch (e2) { console.warn('[trial] ensureWebTrial failed:', e2.message); }
+        }
         // Plan comes from Firestore only (Stripe webhook keeps it current;
         // IAP/RevenueCat removed 2026-07).
         console.log('[onAuth] plan gate — userPlan:', userPlan, 'isNativeEarly:', isNativeEarly);

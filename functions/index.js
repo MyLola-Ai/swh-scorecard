@@ -259,6 +259,12 @@ exports.getMe = onRequest({ cors: true }, async (req, res) => {
     //   - team_crm:       Scorecard + CRM (effective = 'pro')
     // Existing teams created before this change default to team_scorecard.
     let effectivePlan = userData.plan || 'free';
+    // No-card web trial: unexpired trial = full scorecard access; expired = free
+    // (paywall). Mapping lives HERE so every native surface (bootNative,
+    // recheckPlanFromServer, foreground re-checks) inherits it via me.plan.
+    if (effectivePlan === 'trial') {
+      effectivePlan = (userData.trialEndsAt && new Date(userData.trialEndsAt) > new Date()) ? 'scorecard' : 'free';
+    }
     let teamInfo = null;
     if (userData.teamId) {
       const teamSnap = await db.collection('teams').doc(userData.teamId).get();
@@ -295,6 +301,7 @@ exports.getMe = onRequest({ cors: true }, async (req, res) => {
       email: decoded.email || userData.email || '',
       plan: effectivePlan,
       personalPlan: userData.plan || 'free', // raw personal plan for billing UI
+      trialEndsAt: userData.trialEndsAt || null,
       team: teamInfo,
       dismissedAnnouncements: userData.dismissedAnnouncements || {},
       settings: {
@@ -511,6 +518,46 @@ exports.funnelHealth = onRequest({ cors: true, invoker: 'public' }, async (req, 
       : 'ok';
     res.json(out);
   } catch (err) { res.status(500).json({ ok: false, error: err.message }); }
+});
+
+// ===== ensureWebTrial — signup-time no-card 60-day trial + bare-account adoption =====
+// Called by the WEB app after any authentication of a candidate account
+// ("They need to have an account to get in. Period." — web is the only door).
+// Guards (CTO-ratified): one trial per identity EVER (expired trials never
+// re-stamp); never for accounts with ANY subscription history or a team.
+// The single transactional write stamps plan+trialStartedAt+trialEndsAt
+// together — the atomic adoption marker the iOS foreground re-check needs.
+exports.ensureWebTrial = onRequest({ cors: true, invoker: 'public' }, async (req, res) => {
+  if (req.method === 'OPTIONS') { res.status(204).send(''); return; }
+  if (req.method !== 'POST') { res.status(405).json({ error: 'POST only' }); return; }
+  try {
+    const decoded = await requireAuth(req);
+    const uid = decoded.uid;
+    const ref = db.collection('users').doc(uid);
+    const out = await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      const u = snap.exists ? snap.data() : {};
+      if (u.trialStartedAt) {
+        return { adopted: false, reason: 'trial_used', plan: u.plan || 'free', trialEndsAt: u.trialEndsAt || null };
+      }
+      const hasHistory = !!(u.stripeSubscriptionId || u.subscriptionStatus || u.teamId
+        || u.plan === 'pro' || u.plan === 'scorecard' || u.plan === 'team');
+      if (hasHistory) {
+        return { adopted: false, reason: 'has_subscription_history', plan: u.plan || 'free', trialEndsAt: null };
+      }
+      const now = new Date();
+      const ends = new Date(now.getTime() + STRIPE_TRIAL_DAYS * 86400000);
+      tx.set(ref, {
+        plan: 'trial',
+        trialStartedAt: now.toISOString(),
+        trialEndsAt: ends.toISOString(),
+        trialSource: 'web',
+        email: u.email || decoded.email || '',
+      }, { merge: true });
+      return { adopted: true, reason: 'trial_started', plan: 'trial', trialEndsAt: ends.toISOString() };
+    });
+    res.json({ ok: true, ...out });
+  } catch (e) { sendErr(res, e); }
 });
 
 // ===== Waitlist signup — plain HTTP endpoint that bypasses Firebase SDK on the client =====
@@ -2325,11 +2372,21 @@ exports.createCheckoutSession = onRequest({
       payment_method_types: ['card'],
       line_items: [{ price: priceId, quantity: 1 }],
       // Trial config — 60 days, no card required to start trial.
-      subscription_data: {
-        trial_period_days: STRIPE_TRIAL_DAYS,
-        trial_settings: { end_behavior: { missing_payment_method: 'pause' } },
-        metadata: { firebaseUid: uid, plan: plan === 'pro' ? 'pro' : 'scorecard' },
-      },
+      // ONE TRIAL PER IDENTITY EVER: a signup-time web trial carries only its
+      // REMAINING days into the subscription; a used-up trial means pay now.
+      // (Stripe needs trial_end ≥ ~2 days out, so short remainders pay now too.)
+      subscription_data: (() => {
+        const base = { metadata: { firebaseUid: uid, plan: plan === 'pro' ? 'pro' : 'scorecard' } };
+        const trialSettings = { end_behavior: { missing_payment_method: 'pause' } };
+        if (!userData.trialStartedAt) {
+          return { ...base, trial_period_days: STRIPE_TRIAL_DAYS, trial_settings: trialSettings };
+        }
+        const endsMs = userData.trialEndsAt ? new Date(userData.trialEndsAt).getTime() : 0;
+        if (endsMs > Date.now() + 2 * 86400000) {
+          return { ...base, trial_end: Math.floor(endsMs / 1000), trial_settings: trialSettings };
+        }
+        return base;
+      })(),
       // Apple Pay / Google Pay enabled by default with 'card'; Stripe Tax will calc tax.
       automatic_tax: { enabled: true },
       tax_id_collection: { enabled: true },
@@ -3759,7 +3816,10 @@ exports.adminInspectUser = onRequest({ cors: true }, async (req, res) => {
       subcollectionCounts,
       // Final entitlement check — what `getMe` would return for this user
       effectivePlan: (() => {
-        const personalPlan = (userData && userData.plan) || 'free';
+        const personalRaw = (userData && userData.plan) || 'free';
+        const personalPlan = personalRaw === 'trial'
+          ? ((userData.trialEndsAt && new Date(userData.trialEndsAt) > new Date()) ? 'scorecard' : 'free')
+          : personalRaw;
         if (!team) return personalPlan;
         const teamActive = team.active === true ||
           team.subscriptionStatus === 'active' ||
