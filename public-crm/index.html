@@ -1215,7 +1215,8 @@ html.dark-theme .st-sect-head{color:rgba(255,255,255,.55);}
         <svg width="18" height="18" viewBox="0 0 23 23"><rect x="1" y="1" width="10" height="10" fill="#F25022"/><rect x="12" y="1" width="10" height="10" fill="#7FBA00"/><rect x="1" y="12" width="10" height="10" fill="#00A4EF"/><rect x="12" y="12" width="10" height="10" fill="#FFB900"/></svg>
         Continue with Microsoft
       </button>
-      <div style="text-align:center;margin-top:28px;padding-bottom:8px;">
+      <!-- Signup steering is WEB ONLY (iOS is login-only per 3.1.3(f) posture) -->
+      <div class="web-only" style="text-align:center;margin-top:28px;padding-bottom:8px;">
         <span class="login-link-muted" style="color:rgba(255,255,255,0.4);font-size:14px;">Don't have an account?&nbsp;</span><button onclick="switchAuthTab('signup')" class="login-link-bold" style="background:none;border:none;color:rgba(255,255,255,0.8);font-family:'DM Sans',sans-serif;font-size:14px;font-weight:700;cursor:pointer;padding:0;">Create one →</button>
       </div>
     </div>
@@ -1319,10 +1320,17 @@ html.dark-theme .st-sect-head{color:rgba(255,255,255,.55);}
 <!-- ════ UPGRADE / PLAN-GATE SCREEN ════ -->
 <div id="upgrade-screen" style="display:none;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;width:100%;padding:32px 20px;background:linear-gradient(160deg,#0f0f0f 0%,#1f1f1f 100%);box-sizing:border-box;">
   <img src="assets/swh/swh-lockup-dark.png" style="width:64px;height:64px;border-radius:14px;margin-bottom:18px;background:#1a1a1a;" alt="SWH">
-  <span id="upgrade-current-badge" style="display:none;align-items:center;gap:6px;padding:5px 12px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-radius:999px;font-size:11px;font-weight:700;color:rgba(255,255,255,0.7);letter-spacing:0.06em;text-transform:uppercase;margin-bottom:14px;">Current plan: Scorecard · $10/mo</span>
-  <div id="upgrade-headline" style="font-family:'Playfair Display',serif;font-size:34px;font-weight:900;color:#fff;text-align:center;line-height:1.15;max-width:640px;">Choose your plan</div>
-  <div id="upgrade-subhead" style="color:rgba(255,255,255,0.55);font-size:15px;text-align:center;margin-top:12px;max-width:560px;line-height:1.6;">Two ways to stop wasting handshakes.</div>
-  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:18px;margin-top:32px;width:100%;max-width:760px;">
+  <span id="upgrade-current-badge" class="web-only" style="display:none;align-items:center;gap:6px;padding:5px 12px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-radius:999px;font-size:11px;font-weight:700;color:rgba(255,255,255,0.7);letter-spacing:0.06em;text-transform:uppercase;margin-bottom:14px;">Current plan: Scorecard · $10/mo</span>
+  <div id="upgrade-headline" class="web-only" style="font-family:'Playfair Display',serif;font-size:34px;font-weight:900;color:#fff;text-align:center;line-height:1.15;max-width:640px;">Choose your plan</div>
+  <div id="upgrade-subhead" class="web-only" style="color:rgba(255,255,255,0.55);font-size:15px;text-align:center;margin-top:12px;max-width:560px;line-height:1.6;">Two ways to stop wasting handshakes.</div>
+  <!-- NATIVE iOS: 3.1.3(f) neutral state — no pricing, no purchase CTAs.
+       The app only reflects subscription state; purchasing happens on the web. -->
+  <div class="native-only" style="max-width:360px;text-align:center;">
+    <div style="font-family:'Playfair Display',serif;font-size:28px;font-weight:900;color:#fff;line-height:1.2;">Subscription required</div>
+    <div style="color:rgba(255,255,255,0.55);font-size:14px;margin-top:12px;line-height:1.7;">This app is a companion to your SWH CRM account. Sign in with an account that has an active CRM subscription to continue.</div>
+    <button onclick="recheckCrmPlanFromServer()" style="margin-top:24px;width:100%;padding:14px;background:transparent;border:1.5px solid rgba(255,255,255,0.25);border-radius:14px;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:700;color:rgba(255,255,255,0.85);cursor:pointer;">Already subscribed? Refresh status</button>
+  </div>
+  <div class="web-only" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:18px;margin-top:32px;width:100%;max-width:760px;">
     <div id="upgrade-scorecard-card" style="display:flex;flex-direction:column;background:#fff;border-radius:18px;padding:28px;color:var(--navy);box-shadow:0 8px 32px rgba(0,0,0,0.25);">
       <div style="font-size:11px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:var(--muted);">Scorecard</div>
       <div style="display:flex;align-items:baseline;gap:6px;margin-top:8px;"><div style="font-family:'Playfair Display',serif;font-size:42px;font-weight:900;line-height:1;">$10</div><div style="font-size:14px;color:var(--muted);">/ month</div></div>
@@ -1354,10 +1362,22 @@ html.dark-theme .st-sect-head{color:rgba(255,255,255,.55);}
     </div>
   </div>
   <div style="margin-top:28px;display:flex;gap:18px;align-items:center;">
-    <button onclick="goToScorecard()" style="background:transparent;border:none;font-size:13px;font-weight:600;color:rgba(255,255,255,0.55);cursor:pointer;">Open Scorecard ↗</button>
-    <span style="color:rgba(255,255,255,0.2);">·</span>
+    <button class="web-only" onclick="goToScorecard()" style="background:transparent;border:none;font-size:13px;font-weight:600;color:rgba(255,255,255,0.55);cursor:pointer;">Open Scorecard ↗</button>
+    <span class="web-only" style="color:rgba(255,255,255,0.2);">·</span>
     <button onclick="doLogout()" style="background:transparent;border:none;font-size:13px;font-weight:600;color:rgba(255,255,255,0.55);cursor:pointer;">Sign out</button>
   </div>
+</div>
+
+<!-- ════ ACCOUNT REQUIRED (native only; bare implicit accounts) ════
+     Shown when a first-time Google/Apple sign-in created a Firebase account
+     that has no SWH profile, plan, or trial. No signup steering, no URL,
+     no pricing (3.1.3(f) + login-only posture). -->
+<div id="screen-account-required" style="display:none;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;width:100%;padding:32px 24px;background:linear-gradient(160deg,#0f0f0f 0%,#1f1f1f 100%);box-sizing:border-box;text-align:center;">
+  <img src="assets/swh/swh-lockup-dark.png" style="width:64px;height:64px;border-radius:14px;margin-bottom:18px;background:#1a1a1a;" alt="SWH">
+  <div style="font-family:'Playfair Display',serif;font-size:28px;font-weight:900;color:#fff;line-height:1.2;">Account required</div>
+  <div style="color:rgba(255,255,255,0.55);font-size:14px;margin-top:12px;max-width:340px;line-height:1.7;">This sign-in isn't connected to an SWH account yet. Accounts are created on the web. Once yours is set up, come back and tap refresh.</div>
+  <button onclick="recheckCrmAccountState()" style="margin-top:28px;width:100%;max-width:340px;padding:15px 24px;background:linear-gradient(135deg,#EC1825,#C8101B);border:none;border-radius:14px;font-family:'DM Sans',sans-serif;font-size:15px;font-weight:800;color:#fff;cursor:pointer;">I've set up my account →</button>
+  <button onclick="doLogout()" style="margin-top:14px;background:transparent;border:none;font-size:13px;font-weight:600;color:rgba(255,255,255,0.5);cursor:pointer;padding:8px 16px;">Sign out / use a different account</button>
 </div>
 
 <div class="app" id="app-shell" style="display:none;">
@@ -1865,7 +1885,8 @@ html.dark-theme .st-sect-head{color:rgba(255,255,255,.55);}
                 <div class="st-sect-head">Team</div>
                 <div class="settings-card">
                   <!-- Shown when user is NOT on a team — invites them to start one -->
-                  <div class="settings-row" id="crm-settings-team-create-row" onclick="openCrmTeamUpgrade()" style="display:flex;">
+                  <!-- Team pricing/purchase is WEB ONLY (3.1.3(f)) -->
+                  <div class="settings-row web-only" id="crm-settings-team-create-row" onclick="openCrmTeamUpgrade()" style="display:flex;">
                     <div class="sr-left">
                       <div class="sr-icon">👥</div>
                       <div><div class="sr-text">Start a Team Plan</div><div class="sr-sub">$20/seat (3-9), $15/seat (10+) · 60-day trial</div></div>
@@ -4558,14 +4579,19 @@ async function _onCrmSignedIn(user) {
   if (isMSLogin) tryClaimMicrosoftTeam().catch(() => {});
   await loadAllData();
   showLoader(false);
-  showApp();
+  // Stripe-only + 3.1.3(f) posture (2026-07-16): no RevenueCat on boot, no
+  // purchase surface on native. Plan truth is Firestore via the Stripe
+  // webhook. Bare implicit accounts (first-time Google/Apple sign-in that
+  // never signed up on the web) get the Account-required state; signed-up
+  // but unpaid users get the neutral subscription-required screen via
+  // showApp()'s native rendering.
+  if (isNativeEarly && window._crmBareAccount) {
+    showAccountRequired();
+  } else {
+    showApp();
+  }
   if (typeof refreshSettingsSubLabelsCRM === 'function') refreshSettingsSubLabelsCRM();
   loadThemePref();
-  if (isNativeEarly) {
-    setupRevenueCat(user.uid).then(() => {
-      if (userPlan !== 'pro') openPaywall('upgrade');
-    }).catch(() => { if (userPlan !== 'pro') openPaywall('upgrade'); });
-  }
   if (window.SWHNylasEmail) {
     SWHNylasEmail.config.getToken = () => currentUser?.getIdToken();
     const nylasEl = document.getElementById('nylas-connect-mount');
@@ -4577,8 +4603,84 @@ async function _onCrmSignedIn(user) {
   }
 }
 
+// ── STRIPE RETURN PATH + ACCOUNT-REQUIRED (native, 3.1.3(f)) ──
+// The app never sells anything; it only reflects account/subscription state.
+// Subscribing happens on the web, so these re-check Firestore (via getMe,
+// which the Stripe webhook keeps current) on demand and on app-foreground.
+function showAccountRequired() {
+  showLoader(false);
+  document.getElementById('login-screen').style.display = 'none';
+  document.getElementById('app-shell').style.display = 'none';
+  document.getElementById('upgrade-screen').style.display = 'none';
+  const _bn = document.querySelector('.bottom-nav'); if (_bn) _bn.style.display = 'none';
+  const pg = document.getElementById('profile-gate'); if (pg) pg.style.display = 'none';
+  document.getElementById('screen-account-required').style.display = 'flex';
+}
+window.showAccountRequired = showAccountRequired;
+
+window.recheckCrmPlanFromServer = async function(opts) {
+  const silent = !!(opts && opts.silent);
+  if (!isNativeEarly || !NativeAPI.isReady) return false;
+  if (!silent) showToast('⏳ Checking subscription…');
+  try {
+    const me = await NativeAPI.call('getMe', null, { timeout: 10000 });
+    userPlan = me.plan || 'free';
+    if (userPlan === 'pro') {
+      document.getElementById('screen-account-required').style.display = 'none';
+      showToast('✅ Subscription active. Welcome!');
+      showApp();
+      return true;
+    }
+    if (!silent) showToast('No active CRM subscription on this account yet');
+    return false;
+  } catch(e) {
+    if (!silent) showToast('⚠️ ' + (e.message || 'Could not check subscription'));
+    return false;
+  }
+};
+
+window.recheckCrmAccountState = async function(opts) {
+  const silent = !!(opts && opts.silent);
+  if (!isNativeEarly || !NativeAPI.isReady) return;
+  if (!silent) showToast('⏳ Checking your account…');
+  try {
+    const me = await NativeAPI.call('getMe', null, { timeout: 10000 });
+    userPlan = me.plan || 'free';
+    const s = me.settings || {};
+    const profileOk = !!(s.firstName && s.lastName && s.company && s.industry && s.phone);
+    const bare = !profileOk && !s.phone
+      && userPlan !== 'pro' && userPlan !== 'scorecard' && userPlan !== 'trial';
+    if (bare) {
+      if (!silent) showToast('This account isn\'t set up yet. Create your account on the web first');
+      return;
+    }
+    window._crmBareAccount = false;
+    window._crmProfileOk = profileOk;
+    document.getElementById('screen-account-required').style.display = 'none';
+    showApp();
+    if (!profileOk) { try { showProfileGate(); } catch(_){} }
+  } catch(e) {
+    if (!silent) showToast('⚠️ ' + (e.message || 'Could not check account'));
+  }
+};
+
 (async () => {
   if (isNativeEarly) {
+    // Re-check state whenever the app returns to the foreground while parked
+    // on the Account-required or subscription-required screens (the user may
+    // have just finished signing up / subscribing on the web).
+    try {
+      const CapApp = window.Capacitor.Plugins.App;
+      if (CapApp && typeof CapApp.addListener === 'function') {
+        CapApp.addListener('appStateChange', ({ isActive }) => {
+          if (!isActive || !NativeAPI.isReady) return;
+          const acct = document.getElementById('screen-account-required');
+          const upg = document.getElementById('upgrade-screen');
+          if (acct && acct.style.display === 'flex') recheckCrmAccountState({ silent: true });
+          else if (upg && upg.style.display === 'flex' && userPlan !== 'pro') recheckCrmPlanFromServer({ silent: true });
+        });
+      }
+    } catch(_) {}
     const hasSession = await NativeAPI.loadFromStorage();
     if (hasSession) {
       showLoader(true);
@@ -4671,6 +4773,11 @@ window.doAppleLogin = async () => {
 const CONSUMER_DOMAINS = new Set(['gmail.com','yahoo.com','hotmail.com','outlook.com','live.com','icloud.com','me.com','mac.com','aol.com','protonmail.com','proton.me','msn.com','ymail.com']);
 
 window.doMicrosoftLogin = async (loginHint) => {
+  if (isNativeEarly) {
+    // Web-SDK popup auth hangs in the native WKWebView — never attempt it.
+    showToast('⚠️ Microsoft sign-in isn\'t available in the app. Use Google, Apple, or email');
+    return;
+  }
   const btn = document.getElementById('ms-login-btn');
   const originalLabel = btn ? btn.innerHTML : '';
   try {
@@ -4725,6 +4832,11 @@ window.doMicrosoftLogin = async (loginHint) => {
 
 // ── TAB SWITCHING ──
 window.switchAuthTab = function(tab) {
+  if (isNativeEarly && tab === 'signup') {
+    // LOGIN-ONLY app: the signup panel is web-only.
+    showToast('Accounts can\'t be created in the app. Sign in with your SWH account');
+    return;
+  }
   const isSignin = tab === 'signin';
   document.getElementById('panel-signin').style.display = isSignin ? 'block' : 'none';
   document.getElementById('panel-signup').style.display = isSignin ? 'none' : 'block';
@@ -4783,6 +4895,11 @@ window.signupStep2 = function() {
 
 // ── EMAIL SIGN UP ──
 window.doEmailSignUp = async function() {
+  if (isNativeEarly) {
+    // LOGIN-ONLY app: no account creation on iOS, no signup steering.
+    showToast('Accounts can\'t be created in the app. Sign in with your SWH account');
+    return;
+  }
   const first = document.getElementById('su-first')?.value?.trim();
   const last = document.getElementById('su-last')?.value?.trim();
   const email = document.getElementById('su-email')?.value?.trim();
@@ -4978,7 +5095,12 @@ async function initUser() {
     // error can never lock the app.
     const _ps = cfgSnap.exists() ? cfgSnap.data() : {};
     window._crmProfileOk = !!(_ps.firstName && _ps.lastName && _ps.company && _ps.industry && _ps.phone);
-  } catch(e) { console.log('[crm] config/settings load failed:', e.message); window._crmProfileOk = true; }
+    // Bare implicit account = no profile, no phone, and no plan of any kind
+    // (trial counts as a plan — trial users signed up on the web). Same rule
+    // as the Scorecard's Account-required gate (a4d4950).
+    window._crmBareAccount = isNativeEarly && !window._crmProfileOk && !_ps.phone
+      && userPlan !== 'pro' && userPlan !== 'scorecard' && userPlan !== 'trial';
+  } catch(e) { console.log('[crm] config/settings load failed:', e.message); window._crmProfileOk = true; window._crmBareAccount = false; }
   // Load Nylas connection status for calendar (non-blocking)
   try {
     const ns = await getDoc(doc(db,'users',currentUser.uid,'integrations','nylas'));
@@ -5122,7 +5244,7 @@ async function loadAllData() {
   try { window.refreshOutlookStatus && window.refreshOutlookStatus(); } catch(_){}
   try { window.refreshLolaConnectStatus && window.refreshLolaConnectStatus(); } catch(_){}
   // Mandatory profile gate — blocks the app until the six fields are saved
-  if (window._crmProfileOk === false) { try { showProfileGate(); } catch(_){} }
+  if (window._crmProfileOk === false && !(isNativeEarly && window._crmBareAccount)) { try { showProfileGate(); } catch(_){} }
   // Returned from a Lola Connect hosted-auth redirect (?lolaConnect=connected|failed):
   // open Settings, toast, strip the param. Card refresh above shows the new state.
   try {
@@ -5268,12 +5390,17 @@ function showLogin() {
 function showApp() {
   document.getElementById('login-screen').style.display = 'none';
   document.body.classList.remove('login-active');
+  const _bn = document.querySelector('.bottom-nav');
   if (userPlan !== 'pro') {
     document.getElementById('app-shell').style.display = 'none';
     document.getElementById('upgrade-screen').style.display = 'flex';
+    // Gate the tab bar too — it lives outside #app-shell, and without the old
+    // IAP modal overlay a gated user could otherwise tab into the CRM shell.
+    if (_bn) _bn.style.display = 'none';
     renderUpgradeScreen();
     return;
   }
+  if (_bn) _bn.style.display = '';
   document.getElementById('upgrade-screen').style.display = 'none';
   document.getElementById('app-shell').style.display = 'flex';
   renderTopbar();
@@ -5357,8 +5484,9 @@ window.goToScorecard = async function() {
 window.startUpgrade = async function(plan) {
   try {
     if (isNativeEarly) {
-      // On native: open the RevenueCat IAP paywall — no external Stripe links allowed.
-      openPaywall('upgrade');
+      // 3.1.3(f) free stand-alone companion app: NO purchasing from the app
+      // and no purchase calls-to-action. Purchases happen on the web only.
+      showToast('Subscriptions are managed outside of this app');
       return;
     }
     if (!currentUser || currentUser.isAnonymous) {
@@ -5429,13 +5557,8 @@ window._initialScreen = (function() {
 // Click handler that routes to checkout (if no subscription) or portal (if active).
 window.onBillingRowClick = function() {
   if (isNativeEarly) {
-    if (userPlan === 'pro') {
-      if (confirm('Your subscription is active. Would you like to restore purchases on this device?')) {
-        iosRestorePurchases();
-      }
-    } else {
-      openPaywall('upgrade');
-    }
+    // 3.1.3(f): no purchase or billing-management surface in the app.
+    showToast('Your subscription is managed outside of this app');
     return;
   }
   if (userPlan === 'scorecard' || userPlan === 'pro') {
@@ -5511,6 +5634,11 @@ window.refreshCrmTeamSettings = async function() {
 
 // ----- Team Upgrade modal (start a team plan from CRM) -----
 window.openCrmTeamUpgrade = function() {
+  if (isNativeEarly) {
+    // 3.1.3(f): team plans are purchased on the web only.
+    showToast('Team plans are managed outside of this app');
+    return;
+  }
   if (!currentUser || currentUser.isAnonymous) { showToast('Sign in to start a Team plan'); return; }
   document.getElementById('crm-team-upgrade-overlay').classList.add('open');
   crmUpdatePricePreview();
@@ -6369,7 +6497,7 @@ window.refreshBillingRow = refreshBillingRow;
 window.openBillingPortal = async function() {
   try {
     if (isNativeEarly) {
-      showToast('Manage your subscription through the App Store.');
+      showToast('Your subscription is managed outside of this app');
       return;
     }
     if (!currentUser || currentUser.isAnonymous) {
@@ -6394,10 +6522,14 @@ window.openBillingPortal = async function() {
 };
 
 // ================================================================
-// REVENUECAT — Apple IAP via @revenuecat/purchases-capacitor
-// Mirrors the scorecard's RC implementation for the CRM product.
-// Product: com.impactleadershipgroup.swh.crm.monthly ($25/mo)
-// Entitlement keys: 'crm' or 'pro'
+// LEGACY IAP (RevenueCat) — RETIRED 2026-07-16. Stripe is the only
+// billing rail (3.1.3(f) free-companion posture: the app sells nothing).
+// Nothing below here is invoked anymore: the boot call, paywall openers,
+// billing-row and startUpgrade callers were all removed. Kept temporarily
+// so legacy references can't break; delete this whole block once the
+// RevenueCat account is closed and legacy IAP subs have migrated.
+// The revenueCatWebhook stays live server-side for legacy entitlements.
+// Product was: com.impactleadershipgroup.swh.crm.monthly ($25/mo)
 // ================================================================
 let _rcConfigured    = false;
 let _rcLoadedPackage = null;
@@ -6448,7 +6580,8 @@ window.openPaywall = function(reason) {
   const syncing = document.getElementById('cpw-syncing');
   if (landing) landing.style.display = 'block';
   if (syncing) syncing.style.display = 'none';
-  if (isNativeEarly) loadRCOfferings().catch(() => {});
+  // (RC offerings preload removed 2026-07-16 — the modal is a neutral
+  // status sheet now; nothing to purchase in the app.)
 };
 window.closePaywall = function() {
   const modal = document.getElementById('crm-paywall-modal');
@@ -14150,25 +14283,17 @@ window.onSendToMyLolaSubmit = async function() {
         <div style="display:flex;align-items:center;gap:10px;font-size:13px;color:rgba(255,255,255,0.85);"><span style="color:#EC1825;font-weight:800;">✓</span> Lola AI coaching &amp; daily digest</div>
       </div>
 
-      <!-- IAP subscribe button — enabled by loadRCOfferings() -->
-      <button id="crm-iap-btn" onclick="iosPurchase()" disabled
-        style="width:100%;padding:18px 20px;background:linear-gradient(135deg,#EC1825,#a3101a);border:none;border-radius:14px;font-family:'DM Sans',sans-serif;cursor:default;text-align:left;display:flex;align-items:center;gap:14px;box-shadow:0 4px 18px rgba(236,24,37,0.35);opacity:0.6;box-sizing:border-box;">
-        <div style="font-size:24px;">⚡</div>
-        <div style="flex:1;">
-          <div id="crm-iap-btn-label" style="font-size:15px;font-weight:800;color:#fff;">Loading…</div>
-          <div id="crm-iap-btn-sub" style="font-size:12px;color:rgba(255,255,255,0.9);line-height:1.4;margin-top:2px;"></div>
-        </div>
-        <div style="color:#fff;font-size:18px;font-weight:800;">→</div>
-      </button>
+      <!-- 3.1.3(f): no purchasing in the app. This modal is unreachable in the
+           converted flow (kept as a safe fallback if anything re-opens it);
+           it only reflects subscription state. -->
+      <button onclick="recheckCrmPlanFromServer()" style="width:100%;padding:15px 20px;background:transparent;border:1.5px solid rgba(255,255,255,0.25);border-radius:14px;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:700;color:rgba(255,255,255,0.85);cursor:pointer;">Already subscribed? Refresh status</button>
 
-      <button onclick="iosRestorePurchases()" style="width:100%;margin-top:10px;background:transparent;border:none;font-size:12px;font-weight:600;color:rgba(255,255,255,0.5);cursor:pointer;padding:8px;text-decoration:underline;">Restore purchases</button>
+      <button onclick="document.getElementById('crm-paywall-modal').classList.remove('open')" style="width:100%;margin-top:10px;background:transparent;border:none;font-size:13px;color:rgba(255,255,255,0.4);cursor:pointer;padding:8px;">Not now</button>
 
       <div style="margin-top:14px;text-align:center;font-size:11px;color:rgba(255,255,255,0.3);line-height:1.6;">
-        By subscribing you agree to our
         <a href="https://stopwastinghandshakes.com/terms" target="_blank" style="color:rgba(255,255,255,0.5);text-decoration:underline;">Terms of Use</a>
-        and
-        <a href="https://stopwastinghandshakes.com/privacy" target="_blank" style="color:rgba(255,255,255,0.5);text-decoration:underline;">Privacy Policy</a>.
-        Subscription auto-renews monthly unless cancelled.
+        ·
+        <a href="https://stopwastinghandshakes.com/privacy" target="_blank" style="color:rgba(255,255,255,0.5);text-decoration:underline;">Privacy Policy</a>
       </div>
     </div>
   </div>
