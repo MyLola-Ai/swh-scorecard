@@ -40,14 +40,13 @@ installed app on next launch, and the local bundle is only a fallback that engag
 is ever commented out (e.g. for App Store submission). CTO Channel spec: `~/loaniq/docs/CTO_CHANNEL.md`
 (VA thread implementing; the app inherits it via the shared `lolaPersonalChat` backend — this
 thread's verification bar is the `CTO:` ack + numbered morning-brief section rendering on device).
-Known build risk on Austen's Mac: `pod install` currently fails (Ruby 4.0.3 / CocoaPods 1.16.2
-gem-activation error) — must be fixed before the next Xcode build of this app. Bundle ID is under
-the old Mortgage Dude naming; it is NOT yet registered in ASC, so decide the final ID (e.g. a
-MyQueso-era one) BEFORE the first TestFlight upload cements it. CTO decisions 2026-07-15:
-recommended ID **com.myqueso.lola**; FIRST TestFlight upload holds until Austen confirms, then
-update `capacitor.config.ts` + the Xcode project in ONE commit. The CocoaPods/Ruby breakage is
-a dev-environment item routed to the Problem Solving Engineer (not this thread) unless Austen
-self-fixes.
+RESOLVED 2026-07-15/16: bundle ID is **ai.mylola.app** (Austen's decision, superseding the
+com.myqueso.lola recommendation) — locked in `capacitor.config.ts` + the Xcode project in one
+commit (loaniq `501141e6`); never reuse MortgageDude-era IDs. CocoaPods is FIXED on Austen's Mac
+and verified: `pod install` completes cleanly (9/9 pods). NOTE for non-interactive shells: pod
+requires a UTF-8 locale — run as `LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 pod install` or it dies in
+Unicode normalization; that failure mode is the shell, not the toolchain. TestFlight upload still
+holds for Austen's go (his CocoaPods + Unipile deferrals lifted only the build blocker).
 
 All three: Capacitor **8.3.x**, same plugin set: `@capacitor-firebase/authentication ^8.2`,
 `@revenuecat/purchases-capacitor ^13.1`, app, preferences, push-notifications, splash-screen,
