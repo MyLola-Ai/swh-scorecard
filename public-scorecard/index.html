@@ -2001,7 +2001,7 @@
 
   // Post-signup Get-the-app step (web only). platform/appConfig.iosAppUrl is
   // the switch: unset/unreadable = dark, route straight into the app. Flip it
-  // in the console the day 1.43 clears App Store review.
+  // in the console the day 1.44 clears App Store review.
   window.showGetApp = async function() {
     try {
       if (isNativeEarly) return showLoggedIn();
@@ -4729,8 +4729,9 @@
     <!-- Helper — plain-text domain pointer, CTO-approved 2026-07-15 as ACCOUNT
          language (not purchase language): no link, no pricing, 3.1.3(f)-safe. -->
     <p style="color:rgba(255,255,255,0.35);font-size:12px;line-height:1.6;margin:16px 0 0;width:100%;text-align:center;">New to SWH? Create your account at stopwastinghandshakes.com, then sign in here.</p>
-    <!-- Sign Out — 24px below helper text; inside this block so no trailing whitespace on screen -->
-    <button onclick="doLogout()" style="background:transparent;border:none;font-size:13px;font-weight:600;color:rgba(255,255,255,0.40);cursor:pointer;margin-top:24px;padding:8px 16px;">Sign out</button>
+    <!-- (Sign out removed 2026-07-16 per Austen — this screen is the signed-OUT
+         landing. Signed-in gated users switch accounts via the auth form or the
+         Account-required screen's sign-out.) -->
     <!-- Legal links — required by App Store guideline 3.1.2(c); must be visible before
          any subscription or trial flow begins. Do not hide behind another tap. -->
     <p style="margin:20px 0 0;width:100%;text-align:center;font-size:12px;color:rgba(255,255,255,0.35);line-height:1.6;">By continuing, you agree to our <a href="https://stopwastinghandshakes.com/terms" target="_blank" style="color:rgba(255,255,255,0.55);text-decoration:underline;">Terms of Use</a> and <a href="https://stopwastinghandshakes.com/privacy" target="_blank" style="color:rgba(255,255,255,0.55);text-decoration:underline;">Privacy Policy</a>.</p>
