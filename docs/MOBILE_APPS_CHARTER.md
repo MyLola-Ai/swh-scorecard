@@ -43,7 +43,11 @@ thread's verification bar is the `CTO:` ack + numbered morning-brief section ren
 Known build risk on Austen's Mac: `pod install` currently fails (Ruby 4.0.3 / CocoaPods 1.16.2
 gem-activation error) — must be fixed before the next Xcode build of this app. Bundle ID is under
 the old Mortgage Dude naming; it is NOT yet registered in ASC, so decide the final ID (e.g. a
-MyQueso-era one) BEFORE the first TestFlight upload cements it.
+MyQueso-era one) BEFORE the first TestFlight upload cements it. CTO decisions 2026-07-15:
+recommended ID **com.myqueso.lola**; FIRST TestFlight upload holds until Austen confirms, then
+update `capacitor.config.ts` + the Xcode project in ONE commit. The CocoaPods/Ruby breakage is
+a dev-environment item routed to the Problem Solving Engineer (not this thread) unless Austen
+self-fixes.
 
 All three: Capacitor **8.3.x**, same plugin set: `@capacitor-firebase/authentication ^8.2`,
 `@revenuecat/purchases-capacitor ^13.1`, app, preferences, push-notifications, splash-screen,
@@ -113,7 +117,10 @@ therefore never use the Web SDK on native. The pattern (implemented in `public-c
   2026-07-15)** — see the legal caveat below. The `revenueCatWebhook` (`functions/index.js:2329`)
   stays live so any legacy IAP subscriber keeps their entitlement. ASC follow-ups (Austen): remove
   the IAP products from the App Store listing, don't attach them to the 1.43 version, and provide
-  reviewer demo credentials (app is now account-required with an external purchase link).
+  reviewer demo credentials. **Metadata rider (CTO, 2026-07-15): the 3.1.3(f) discipline applies to
+  REVIEW METADATA too — screenshots, description, and What's New must not mention pricing, trials,
+  or signup (that's where 3.1.3(f) rejections actually come from). The existing 1.43 What's New
+  draft predates this posture and must be re-checked before submission.**
 - **LEGAL CAVEAT (CTO, 2026-07-15) — the US external-purchase-link regime is IN FLUX.** The
   Apr 2025 contempt ruling forced fee-free external links; the Ninth Circuit (Dec 2025) restored
   Apple's right to charge a commission on external-link purchases, and SCOTUS took the case for
