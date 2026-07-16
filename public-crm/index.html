@@ -908,33 +908,6 @@ html.dark-theme .st-sect-head{color:rgba(255,255,255,.55);}
 /* ctx-modal = same box as ctx-box but referenced by name in some overlays */
 .ctx-modal{background:var(--card);border-radius:20px;width:100%;max-width:440px;box-shadow:0 16px 60px rgba(0,0,0,0.25);overflow:hidden;}
 @media(max-width:767px){.ctx-modal{border-radius:20px 20px 0 0;max-width:100%;}}
-/* Contact drawer — right slide-in on desktop, bottom sheet on mobile.
-   Opened from Overdue Steps rows so the task loop stays one gesture away.
-   Renders the same buildExpandDetail() body used on Network for free reuse
-   of every writer (toggleNeStep, refreshStepsPanel, loadActivityPanel...). */
-.cd-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.28);backdrop-filter:blur(6px);z-index:310;justify-content:flex-end;}
-.cd-overlay.open{display:flex;animation:cdFadeIn 0.18s ease-out;}
-.cd-drawer{background:rgba(22,22,28,0.96);backdrop-filter:blur(32px) saturate(200%);width:100%;max-width:480px;height:100vh;box-shadow:-16px 0 60px rgba(0,0,0,0.45);display:flex;flex-direction:column;transform:translateX(100%);animation:cdSlideIn 0.22s cubic-bezier(0.32,0.72,0,1) forwards;--bg:#26262b;--card:#1A1A1D;--text:#f2f2f7;--muted:#8e8e93;--border:rgba(255,255,255,0.08);--navy:#f2f2f7;--navy-l:rgba(235,235,245,0.6);--chrome-bg:#2c2c2e;}
-.cd-overlay.closing .cd-drawer{animation:cdSlideOut 0.18s ease-in forwards;}
-@keyframes cdSlideIn{to{transform:translateX(0);}}
-@keyframes cdSlideOut{to{transform:translateX(100%);}}
-@keyframes cdFadeIn{from{opacity:0;}to{opacity:1;}}
-.cd-header{padding:14px 16px;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--border);position:sticky;top:0;background:inherit;z-index:2;}
-.cd-title{flex:1;font-family:'Playfair Display',serif;font-size:19px;color:var(--text);}
-.cd-close{background:transparent;border:0;color:var(--muted);font-size:22px;cursor:pointer;padding:6px 10px;border-radius:8px;line-height:1;}
-.cd-close:hover{background:rgba(255,255,255,0.06);color:var(--text);}
-.cd-body{flex:1;overflow-y:auto;padding:0;}
-.cd-body .net-expand{max-height:none !important;overflow:visible !important;}
-.cd-body .net-expand-inner{border-top:0;}
-.cd-overdue-banner{margin:10px 14px 0;padding:8px 12px;border-radius:10px;background:rgba(230,57,70,0.14);border:1px solid rgba(230,57,70,0.4);color:#ff8b8b;font-size:13px;font-weight:600;}
-@media(max-width:767px){
-  .cd-overlay{align-items:flex-end;justify-content:stretch;}
-  .cd-drawer{max-width:100%;height:92vh;border-radius:28px 28px 0 0;transform:translateY(100%);animation:cdSlideInMob 0.24s cubic-bezier(0.32,0.72,0,1) forwards;}
-  .cd-overlay.closing .cd-drawer{animation:cdSlideOutMob 0.2s ease-in forwards;}
-  @keyframes cdSlideInMob{to{transform:translateY(0);}}
-  @keyframes cdSlideOutMob{to{transform:translateY(100%);}}
-  .cd-drawer::before{content:'';display:block;width:36px;height:4px;background:rgba(255,255,255,0.22);border-radius:2px;margin:8px auto 0;flex-shrink:0;}
-}
 /* Referral direction toggle */
 .ref-dir-btn{flex:1;padding:10px 6px;border:2px solid var(--border);border-radius:9px;background:transparent;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:700;color:var(--muted);cursor:pointer;transition:all 0.15s;}
 .ref-dir-btn.active{background:var(--navy);border-color:var(--navy);color:#fff;}
@@ -2275,18 +2248,6 @@ html.dark-theme .st-sect-head{color:rgba(255,255,255,.55);}
       <button class="ctx-cancel" onclick="closeTagContactModal()" style="width:100%;">Cancel</button>
     </div>
   </div>
-</div>
-
-<!-- ════ CONTACT DRAWER (right slide-in / bottom sheet) ════
-     Opens from Overdue Steps rows. Reuses buildExpandDetail() body. -->
-<div class="cd-overlay" id="contact-drawer-overlay" onclick="if(event.target===this)closeContactDrawer()" role="dialog" aria-modal="true" aria-labelledby="cd-title">
-  <aside class="cd-drawer" id="contact-drawer">
-    <div class="cd-header">
-      <div class="cd-title" id="cd-title">Contact</div>
-      <button class="cd-close" onclick="closeContactDrawer()" aria-label="Close">&times;</button>
-    </div>
-    <div class="cd-body" id="contact-drawer-body"></div>
-  </aside>
 </div>
 
 <!-- ════ LOG ACTIVITY MODAL ════ -->
@@ -4524,11 +4485,6 @@ let userWeeklyEmailTimezone = (Intl.DateTimeFormat().resolvedOptions().timeZone)
 let userAccountabilityPartners = [];
 let ctxEntries = {}, ctxActIndex = null, ctxChipSelections = {};
 let expandedContactId = null;
-// Contact drawer state — the ESC handler ref (so we can remove it on close)
-// and the open-context {contactId, stepIndex} used by toggleNeStep to
-// auto-close the drawer after the exact overdue step is completed.
-let _cdEscHandler = null;
-let _cdOpenContext = null;
 let editingContactId = null;
 let activeFilter = 'all';
 let netSort = localStorage.getItem('swh_net_sort') || 'status';
@@ -9071,6 +9027,29 @@ window.toggleNeStep=async function(el,contactId,stepIndex){
     const existingGrade = resolveStatus(c);
     setTimeout(() => openGradeModal(c.id, c.name, existingGrade !== 'new' ? existingGrade : null), 400);
   }
+
+  // Auto-close the Today's Tasks inline expander when the step that opened
+  // it just got completed — user's next move is the next task, not another
+  // beat on this one. Only fires when the currently-open task-expand-wrap
+  // matches this contact AND the step was actually marked done (not undone)
+  // AND the campaign didn't just complete (grade modal is opening, don't
+  // yank the panel out from under it). 420ms lets the check animation read.
+  if (!wasCompleted && newSteps !== pb.steps.length) {
+    const wrap = document.getElementById('task-expand-wrap');
+    if (wrap && wrap.dataset.contactId === contactId) {
+      setTimeout(() => {
+        const stillThere = document.getElementById('task-expand-wrap');
+        if (!stillThere || stillThere.dataset.contactId !== contactId) return;
+        if (expandedContactId === contactId) expandedContactId = null;
+        stillThere.remove();
+        try { renderNetwork(); } catch(e) {}
+        const tasksScreen = document.getElementById('screen-tasks');
+        if (tasksScreen && tasksScreen.classList.contains('active')) {
+          try { renderTasks(); } catch(e) {}
+        }
+      }, 420);
+    }
+  }
 };
 
 window.dismissNeStep = async function(contactId, stepIndex) {
@@ -9456,70 +9435,6 @@ window.goContact=function(id){
   const allChip=document.querySelector('.filter-chip'); if(allChip) allChip.classList.add('active');
   expandedContactId=id;
   setTimeout(()=>{renderNetwork();setTimeout(()=>{const w=document.getElementById('wrap-'+id);if(w)w.scrollIntoView({behavior:'smooth',block:'start'});},100);},60);
-};
-
-// Open the contact drawer over the current screen (used by Overdue Steps rows).
-// Reuses buildExpandDetail(c) verbatim inside a .net-expand.open wrapper so
-// every existing writer (toggleNeStep, refreshStepsPanel, loadActivityPanel,
-// loadEmailsPanel, setNeTab, Grade-on-step-8) keeps working. Also collapses
-// any Network inline expand for the same contact first to avoid duplicate
-// #expand-ID / #nep-ID-* ids in the DOM.
-window.openContactDrawer = function(id, opts) {
-  const c = (window.CONTACTS || []).find(x => x.id === id);
-  if (!c) return;
-  if (typeof expandedContactId !== 'undefined' && expandedContactId === id) {
-    expandedContactId = null;
-    try { renderNetwork(); } catch(e) {}
-  }
-  _cdOpenContext = {
-    contactId: id,
-    stepIndex: (opts && typeof opts.step === 'number') ? opts.step : null
-  };
-  document.getElementById('cd-title').textContent = c.name;
-  const body = document.getElementById('contact-drawer-body');
-  let bannerHtml = '';
-  if (_cdOpenContext.stepIndex !== null) {
-    const s = stepFor(c, _cdOpenContext.stepIndex);
-    const dueDates = getStepDueDates(c);
-    const dd = dueDates ? dueDates[_cdOpenContext.stepIndex] : null;
-    bannerHtml = `<div class="cd-overdue-banner">Overdue: Step ${_cdOpenContext.stepIndex + 1} — ${s.name}${dd ? ' · due ' + formatDateShort(dd) : ''}</div>`;
-  }
-  body.innerHTML = bannerHtml + `<div class="net-expand open" id="expand-${c.id}">${buildExpandDetail(c)}</div>`;
-  document.getElementById('contact-drawer-overlay').classList.add('open');
-  document.body.style.overflow = 'hidden';
-  // When entry point is Overdue, default to the 8 Steps tab so the user
-  // lands on the row they came here to tick.
-  const focusTab = (opts && opts.tab) || (_cdOpenContext.stepIndex !== null ? 'steps' : 'profile');
-  if (focusTab === 'steps') {
-    const wantBtn = Array.from(body.querySelectorAll('.ne-tab')).find(b => /step/i.test(b.textContent.trim()));
-    if (wantBtn) { try { wantBtn.click(); } catch(e) {} }
-  }
-  _cdEscHandler = (e) => { if (e.key === 'Escape') closeContactDrawer(); };
-  document.addEventListener('keydown', _cdEscHandler);
-};
-
-window.closeContactDrawer = function() {
-  const ov = document.getElementById('contact-drawer-overlay');
-  if (!ov || !ov.classList.contains('open')) return;
-  // Dirty-state guard: an active textarea hasn't blurred, so its saveFormNote
-  // (bound to blur) hasn't fired yet — confirm before closing.
-  const focused = document.activeElement;
-  if (focused && ov.contains(focused) && focused.tagName === 'TEXTAREA') {
-    if (!confirm('You have unsaved notes. Close anyway?')) return;
-  }
-  ov.classList.add('closing');
-  setTimeout(() => {
-    ov.classList.remove('open', 'closing');
-    document.getElementById('contact-drawer-body').innerHTML = '';
-    document.body.style.overflow = '';
-  }, 200);
-  if (_cdEscHandler) { document.removeEventListener('keydown', _cdEscHandler); _cdEscHandler = null; }
-  _cdOpenContext = null;
-  // Re-render Tasks so a completed row disappears from Overdue.
-  const tasksScreen = document.getElementById('screen-tasks');
-  if (tasksScreen && tasksScreen.classList.contains('active')) {
-    try { renderTasks(); } catch(e) {}
-  }
 };
 
 // ── ADD CONTACT ──
