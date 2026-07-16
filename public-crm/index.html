@@ -8993,6 +8993,53 @@ window.saveProfileGate = async function() {
   showToast('✅ Profile saved');
 };
 
+// ── ACTIVITY → STEP BRIDGE ──
+// Any activity logged against a contact completes their CURRENT step when it
+// matches, so work done through ANY surface (Lola sends, meeting auto-logs,
+// Scorecard tags, Log Activity) clears the task list too. The triggering
+// activity already logged its own points, so the step completes WITHOUT
+// re-scoring. Callers that advance steps themselves pass {bridgeStep:false}.
+const GENERIC_STEP_ACTIVITIES = ['Perform Other 8 Step Activities'];
+const STEP_ACTIVITY_MATCHERS = [
+  { act: 'Good to Meet You Follow Through', re: /meet\w*.{0,6}you|follow.?(through|up)|thank/i },
+  { act: 'Attend 1:1, Coffee, Lunch',       re: /1.?[:-]?.?1|one.?on.?one|coffee|lunch|conduct/i },
+  { act: 'Attend 1:1, Coffee, Lunch, etc.', re: /1.?[:-]?.?1|one.?on.?one|coffee|lunch|conduct/i },
+  { act: 'Have a FORMing Conversation',     re: /form/i },
+  { act: 'Mail Note or Card',               re: /note|card|mail/i },
+  { act: 'Give a Referral',                 re: /referral|value/i },
+  { act: 'Make Introduction',               re: /intro|value|connect/i },
+  { act: 'Call Someone from CRM',           re: /call|check.?in/i },
+];
+function activityCompletesStep(activityName, stepName) {
+  if (!activityName || !stepName) return false;
+  if (activityName === stepName) return true;
+  if (GENERIC_STEP_ACTIVITIES.includes(activityName)) return true;
+  const m = STEP_ACTIVITY_MATCHERS.find(x => x.act === activityName);
+  return !!(m && m.re.test(stepName));
+}
+async function bridgeActivityToStep(contactId, activityName) {
+  const c = CONTACTS.find(x => x.id === contactId);
+  if (!c || !c.clockStarted || c.wasted) return;
+  const pb = playbookFor(c);
+  const N = c.steps || 0;
+  if (N >= pb.steps.length) return;
+  const step = pb.steps[N] || {};
+  if (!activityCompletesStep(activityName, step.name || '')) return;
+  const newSteps = N + 1;
+  c.steps = newSteps;
+  c.lastActivityAt = new Date().toISOString();
+  await updateDoc(doc(db, 'users', currentUser.uid, 'contacts', contactId), { steps: newSteps, lastActivityAt: c.lastActivityAt });
+  try { await closeQueueDocsUpTo(contactId, newSteps); } catch(_){}
+  detectWastedHandshakes();
+  refreshStepsPanel(contactId);
+  renderTasks();
+  showToast(`✅ Step ${newSteps}/8 completed (${step.name || 'step'})`);
+  if (newSteps === pb.steps.length) {
+    const existingGrade = resolveStatus(c);
+    setTimeout(() => openGradeModal(c.id, c.name, existingGrade !== 'new' ? existingGrade : null), 400);
+  }
+}
+
 window.toggleNeStep=async function(el,contactId,stepIndex){
   const c=CONTACTS.find(x=>x.id===contactId);if(!c)return;
   const pb=playbookFor(c);
@@ -9017,7 +9064,7 @@ window.toggleNeStep=async function(el,contactId,stepIndex){
     const stepName = step.name;
     const pts = step.points;
     const knownAct = ACTIVITIES.find(a => a.name === stepName) || DEFAULT_ACTS.find(a => a.name === stepName);
-    await autoLogActivity(knownAct ? stepName : ftqActivityName(pts), c.name, c.id, 'scorecard');
+    await autoLogActivity(knownAct ? stepName : ftqActivityName(pts), c.name, c.id, 'scorecard', {}, { bridgeStep: false }); // this IS the step completion
   } else {
     showToast(`↩️ Step ${newSteps}/8 unmarked`);
   }
@@ -9643,7 +9690,7 @@ async function loadContactActivities(contactId) {
   }
 }
 
-async function autoLogActivity(activityName, contactName, contactId, source, extraFields = {}) {
+async function autoLogActivity(activityName, contactName, contactId, source, extraFields = {}, opts = {}) {
   try {
     console.log('[autoLogActivity] start:', activityName, contactName, contactId, source);
     const todayKey = getTodayKey();
@@ -9659,6 +9706,9 @@ async function autoLogActivity(activityName, contactName, contactId, source, ext
     }
     if (resolvedContactId) {
       logContactActivity(resolvedContactId, { type: activityName, source: source || 'scorecard', points: pts, ...extraFields }).catch(()=>{});
+      // Bridge: work logged against a contact completes their current step
+      // when it matches — callers that advance steps themselves opt out.
+      if (opts.bridgeStep !== false) bridgeActivityToStep(resolvedContactId, activityName).catch(()=>{});
     }
 
     const dayRef = doc(db, 'users', currentUser.uid, 'days', todayKey);
@@ -11090,7 +11140,7 @@ window.ftqSend = async function(docId) {
 
     // Scorecard points
     const ftqPts = (Array.isArray(STEP_PTS) && STEP_PTS[q.stepIndex]) || q.stepPoints || 5;
-    await autoLogActivity(ftqActivityName(ftqPts), q.contactName, q.contactId, 'crm');
+    await autoLogActivity(ftqActivityName(ftqPts), q.contactName, q.contactId, 'crm', {}, { bridgeStep: false }); // send already advanced the step server-side
 
     // Advance local contact
     const c = CONTACTS.find(x => x.id === q.contactId);
