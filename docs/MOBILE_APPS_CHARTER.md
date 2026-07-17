@@ -248,8 +248,12 @@ ASC products verified → 1.44 submission (metadata rider updates: in-app pricin
 3.1.3(f) scrub converts to standard IAP metadata hygiene). CRM triple: no-purchase leg
 superseded; login-only + Stripe-web legs stand. (7) HARD GATE on Austen: confirm/enroll App
 Store Small Business Program in ASC before pricing screens or margin math. Per-deploy approval
-unchanged. THIS THREAD'S STATUS: holding client code until the SWH reconciliation contract
-arrives; then revive per (4).
+unchanged. THIS THREAD'S CLIENT HALF: SHIPPED CONTRACT-GATED 2026-07-17 (6877acf, deployed+installed):
+wired to the frozen getMe entitlement contract; subscribe UI arms only when the entitlement
+field appears in getMe — the SWH reconciliation deploy IS the launch switch (no client redeploy
+needed). RC revived purchase+restore only; post-purchase = bounded server poll (~17s worst case);
+client reconcile stays dead. Remaining: SWH getMe deploy (Austen's word) → live e2e re-run →
+Austen's on-device sandbox purchase → CRM revival → 1.44 submission package.
 
 **Update 2026-07-16 PM — IN-APP REGISTRATION (HEY model, Austen; supersedes login-only entry):**
 entry = Get Started (create in-app via Google/Apple/email) + Sign In. Bare first-time identities
