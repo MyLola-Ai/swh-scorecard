@@ -238,7 +238,13 @@ entitlement contract; $9.99/mo, NO intro offer — verified none exists in ASC),
 (recoverable error screen, no dead spinners), instant purchase-tap feedback, tier-true copy.
 Review fixtures: appreview@stopwastinghandshakes.com (active trial, full access) +
 appreview-expired@… (expired → exercises the subscribe flow); review notes rewritten for the
-current app. During review expect REAL revenueCatWebhook events from Apple's sandbox purchases.
+current app. During review expect REAL revenueCatWebhook events from Apple's sandbox purchases — the
+reviewer's path was pre-simulated 5/5 by the SWH thread (INITIAL_PURCHASE → apple.* write →
+union recompute → unlock); the one untested leg is the live authed webhook write. If it
+misbehaves: `firebase functions:log --only revenueCatWebhook`, look for the INITIAL_PURCHASE
+uid line, then whether apple.* + the plan mirror wrote; SWH thread on same-hour standby.
+Demo accounts are safe from backfills (read-time reconciliation, no migrations); spine will
+exclude appreview@ when part-c deploys. ATX100 codes grant entitlement fine ($0 revenue only).
 Known open: Austen's own sandbox purchase never completed (tester password) — the reviewer's
 purchase is the first full IAP loop. ASC finding: offer-code campaign ATX100 (free first YEAR,
 code-only) is live on Scorecard Monthly — Austen deciding keep/kill. Next: CRM port (boot
