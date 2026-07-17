@@ -748,17 +748,14 @@
         return;
       }
 
-      if (userPlan === 'scorecard' || userPlan === 'pro') {
-        // Firestore shows a paid plan — go straight in.
-        console.log('[boot] paid plan from Firestore — navigating in');
-      } else {
-        // Free/unpaid per Firestore (the single source of truth now that
-        // billing is Stripe-only) — show the plan screen.
-        console.log('[boot] plan is', userPlan, '— showing paywall');
-        openPaywall('upgrade');
-        return;
-      }
-
+      // BROWSE-DON'T-SAVE (Austen, 2026-07-17): free/expired users get INTO
+      // the app — they can see everything, and every write path is gated by
+      // requirePaid(), which opens the contextual subscribe sheet (Apple IAP
+      // in-app once the entitlement backend is live; Stripe on web). The old
+      // hard "Subscription required" wall at boot is gone; the product sells
+      // itself instead of a locked door.
+      console.log('[boot] plan is', userPlan, '— navigating in',
+        (userPlan === 'scorecard' || userPlan === 'pro') ? '(full access)' : '(browse; saves gated)');
       showLoggedIn();
       console.log('[boot] navigation complete');
 
@@ -2071,15 +2068,13 @@
     userPhone = phone;
     userSmsOptIn = optIn;
     userProfileOk = true;
-    // Profile-first ordering (Austen, 2026-07-15): unpaid users meet the
-    // paywall AFTER completing their profile. Paid users go straight in —
-    // on web through the Get-the-app step (no-ops while the URL ships dark).
-    if (userPlan === 'scorecard' || userPlan === 'pro') {
-      if (!isNativeEarly && window.showGetApp) showGetApp();
-      else showLoggedIn();
+    // Browse-don't-save (Austen, 2026-07-17): everyone lands IN the app after
+    // completing their profile. Unpaid users browse; the subscribe sheet
+    // appears contextually on their first save attempt via requirePaid().
+    if (!isNativeEarly && (userPlan === 'scorecard' || userPlan === 'pro') && window.showGetApp) {
+      showGetApp();
     } else {
-      showScreen('home');
-      setTimeout(() => openPaywall('upgrade'), 200);
+      showLoggedIn();
     }
   };
 
@@ -3982,7 +3977,11 @@
           const acctReqActive = document.getElementById('screen-account-required')?.classList.contains('active');
           if (NativeAPI.isReady && userPlan !== 'scorecard' && userPlan !== 'pro') {
             if (acctReqActive) recheckAccountState({ silent: true });
-            else if (paywallOpen) recheckPlanFromServer({ silent: true });
+            // Browse-don't-save: a free user may be ANYWHERE in the app when
+            // they subscribe on the web and come back — re-check on every
+            // foreground, not just with the paywall open. Silent + no-op
+            // unless the plan actually flipped.
+            else recheckPlanFromServer({ silent: true });
           }
         });
         console.log('[stripe] appStateChange plan recheck registered');
@@ -5572,7 +5571,7 @@
       <div id="paywall-headline" class="web-only" style="font-family:'Playfair Display',serif;font-size:24px;font-weight:900;text-align:center;line-height:1.2;color:#fff;">Start your free 60-day trial</div>
       <div class="native-only" style="font-family:'Playfair Display',serif;font-size:24px;font-weight:900;text-align:center;line-height:1.2;color:#fff;">Subscription required</div>
       <div class="web-only" style="font-size:13px;color:rgba(255,255,255,0.6);text-align:center;margin-top:10px;line-height:1.6;">Track real activity. Build the habit. See your weekly tier climb.</div>
-      <div class="native-only" style="font-size:13px;color:rgba(255,255,255,0.6);text-align:center;margin-top:10px;line-height:1.6;">This app is a companion to your SWH account. Sign in with an account that has an active subscription to continue.</div>
+      <div class="native-only" style="font-size:13px;color:rgba(255,255,255,0.6);text-align:center;margin-top:10px;line-height:1.6;">Saving requires an active subscription. Everything you've already tracked stays exactly where it is.</div>
 
       <div class="web-only" style="display:flex;flex-direction:column;gap:10px;margin:22px 0 8px;">
         <div style="display:flex;align-items:center;gap:10px;font-size:13px;color:rgba(255,255,255,0.85);"><span style="color:var(--gold);font-weight:800;">✓</span> Daily activity tracking</div>
