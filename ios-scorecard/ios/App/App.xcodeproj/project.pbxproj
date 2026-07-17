@@ -328,7 +328,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.44;
+				MARKETING_VERSION = 1.45;
 				OTHER_SWIFT_FLAGS = "$(inherited) \"-D\" \"COCOAPODS\" \"-DDEBUG\"";
 				PRODUCT_BUNDLE_IDENTIFIER = com.impactleadershipgroup.swh.scorecard;
 				PRODUCT_NAME = "Stop Wasting Handshakes";
@@ -358,7 +358,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.44;
+				MARKETING_VERSION = 1.45;
 				PRODUCT_BUNDLE_IDENTIFIER = com.impactleadershipgroup.swh.scorecard;
 				PRODUCT_NAME = "Stop Wasting Handshakes";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
