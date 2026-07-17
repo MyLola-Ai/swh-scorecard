@@ -645,11 +645,18 @@
       // subscribe UI, which makes the CTO's sequencing rule self-enforcing.
       window._entitlement = me.entitlement || null;
       window._entContract = !!me.entitlement;
+      // Per contract: entitlement.trialEndsAt is present exactly when an
+      // active trial contributes to access — key off THAT, not the source
+      // label (ensureWebTrial-written trials surface as source 'legacy'
+      // until the server's trial.* source-scoped write lands).
       window._trialInfo = me.entitlement
-        ? ((String(me.entitlement.source || '').includes('trial') && me.entitlement.trialEndsAt)
+        ? (me.entitlement.trialEndsAt
             ? { endsAt: me.entitlement.trialEndsAt, active: true } : null)
         : ((me.personalPlan === 'trial' && userPlan === 'scorecard')  // pre-contract fallback
             ? { endsAt: me.trialEndsAt || null, active: true } : null);
+      // Used = the identity had a trial that no longer grants access
+      // (drives billing-row copy: no re-pitching trials to expired users).
+      window._trialUsed = (me.personalPlan === 'trial' && !(window._trialInfo && window._trialInfo.active));
       weeklyGoal = me.settings.weeklyGoal || 150;
       userPhone = me.settings.phone || '';
       userProfileOk = computeProfileOk(me.settings || {});
@@ -1423,7 +1430,14 @@
       sub.textContent = 'Manage · Upgrade to CRM available';
     } else {
       txt.textContent = 'Subscribe';
-      sub.textContent = 'Start 60-day free trial · $10/mo';
+      // Used-up trials must not be pitched a trial again; native stays
+      // price-free until the IAP contract is live (paywall carries the price).
+      if (window._trialUsed) {
+        sub.textContent = isNative() ? 'Your free trial has ended' : 'Your trial has ended · $10/mo';
+      } else {
+        sub.textContent = isNative() ? 'No active subscription' : 'Start 60-day free trial · $10/mo';
+      }
+      row.onclick = () => openPaywall('upgrade');
     }
   };
 
@@ -1509,6 +1523,7 @@
   // We only ever call this on native iOS — never on web (web uses Stripe).
   let _rcConfigured    = false;
   let _rcLoadedPackage = null;   // set by loadRCOfferings() — used directly in iosPurchase
+  let _rcReadyLabel    = null;   // the ready-state button label, for restoring after a cancelled purchase
   let _rcLoadError     = null;   // last error string from loadRCOfferings
   let _rcOfferingsLoaded = false;
   let _syncingSubscription = false; // true while post-purchase RC reconciliation is in progress
@@ -1634,11 +1649,11 @@
     if (state === 'ready') {
       btn.disabled = false; btn.style.opacity = '1'; btn.style.cursor = 'pointer';
       if (lbl) lbl.textContent = label || 'Subscribe';
-      if (sub) sub.textContent = 'Keeps every contact, point, and streak. Cancel anytime.';
+      if (sub) sub.textContent = 'Keeps every point, streak, and follow-through. Cancel anytime.';
       const blk = document.getElementById('iap-block'); if (blk) blk.style.display = 'block';
     } else if (state === 'loading') {
       btn.disabled = true; btn.style.opacity = '0.6'; btn.style.cursor = 'default';
-      if (lbl) lbl.textContent = 'Loading…';
+      if (lbl) lbl.textContent = label || 'Loading…';
       if (sub) sub.textContent = '';
     } else {
       btn.disabled = true; btn.style.opacity = '0.45'; btn.style.cursor = 'default';
@@ -1783,8 +1798,16 @@
       _rcLoadError       = null;
 
       const price    = (pkg.product && pkg.product.priceString) || '$9.99';
-      const hasIntro = !!(pkg.product && pkg.product.introPrice);
-      const btnLabel = hasIntro ? 'Start 60-day free trial' : `Subscribe (${price}/mo)`;
+      // POLICY (Austen, 2026-07-17): the ONLY free period is our web trial —
+      // the IAP is always a direct paid subscription. Never advertise an
+      // Apple intro offer even if the ASC product still carries one (the
+      // offer itself must also be removed in ASC; Apple's payment sheet
+      // shows the true terms regardless).
+      if (pkg.product && pkg.product.introPrice) {
+        console.warn('[RC] ASC product still has an intro offer attached — remove it in App Store Connect (policy: no Apple trials)');
+      }
+      const btnLabel = `Subscribe (${price}/mo)`;
+      _rcReadyLabel = btnLabel;
 
       updateRCDebugPanel({ plugin: pluginLabel, configured: true, offeringsLoaded: true,
         offeringId: current.identifier, packageCount: pkgs.length,
@@ -1837,6 +1860,10 @@
     let purchaseCustomerInfo = null;
     let alreadyOwned = false;
     try {
+      // Acknowledge the tap ON the button instantly — sandbox StoreKit can
+      // take ~5s to present the sheet, and a silent button reads as a dead
+      // tap (Austen, device test 2026-07-17).
+      setIAPButtonState('loading', 'Opening Apple purchase…');
       showToast('⏳ Opening Apple purchase…');
       console.log('[RC] purchasePackage starting, package:', _rcLoadedPackage && _rcLoadedPackage.identifier);
       const result = await Purchases.purchasePackage({ aPackage: _rcLoadedPackage });
@@ -1846,8 +1873,11 @@
       const code = String((purchaseErr && (purchaseErr.code || purchaseErr.underlyingErrorCode)) || '');
       const msg  = String((purchaseErr && purchaseErr.message) || '');
       console.log('[RC] purchasePackage error — code:', code, 'msg:', msg, 'userCancelled:', purchaseErr && purchaseErr.userCancelled);
-      // User cancelled — silent, no overlay
-      if (purchaseErr && (purchaseErr.userCancelled === true || code === 'PURCHASE_CANCELLED' || code === '1' || code === '7846')) return;
+      // User cancelled — silent, no overlay; re-arm the button
+      if (purchaseErr && (purchaseErr.userCancelled === true || code === 'PURCHASE_CANCELLED' || code === '1' || code === '7846')) {
+        setIAPButtonState('ready', _rcReadyLabel);
+        return;
+      }
       // Already subscribed — skip sheet, go straight to entitlement check
       const isAlreadyOwned =
         code === 'PRODUCT_ALREADY_PURCHASED' ||
@@ -1857,6 +1887,7 @@
       if (!isAlreadyOwned) {
         console.error('[RC] purchase failed (not already-owned):', purchaseErr);
         showToast('⚠️ ' + (msg || 'Purchase failed'));
+        setIAPButtonState('ready', _rcReadyLabel);
         return;
       }
       console.log('[RC] already subscribed — skipping sheet, checking entitlements');
@@ -1876,6 +1907,7 @@
       _syncingSubscription = false;
       hideSyncingPaywall();
       showToast('Purchase received — access is still syncing. Tap "Refresh status" in a moment');
+      setIAPButtonState('ready', _rcReadyLabel);
       openPaywall('upgrade');
     }, 25000);
 
@@ -1919,6 +1951,7 @@
         console.warn('[RC] purchase made but server entitlement not confirmed yet');
         try { swhFunnel('auth_error', 'iap_sync_pending'); } catch(_) {}
         showToast('Purchase received — access is still syncing. Tap "Refresh status" in a moment');
+      setIAPButtonState('ready', _rcReadyLabel);
         openPaywall('upgrade');
       }
     } finally {
@@ -4094,17 +4127,20 @@
         }
         console.log('[onAuth] final route — userPlan:', userPlan, 'userPhone:', !!userPhone);
         if (userPlan !== 'scorecard' && userPlan !== 'pro') {
-          console.log('[onAuth] no active plan — showing paywall/upgrade');
-          document.getElementById('bottom-nav').style.display='none';
+          console.log('[onAuth] no active plan — browse-dont-save');
           if (isNativeEarly) {
-            // Signed-in iOS user with no paid plan — go straight to the plan paywall.
-            // screen-upgrade is the unauthenticated landing; openPaywall has the Stripe CTA.
+            // Native routing normally lives in bootNative; keep the existing
+            // home+paywall behavior for any onAuth-path native case.
+            document.getElementById('bottom-nav').style.display='none';
             showScreen('home');
             setTimeout(() => openPaywall('upgrade'), 400);
-          } else {
-            renderUpgradeScreen();
-            showScreen('upgrade');
+            return;
           }
+          // Web browse-don't-save (Austen 2026-07-17): free/expired users land IN
+          // the app and browse read-only; requirePaid gates every save into the
+          // subscribe sheet. Mandatory profile first, same as paid users. No boot wall.
+          if (!userProfileOk) { prepOnboarding(); showScreen('onboarding'); }
+          else showLoggedIn();
           return;
         }
         console.log('[onAuth] navigating to', userPhone ? 'showLoggedIn' : 'onboarding');
