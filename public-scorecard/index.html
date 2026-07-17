@@ -638,10 +638,18 @@
         history = (me.history || []).map(d => (typeof _rehydrateDay === 'function' ? _rehydrateDay(d) : d)).filter(d => (d.totalPts || 0) > 0);
       } catch(e) { console.warn('[boot] history rehydrate failed:', e.message); history = []; }
       lagHistory = me.lagHistory || [];
-      // Trial surfacing: getMe maps an active trial to plan 'scorecard' and
-      // exposes the raw personalPlan; the billing row shows the end date.
-      window._trialInfo = (me.personalPlan === 'trial' && userPlan === 'scorecard')
-        ? { endsAt: me.trialEndsAt || null, active: true } : null;
+      // Entitlement contract (frozen 2026-07-17): gate access on me.plan ONLY —
+      // the server computes it as the union of active rails (apple/stripe/trial,
+      // planOverride wins). me.entitlement PRESENT means the reconciled backend
+      // is deployed; its presence is also the feature flag that arms the IAP
+      // subscribe UI, which makes the CTO's sequencing rule self-enforcing.
+      window._entitlement = me.entitlement || null;
+      window._entContract = !!me.entitlement;
+      window._trialInfo = me.entitlement
+        ? ((String(me.entitlement.source || '').includes('trial') && me.entitlement.trialEndsAt)
+            ? { endsAt: me.entitlement.trialEndsAt, active: true } : null)
+        : ((me.personalPlan === 'trial' && userPlan === 'scorecard')  // pre-contract fallback
+            ? { endsAt: me.trialEndsAt || null, active: true } : null);
       weeklyGoal = me.settings.weeklyGoal || 150;
       userPhone = me.settings.phone || '';
       userProfileOk = computeProfileOk(me.settings || {});
@@ -864,6 +872,12 @@
       document.getElementById('paywall-waitlist').style.display = 'none';
       document.getElementById('paywall-signin').style.display = 'none';
       document.getElementById('paywall-success').style.display = 'none';
+      // Dual-billing: arm the IAP subscribe block only when the reconciled
+      // backend is live (entitlement contract present in getMe). Offerings
+      // load reveals #iap-block via setIAPButtonState('ready').
+      if (isNativeEarly && window._entContract && !_rcOfferingsLoaded) {
+        loadRCOfferings().catch(() => {});
+      }
     }
   };
   window.closePaywall = function() { document.getElementById('paywall-modal').classList.remove('open'); };
@@ -1393,6 +1407,12 @@
       else sub.textContent = 'No active subscription';
       return;
     }
+    if (window._entitlement && window._entitlement.doubleBilling) {
+      // Both rails active (CTO ruling: never auto-cancel; surface support path).
+      txt.textContent = 'Two active subscriptions';
+      sub.textContent = 'Manage in your Apple ID settings or on the web to keep just one';
+      return;
+    }
     if (window._trialInfo && window._trialInfo.active) {
       txt.textContent = 'Free trial';
       sub.textContent = 'Full access · ends ' + (window._trialInfo.endsAt ? new Date(window._trialInfo.endsAt).toLocaleDateString() : 'soon');
@@ -1518,10 +1538,15 @@
   }
 
   // ─────────────────────────────────────────────────────────────────────────
-  // LEGACY IAP (RevenueCat) — retired 2026-07, Stripe is the only billing rail.
-  // Nothing below here is invoked anymore (UI buttons and boot calls removed).
-  // Kept temporarily so legacy references can't break; delete this whole block
-  // once the RevenueCat account is closed and legacy IAP subs have migrated.
+  // REVENUECAT — REVIVED 2026-07-17 (CTO dual-billing ruling; un-park, not
+  // rebuild). Role is PURCHASE + RESTORE ONLY: the client NEVER computes
+  // entitlement from RC data (binding). The RC webhook writes source-scoped
+  // apple.* fields server-side and getMe recomputes plan; after a purchase
+  // the client polls getMe (_pollServerEntitlement) until access reflects.
+  // The subscribe UI arms only when getMe carries the entitlement contract
+  // (window._entContract) — so it cannot go live before the reconciled
+  // backend is deployed. reconcileEntitlementsFromRC/rcSetUser below remain
+  // DEAD (client-side entitlement writes are banned).
   // ─────────────────────────────────────────────────────────────────────────
   async function setupRevenueCat(uid) {
     if (!isNativeEarly) return; // web path uses Stripe, not RC
@@ -1545,8 +1570,7 @@
       );
       _rcConfigured = true;
       console.log('[RC] configure complete');
-      // Pull current entitlements once — non-blocking, best-effort
-      reconcileEntitlementsFromRC().catch(() => {});
+      // (No client-side entitlement pull — server computes access; CTO binding.)
     } catch (e) {
       console.warn('[RC] setup failed (non-fatal):', e && e.message);
       // _rcConfigured stays false — IAP disabled for this session, app still boots
@@ -1613,8 +1637,9 @@
     const sub = document.getElementById('iap-btn-sub');
     if (state === 'ready') {
       btn.disabled = false; btn.style.opacity = '1'; btn.style.cursor = 'pointer';
-      if (lbl) lbl.textContent = label || 'Start 30-day free trial';
-      if (sub) sub.textContent = 'Free for 2 months, then $9.99/month. Cancel anytime.';
+      if (lbl) lbl.textContent = label || 'Subscribe';
+      if (sub) sub.textContent = 'Keeps every contact, point, and streak. Cancel anytime.';
+      const blk = document.getElementById('iap-block'); if (blk) blk.style.display = 'block';
     } else if (state === 'loading') {
       btn.disabled = true; btn.style.opacity = '0.6'; btn.style.cursor = 'default';
       if (lbl) lbl.textContent = 'Loading…';
@@ -1779,8 +1804,33 @@
     }
   }
 
+  // Server-authoritative entitlement poll (CTO binding: client never computes
+  // access from RC data). After purchase/restore the RC webhook writes
+  // source-scoped apple.* fields and recomputes plan; we poll getMe with
+  // bounded waits until access reflects. Returns true when plan goes paid.
+  async function _pollServerEntitlement(waits) {
+    const schedule = waits || [0, 2000, 3000, 4000, 5000];
+    for (let i = 0; i < schedule.length; i++) {
+      if (schedule[i]) await new Promise(r => setTimeout(r, schedule[i]));
+      try {
+        const me = await NativeAPI.call('getMe', null, { timeout: 8000 });
+        userPlan = me.plan || 'free';
+        window._entitlement = me.entitlement || null;
+        window._entContract = !!me.entitlement;
+        if (userPlan === 'scorecard' || userPlan === 'pro') return true;
+      } catch(e) { console.warn('[RC] entitlement poll error:', e.message); }
+    }
+    return false;
+  }
+
   window.iosPurchase = async function(plan) {
     if (!isNativeEarly) { showToast('IAP only available on iOS'); return; }
+    if (!window._entContract) {
+      // Reconciled backend not live yet — subscribe UI should not even be
+      // visible; guard anyway (sequencing rule).
+      showToast('Subscriptions aren\'t available just yet. Try again soon');
+      return;
+    }
     if (!_rcLoadedPackage) {
       await loadRCOfferings();
       if (!_rcLoadedPackage) { showToast('⚠️ ' + (_rcLoadError || 'Subscription not available')); return; }
@@ -1821,86 +1871,58 @@
     showSyncingPaywall();
     console.log('[RC] syncing state entered, alreadyOwned=', alreadyOwned, '_rcConfigured=', _rcConfigured);
 
-    // Hard 13s timeout — if RC SDK hangs for any reason, unblock the user
+    // Hard 25s timeout — if anything hangs (SDK, network, webhook latency),
+    // unblock the user with a recoverable state, never a dead overlay.
     let hardTimeoutFired = false;
     const hardTimeout = setTimeout(() => {
       hardTimeoutFired = true;
-      console.warn('[RC] 13s hard timeout fired — forcing cleanup');
+      console.warn('[RC] 25s hard timeout fired — forcing cleanup');
       _syncingSubscription = false;
       hideSyncingPaywall();
-      showToast('⚠️ Could not verify. Please close and reopen the app.');
+      showToast('Purchase received — access is still syncing. Tap "Refresh status" in a moment');
       openPaywall('upgrade');
-    }, 13000);
+    }, 25000);
 
     try {
-      // ── Step 3: check if purchasePackage result already contains entitlement
-      let entitlementConfirmed = false;
+      // Log what the SDK saw (diagnostics only — server is the authority).
       if (purchaseCustomerInfo) {
         const active = purchaseCustomerInfo.entitlements && purchaseCustomerInfo.entitlements.active;
-        const has = k => active && Object.prototype.hasOwnProperty.call(active, k);
-        if (has('scorecard') || has('crm') || has('pro')) {
-          console.log('[RC] active entitlement present in purchasePackage result — reconciling');
-          entitlementConfirmed = await reconcileEntitlementsFromRC();
-        }
+        console.log('[RC] SDK-side active entitlements (informational):', active ? Object.keys(active) : 'none');
       }
 
-      // ── Step 4: full reconcile (covers alreadyOwned path + webhook-only cases)
+      // ── Server-authoritative verification: poll getMe until the RC webhook
+      // has written apple.* and plan recomputes. (~14s bounded.)
+      let entitlementConfirmed = await _pollServerEntitlement();
+
+      // ── restorePurchases fallback (alreadyOwned / receipt lag), then one
+      // shorter poll round.
       if (!entitlementConfirmed && !hardTimeoutFired) {
-        console.log('[RC] reconcileEntitlementsFromRC — attempt 0');
-        entitlementConfirmed = await reconcileEntitlementsFromRC();
-        console.log('[RC] attempt 0 result:', entitlementConfirmed);
-      }
-
-      // ── Step 5: retry loop (RC may need a moment to process the receipt) ──
-      for (let attempt = 1; attempt <= 4 && !entitlementConfirmed && !hardTimeoutFired; attempt++) {
-        console.log('[RC] retry', attempt, 'of 4 — waiting 1.5s');
-        await new Promise(r => setTimeout(r, 1500));
-        entitlementConfirmed = await reconcileEntitlementsFromRC();
-        console.log('[RC] retry', attempt, 'result:', entitlementConfirmed);
+        console.log('[RC] poll exhausted — trying restorePurchases as fallback');
+        try {
+          await Purchases.restorePurchases();
+          entitlementConfirmed = await _pollServerEntitlement([0, 2000, 3000]);
+        } catch (restoreErr) {
+          console.warn('[RC] restorePurchases failed:', restoreErr && restoreErr.message);
+        }
       }
 
       if (hardTimeoutFired) { console.warn('[RC] hard timeout already fired — exiting'); return; }
       clearTimeout(hardTimeout);
       hideSyncingPaywall();
-      console.log('[RC] syncing done — entitlementConfirmed:', entitlementConfirmed, 'currentUser:', !!(currentUser), 'userPlan:', userPlan);
+      console.log('[RC] syncing done — confirmed:', entitlementConfirmed, 'userPlan:', userPlan);
 
-      // ── Step 6: navigate on success ───────────────────────────────────────
-      if (entitlementConfirmed && currentUser) {
-        showToast(alreadyOwned ? '✅ Subscription verified!' : '✅ Subscription active!');
-        setTimeout(() => {
-          document.getElementById('paywall-modal').classList.remove('open');
-          if (!userProfileOk) { prepOnboarding(); showScreen('onboarding'); }
-          else showLoggedIn();
-        }, 600);
-        return;
-      }
       if (entitlementConfirmed) {
-        // RC confirmed but no Firebase session yet — sign in to link
-        showToast('✅ Purchase confirmed! Sign in to access your account.');
-        setTimeout(() => openPaywall('signin'), 1200);
-        return;
-      }
-
-      // ── Step 7: restorePurchases fallback ─────────────────────────────────
-      console.log('[RC] reconcile exhausted — trying restorePurchases as fallback');
-      try {
-        await Purchases.restorePurchases();
-        console.log('[RC] restorePurchases resolved — reconciling again');
-        entitlementConfirmed = await reconcileEntitlementsFromRC();
-        console.log('[RC] post-restore reconcile result:', entitlementConfirmed);
-      } catch (restoreErr) {
-        console.warn('[RC] restorePurchases failed:', restoreErr && restoreErr.message);
-      }
-      if (entitlementConfirmed && currentUser) {
-        showToast('✅ Subscription restored!');
+        showToast(alreadyOwned ? '✅ Subscription verified!' : '✅ Subscription active!');
+        try { swhFunnel('signup_attempt', 'ios_iap_success'); } catch(_) {}
         setTimeout(() => {
           document.getElementById('paywall-modal').classList.remove('open');
           if (!userProfileOk) { prepOnboarding(); showScreen('onboarding'); }
           else showLoggedIn();
         }, 600);
       } else {
-        console.warn('[RC] all verification paths exhausted');
-        showToast('⚠️ Could not verify. Please close and reopen the app.');
+        console.warn('[RC] purchase made but server entitlement not confirmed yet');
+        try { swhFunnel('auth_error', 'iap_sync_pending'); } catch(_) {}
+        showToast('Purchase received — access is still syncing. Tap "Refresh status" in a moment');
         openPaywall('upgrade');
       }
     } finally {
@@ -1911,15 +1933,24 @@
   };
 
   // Restore purchases — for users who reinstalled or are on a new device.
-  // Apple requires this be available somewhere in the app.
+  // Apple requires this be available wherever purchases are offered.
   window.iosRestorePurchases = async function() {
     if (!isNativeEarly) return;
-    if (!_rcConfigured) { showToast('Purchases not ready'); return; }
     try {
+      if (!_rcConfigured) await loadRCOfferings();
       const Purchases = window.Capacitor.Plugins.Purchases;
+      if (!Purchases || !_rcConfigured) { showToast('⚠️ Purchases not ready'); return; }
+      showToast('⏳ Restoring purchases…');
       await Purchases.restorePurchases();
-      await reconcileEntitlementsFromRC();
-      showToast('✅ Purchases restored');
+      const ok = await _pollServerEntitlement([0, 2000, 3000, 4000]);
+      if (ok) {
+        showToast('✅ Subscription restored');
+        document.getElementById('paywall-modal').classList.remove('open');
+        if (!userProfileOk) { prepOnboarding(); showScreen('onboarding'); }
+        else showLoggedIn();
+      } else {
+        showToast('No active subscription found for this Apple ID');
+      }
     } catch (e) {
       console.error('[RC] restore failed:', e);
       showToast('⚠️ ' + (e.message || 'Could not restore'));
@@ -5556,12 +5587,28 @@
         <div style="font-size:13px;color:rgba(255,255,255,0.85);margin-top:4px;">Then $10/month. Cancel anytime.</div>
       </div>
 
-      <!-- NATIVE iOS: 3.1.3(f) free stand-alone companion app (adopted 2026-07-15).
-           NO purchasing in the app, NO pricing, NO purchase calls-to-action — the
-           app only reflects subscription state. Purchases happen on the web; the
-           appStateChange listener re-checks the plan when the app resumes. -->
+      <!-- NATIVE iOS: dual-billing (CTO ruled 2026-07-17). The IAP subscribe
+           block below is hidden until BOTH gates pass: getMe carries the
+           entitlement contract (window._entContract — i.e. the reconciled
+           backend is deployed) AND RC offerings load (setIAPButtonState
+           reveals it on 'ready'). Until then this panel renders the neutral
+           subscription-state view. Price comes from the RC offering
+           (price parity with web, no intro offer — CTO bindings). -->
+      <div id="iap-block" style="display:none;margin:4px 0 2px;">
+        <button id="iap-subscribe-btn" onclick="iosPurchase('scorecard')" disabled
+          style="width:100%;padding:18px 20px;background:linear-gradient(135deg,var(--gold),#b8252f);border:none;border-radius:14px;font-family:'DM Sans',sans-serif;cursor:default;text-align:left;display:flex;align-items:center;gap:14px;box-shadow:0 4px 18px rgba(230,57,70,0.35);opacity:0.6;box-sizing:border-box;">
+          <div style="font-size:24px;">⚡</div>
+          <div style="flex:1;">
+            <div id="iap-btn-label" style="font-size:15px;font-weight:800;color:#fff;">Loading…</div>
+            <div id="iap-btn-sub" style="font-size:12px;color:rgba(255,255,255,0.9);line-height:1.4;margin-top:2px;"></div>
+          </div>
+          <div style="color:#fff;font-size:18px;font-weight:800;">→</div>
+        </button>
+        <button onclick="iosRestorePurchases()" style="width:100%;margin-top:8px;background:transparent;border:none;font-size:12px;font-weight:600;color:rgba(255,255,255,0.5);cursor:pointer;padding:8px;text-decoration:underline;">Restore Purchases</button>
+        <div style="margin-top:4px;text-align:center;font-size:11px;color:rgba(255,255,255,0.3);line-height:1.6;">Subscription auto-renews monthly until canceled in your Apple ID settings.</div>
+      </div>
 
-      <!-- Start free trial → Stripe Checkout (Scorecard $10/mo). WEB ONLY per 3.1.3(f). -->
+      <!-- Start free trial → Stripe Checkout (Scorecard $10/mo). WEB ONLY. -->
       <button class="web-only" onclick="startUpgrade('scorecard')" style="width:100%;padding:15px;background:linear-gradient(135deg,var(--gold),#b8252f);border:none;border-radius:14px;font-family:'DM Sans',sans-serif;font-size:15px;font-weight:800;color:#fff;cursor:pointer;box-shadow:0 4px 18px rgba(230,57,70,0.35);">Start free trial →</button>
       <button onclick="showSignInForm()" style="width:100%;margin-top:10px;padding:14px;background:transparent;border:1.5px solid rgba(255,255,255,0.18);border-radius:14px;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:600;color:rgba(255,255,255,0.85);cursor:pointer;">Already a member? Sign in</button>
       <button class="native-only" onclick="recheckPlanFromServer()" style="width:100%;margin-top:8px;background:transparent;border:none;font-size:12px;font-weight:600;color:rgba(255,255,255,0.5);cursor:pointer;padding:8px;text-decoration:underline;">Already subscribed? Refresh status</button>
