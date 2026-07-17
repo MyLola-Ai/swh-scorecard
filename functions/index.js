@@ -73,6 +73,121 @@ const STRIPE_PRICES = {
   team_crm:         'price_1TZfBe5dEXTl1F5T5vGF3vum',  // Team CRM, Volume: 1-2 @ $25, 3-9 @ $20, 10+ @ $15
 };
 const TEAM_MIN_SEATS = 3;
+
+// ===== Entitlement reconciliation (dual-billing, CTO-ruled 2026-07-16) =====
+// A single authoritative `plan` field can't survive two billing rails: an Apple
+// EXPIRATION or a Stripe cancel would stomp `plan:'free'` over a still-active
+// sibling sub or an unexpired trial (last-writer-wins). Fix: each rail writes
+// SOURCE-SCOPED state (apple.*, stripe.*) + the top-level trial fields; the
+// authoritative `plan` is a server-MAINTAINED materialized view recomputed from
+// the union on every write, and getMe computes it live at read time. The client
+// never computes entitlement — it reads `plan`. Backward-compatible: docs with
+// no apple.*/stripe.* fall back to the exact legacy resolution.
+const TIER_RANK = { free: 0, scorecard: 1, pro: 2 };
+const ENTITLEMENT_ACTIVE = { active: 1, trialing: 1, past_due: 1 }; // past_due = grace, keep access
+
+function computeEntitlement(u) {
+  u = u || {};
+  const now = Date.now();
+  if (u.planOverride && TIER_RANK[u.planOverride] !== undefined) {
+    return { plan: u.planOverride, entitlement: { source: 'override', doubleBilling: false, trialEndsAt: null, currentPeriodEnd: null, cancelAtPeriodEnd: false } };
+  }
+  const trialEndsAt = (u.trial && u.trial.endsAt) || u.trialEndsAt || null;
+  const trialActive = !!(trialEndsAt && new Date(trialEndsAt).getTime() > now);
+  const hasScoped = !!(u.apple || u.stripe);
+
+  if (!hasScoped) {
+    // Legacy doc — preserve exact current behavior.
+    let plan = u.plan || 'free';
+    if (plan === 'trial') plan = trialActive ? 'scorecard' : 'free';
+    return { plan, entitlement: {
+      source: (plan === 'free' || plan == null) ? (trialActive ? 'trial' : 'none') : 'legacy',
+      doubleBilling: false,
+      trialEndsAt: trialActive ? trialEndsAt : null,
+      currentPeriodEnd: u.currentPeriodEnd || null,
+      cancelAtPeriodEnd: !!u.cancelAtPeriodEnd,
+    } };
+  }
+
+  const appleActive = !!(u.apple && ENTITLEMENT_ACTIVE[u.apple.status]);
+  const stripeActive = !!(u.stripe && ENTITLEMENT_ACTIVE[u.stripe.status]);
+  const sources = [];
+  if (appleActive) sources.push({ src: 'apple', tier: u.apple.tier || 'scorecard', cpe: u.apple.currentPeriodEnd || null, cape: !!u.apple.cancelAtPeriodEnd });
+  if (stripeActive) sources.push({ src: 'stripe', tier: u.stripe.tier || 'scorecard', cpe: u.stripe.currentPeriodEnd || null, cape: !!u.stripe.cancelAtPeriodEnd });
+  if (trialActive) sources.push({ src: 'trial', tier: 'scorecard', cpe: null, cape: false });
+
+  let plan = 'free', winner = null;
+  for (const s of sources) if ((TIER_RANK[s.tier] || 0) > (TIER_RANK[plan] || 0)) { plan = s.tier; winner = s; }
+  if (!winner && sources.length) winner = sources[0];
+  return { plan, entitlement: {
+    source: sources.map((s) => s.src).join('+') || 'none',
+    doubleBilling: appleActive && stripeActive,
+    trialEndsAt: trialActive ? trialEndsAt : null,
+    currentPeriodEnd: winner ? winner.cpe : null,
+    cancelAtPeriodEnd: winner ? winner.cape : false,
+  } };
+}
+
+// Effective paid plan for server-side write gating (browse-don't-save backstop).
+// Same resolution getMe returns: personal computeEntitlement + team upgrade.
+// Never throws — a lookup failure resolves to the personal plan (fail-open to
+// the personal entitlement, never fail-closed against a paying user).
+async function resolveEffectivePlan(uid, userData) {
+  let plan = computeEntitlement(userData || {}).plan;
+  if (userData && userData.teamId) {
+    try {
+      const t = await db.collection('teams').doc(userData.teamId).get();
+      if (t.exists) {
+        const team = t.data();
+        const active = team.active === true || ['active', 'trialing', 'comp'].includes(team.subscriptionStatus);
+        if (active) {
+          const teamProduct = team.plan === 'team_crm' ? 'pro' : 'scorecard';
+          if ((TIER_RANK[teamProduct] || 0) > (TIER_RANK[plan] || 0)) plan = teamProduct;
+        }
+      }
+    } catch (_) { /* keep personal plan */ }
+  }
+  return plan;
+}
+
+// Write-endpoint gate: block metered logging for free/expired users so the
+// browse-don't-save model holds against a tampered/dev-tools client (the app
+// already gates via requirePaid; this is the server backstop). Account config
+// (saveSettings) is deliberately NOT gated — onboarding writes profile there.
+async function denyIfUnpaid(uid, res) {
+  try {
+    const snap = await db.collection('users').doc(uid).get();
+    const plan = await resolveEffectivePlan(uid, snap.exists ? snap.data() : {});
+    if (plan === 'free') {
+      res.status(402).json({ error: 'subscription_required', code: 'PAYWALL' });
+      return true;
+    }
+  } catch (e) {
+    // On a lookup error, fail OPEN (don't block a legit user on a transient read fault).
+    console.warn('[denyIfUnpaid] lookup failed, allowing write:', e.message);
+  }
+  return false;
+}
+
+// Webhook write path: merge a rail's source-scoped patch, then recompute the
+// authoritative `plan` mirror from the FULL union in one transaction so a
+// single rail's event can never stomp another rail's access.
+async function applySourceUpdate(uid, sourceKey, sourcePatch) {
+  const ref = db.collection('users').doc(uid);
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    const u = snap.exists ? snap.data() : {};
+    const mergedSource = { ...(u[sourceKey] || {}), ...sourcePatch, updatedAt: new Date().toISOString() };
+    const merged = { ...u, [sourceKey]: mergedSource };
+    const { plan, entitlement } = computeEntitlement(merged);
+    tx.set(ref, {
+      [sourceKey]: mergedSource,
+      plan,
+      doubleBilling: entitlement.doubleBilling,
+      billingUpdatedAt: new Date().toISOString(),
+    }, { merge: true });
+  });
+}
 const STRIPE_TRIAL_DAYS = 60;
 const STRIPE_RETURN_BASE = 'https://swh-scoreboard.web.app'; // post-checkout return + portal return
 const LANDING_BASE = 'https://stopwastinghandshakes.com';
@@ -258,13 +373,10 @@ exports.getMe = onRequest({ cors: true }, async (req, res) => {
     //   - team_scorecard: Scorecard only (effective = 'scorecard')
     //   - team_crm:       Scorecard + CRM (effective = 'pro')
     // Existing teams created before this change default to team_scorecard.
-    let effectivePlan = userData.plan || 'free';
-    // No-card web trial: unexpired trial = full scorecard access; expired = free
-    // (paywall). Mapping lives HERE so every native surface (bootNative,
-    // recheckPlanFromServer, foreground re-checks) inherits it via me.plan.
-    if (effectivePlan === 'trial') {
-      effectivePlan = (userData.trialEndsAt && new Date(userData.trialEndsAt) > new Date()) ? 'scorecard' : 'free';
-    }
+    // Personal entitlement computed live from the union of all billing rails
+    // (apple.*/stripe.*/trial) — never a single stomped field. Team upgrades layer on below.
+    const ent = computeEntitlement(userData);
+    let effectivePlan = ent.plan;
     let teamInfo = null;
     if (userData.teamId) {
       const teamSnap = await db.collection('teams').doc(userData.teamId).get();
@@ -300,8 +412,9 @@ exports.getMe = onRequest({ cors: true }, async (req, res) => {
       uid,
       email: decoded.email || userData.email || '',
       plan: effectivePlan,
-      personalPlan: userData.plan || 'free', // raw personal plan for billing UI
-      trialEndsAt: userData.trialEndsAt || null,
+      personalPlan: userData.plan || 'free', // raw stored mirror — do NOT gate on this
+      entitlement: ent.entitlement,          // { source, doubleBilling, trialEndsAt, currentPeriodEnd, cancelAtPeriodEnd }
+      trialEndsAt: ent.entitlement.trialEndsAt || userData.trialEndsAt || null,
       team: teamInfo,
       dismissedAnnouncements: userData.dismissedAnnouncements || {},
       settings: {
@@ -338,6 +451,7 @@ exports.saveDay = onRequest({ cors: true }, async (req, res) => {
   try {
     const decoded = await requireAuth(req);
     const uid = decoded.uid;
+    if (await denyIfUnpaid(uid, res)) return; // browse-don't-save: free users can't log
     const { dateKey, counts, breakdown, totalPts, leadPts, lagPts, categoryPts, weekKey, monthKey, dateLabel } = req.body || {};
     if (!dateKey || typeof dateKey !== 'string') { res.status(400).json({ error: 'Missing dateKey' }); return; }
 
@@ -383,6 +497,7 @@ exports.saveLag = onRequest({ cors: true }, async (req, res) => {
   try {
     const decoded = await requireAuth(req);
     const uid = decoded.uid;
+    if (await denyIfUnpaid(uid, res)) return; // browse-don't-save: free users can't log
     const { dateKey, weekKey, monthKey, opportunities, referrals, dealsStarted, dealsCompleted } = req.body || {};
     if (!dateKey) { res.status(400).json({ error: 'Missing dateKey' }); return; }
     await db.collection('users').doc(uid).collection('lag').doc(dateKey).set({
@@ -579,6 +694,12 @@ exports.ensureWebTrial = onRequest({ cors: true, invoker: 'public' }, async (req
   try {
     const decoded = await requireAuth(req);
     const uid = decoded.uid;
+    // Origin tag so web-signup vs app-activation (incl. legacy free accounts
+    // adopting on their next iOS sign-in) can be segmented. Server stays the
+    // sole eligibility judge; this only labels the source.
+    let body = req.body; if (Buffer.isBuffer(body)) body = body.toString('utf8');
+    if (typeof body === 'string') { try { body = JSON.parse(body || '{}'); } catch (_) { body = {}; } }
+    const source = ['ios', 'android', 'web'].includes(body && body.source) ? body.source : 'web';
     const ref = db.collection('users').doc(uid);
     const out = await db.runTransaction(async (tx) => {
       const snap = await tx.get(ref);
@@ -597,8 +718,7 @@ exports.ensureWebTrial = onRequest({ cors: true, invoker: 'public' }, async (req
         plan: 'trial',
         trialStartedAt: now.toISOString(),
         trialEndsAt: ends.toISOString(),
-        // 'ios' = in-app registration (HEY-model flow); anything else = web.
-        trialSource: (req.body && req.body.source === 'ios') ? 'ios' : 'web',
+        trialSource: source, // robust-parsed above: 'ios' in-app activation, else 'web'
         email: u.email || decoded.email || '',
       }, { merge: true });
       return { adopted: true, reason: 'trial_started', plan: 'trial', trialEndsAt: ends.toISOString() };
@@ -630,15 +750,15 @@ const TRIAL_SPINE = [
     body: (s) => s
       ? `This week alone: ${s.totalPts} points across ${s.daysLogged} active day${s.daysLogged === 1 ? '' : 's'}${s.bestDay && s.bestDay.pts ? ', best day ' + s.bestDay.pts + ' points' : ''}. You're a ${s.tier.name}${s.streak > 1 ? ' on a ' + s.streak + '-week streak' : ''}. A month ago these conversations lived in your head. Now they're a system you can see. The next 30 days are where follow-through turns into referrals.`
       : `A month ago your networking lived in your head. Now it's a system you can see. The next 30 days are where follow-through turns into referrals. Open your Scorecard and look at your month: the points show exactly where the momentum is.`,
-    tryline: 'check your Wasted Handshakes list and revive ONE relationship this week.',
+    tryline: 'log a 1:1 or a follow-through this week. That is the move that turns a contact into a referral.',
     ctaText: 'See my month', ctaUrl: 'https://app.stopwastinghandshakes.com' },
   { key: 'd50', from: 50, to: 55,
     subject: "Don't break the streak you built",
     preheader: 'Ten days left on your trial.',
     heading: "You built something here. Don't let it stop.",
     body: (s) => s && s.totalPts > 0
-      ? `You've kept score for seven weeks${s.streak > 1 ? ', including a ' + s.streak + '-week logging streak' : ''}. That consistency is the whole game: relationships are built, not harvested, and your streak IS the building. Your trial ends in about 10 days. Subscribing keeps every contact, every point, and every streak exactly where they are.`
-      : `Your trial ends in about 10 days. Everything you've tracked stays exactly where it is when you subscribe: every contact, every point, every follow-through. The habit you started is the hard part. Keeping it costs less than one coffee meeting a month.`,
+      ? `You've kept score for seven weeks${s.streak > 1 ? ', including a ' + s.streak + '-week logging streak' : ''}. That consistency is the whole game: relationships are built, not harvested, and your streak IS the building. Your trial ends in about 10 days. Subscribing keeps every point, every activity, and every streak exactly where they are.`
+      : `Your trial ends in about 10 days. Everything you've tracked stays exactly where it is when you subscribe: every point, every streak, every follow-through. The habit you started is the hard part. Keeping it costs less than one coffee meeting a month.`,
     tryline: 'subscribe from Settings in about 60 seconds. Everything stays.',
     ctaText: 'Keep my Scorecard', ctaUrl: 'https://app.stopwastinghandshakes.com' },
   { key: 'd58', from: 58, to: 59,
@@ -646,7 +766,7 @@ const TRIAL_SPINE = [
     preheader: 'Last call. Everything stays if you subscribe.',
     heading: 'Two days left. Keep the scoreboard running.',
     body: () =>
-      `Your 60-day trial wraps up in about two days. After that the Scorecard locks until you subscribe, but nothing is deleted: your contacts, points, streaks, and follow-through history are all waiting. Subscribing takes about a minute from Settings, and you are only charged going forward. If SWH helped you stop wasting handshakes these two months, keep it in your corner.`,
+      `Your 60-day trial wraps up in about two days. After that the Scorecard locks until you subscribe, but nothing is deleted: your points, your streaks, and every activity you have logged are all waiting. Subscribing takes about a minute from Settings, and you are only charged going forward. If SWH helped you stop wasting handshakes these two months, keep it in your corner.`,
     tryline: 'open Settings and tap Subscribe. One minute, everything stays.',
     ctaText: 'Subscribe now', ctaUrl: 'https://app.stopwastinghandshakes.com' },
 ];
@@ -2652,11 +2772,12 @@ exports.stripeWebhook = onRequest({
         }
         const uid = await resolveUidFromSubscription(sub);
         if (uid) {
+          // Mark the STRIPE source canceled; the plan mirror drops to free only
+          // if no other rail (Apple/trial) is still active.
+          await applySourceUpdate(uid, 'stripe', { status: 'canceled', cancelAtPeriodEnd: false });
           await db.collection('users').doc(uid).set({
-            plan: 'free',
             subscriptionStatus: 'canceled',
             stripeSubscriptionId: null,
-            cancelAtPeriodEnd: false,
             updatedAt: new Date().toISOString(),
           }, { merge: true });
           console.log(`[stripeWebhook] subscription canceled uid=${uid}`);
@@ -2717,35 +2838,36 @@ async function mirrorSubscriptionToUser(sub) {
   // Personal subscription
   const uid = await resolveUidFromSubscription(sub);
   if (!uid) { console.warn('[mirrorSubscriptionToUser] no uid', sub.id); return; }
-  let plan = (sub.status === 'canceled' || sub.status === 'incomplete_expired')
-    ? 'free'
-    : (STRIPE_PRICE_TO_PLAN[priceId] || 'free');
-  // planOverride (manual comp/owner grants) always wins over billing-derived plan.
-  try {
-    const existing = await db.collection('users').doc(uid).get();
-    const override = existing.exists ? existing.data().planOverride : null;
-    if (override) plan = override;
-  } catch (_) { /* fall through with billing-derived plan */ }
+  // Source-scoped Stripe state; the plan mirror is recomputed from the union so
+  // a Stripe cancel never clobbers a live Apple sub or trial. Stripe statuses
+  // active/trialing/past_due count as access; canceled/incomplete_expired/unpaid
+  // don't (ENTITLEMENT_ACTIVE). planOverride wins inside computeEntitlement.
   const periodEndSec = sub.current_period_end || sub.trial_end || null;
   const trialEndSec = sub.trial_end || null;
+  await applySourceUpdate(uid, 'stripe', {
+    status: sub.status,
+    tier: STRIPE_PRICE_TO_PLAN[priceId] || 'scorecard',
+    subscriptionId: sub.id,
+    priceId,
+    currentPeriodEnd: periodEndSec ? new Date(periodEndSec * 1000).toISOString() : null,
+    cancelAtPeriodEnd: !!sub.cancel_at_period_end,
+  });
   await db.collection('users').doc(uid).set({
-    plan,
     billingSource: 'stripe',
     stripeCustomerId: sub.customer,
     stripeSubscriptionId: sub.id,
     stripePriceId: priceId,
     subscriptionStatus: sub.status,
-    currentPeriodEnd: periodEndSec ? new Date(periodEndSec * 1000).toISOString() : null,
     trialEnd: trialEndSec ? new Date(trialEndSec * 1000).toISOString() : null,
-    cancelAtPeriodEnd: !!sub.cancel_at_period_end,
     updatedAt: new Date().toISOString(),
   }, { merge: true });
-  console.log(`[mirrorSubscriptionToUser] uid=${uid} plan=${plan} status=${sub.status}`);
+  console.log(`[mirrorSubscriptionToUser] uid=${uid} stripeStatus=${sub.status} (plan mirror recomputed from union)`);
 
   // Mirror active/trialing pro subscriptions to myappointment-ai so the booking
   // surface unlocks immediately. Fire-and-forget — Stripe webhook must not fail
   // because of a cross-project side effect.
-  if (plan === 'pro' && (sub.status === 'active' || sub.status === 'trialing')) {
+  const stripeTier = STRIPE_PRICE_TO_PLAN[priceId] || 'scorecard';
+  if (stripeTier === 'pro' && (sub.status === 'active' || sub.status === 'trialing')) {
     syncApptPlan(uid, sub.id).catch(err =>
       console.warn('[mirrorSubscriptionToUser] appt sync failed (non-fatal):', err?.message ?? err)
     );
@@ -2841,54 +2963,41 @@ exports.revenueCatWebhook = onRequest({
       case 'PRODUCT_CHANGE':
       case 'UNCANCELLATION':
       case 'TRANSFER': {
-        // Active or re-activated subscription — set plan based on entitlement / product.
-        // planOverride (set manually for owners/comps) always wins: a $10 Scorecard
-        // renewal must never downgrade an account that's been comp'd to pro.
-        let plan = resolvePlanFromRcEvent(event);
-        try {
-          const existing = await db.collection('users').doc(uid).get();
-          const override = existing.exists ? existing.data().planOverride : null;
-          if (override) plan = override;
-        } catch (_) { /* fall through with resolved plan */ }
+        // Active or re-activated subscription. Source-scoped write; the plan
+        // mirror is recomputed from the union so a Stripe sub or live trial on
+        // the same identity is never clobbered. planOverride still wins inside
+        // computeEntitlement, so no need to special-case comps here.
         const periodEndSec = event.expiration_at_ms ? Math.floor(event.expiration_at_ms / 1000) : null;
-        await db.collection('users').doc(uid).set({
-          plan,
-          billingSource: 'apple',
-          appleProductId: event.product_id || null,
-          appleOriginalTransactionId: event.original_transaction_id || null,
-          revenueCatAppUserId: uid,
-          subscriptionStatus: 'active',
+        await applySourceUpdate(uid, 'apple', {
+          status: 'active',
+          tier: resolvePlanFromRcEvent(event),
+          productId: event.product_id || null,
+          originalTransactionId: event.original_transaction_id || null,
           currentPeriodEnd: periodEndSec ? new Date(periodEndSec * 1000).toISOString() : null,
           cancelAtPeriodEnd: false,
-          updatedAt: new Date().toISOString(),
-        }, { merge: true });
+        });
+        // Legacy mirror fields other tooling still reads.
+        await db.collection('users').doc(uid).set({ billingSource: 'apple', revenueCatAppUserId: uid, subscriptionStatus: 'active', updatedAt: new Date().toISOString() }, { merge: true });
         break;
       }
       case 'CANCELLATION': {
-        // User canceled — they keep access until expiration. Mark flag, don't downgrade plan yet.
-        await db.collection('users').doc(uid).set({
-          subscriptionStatus: 'canceled',
-          cancelAtPeriodEnd: true,
-          updatedAt: new Date().toISOString(),
-        }, { merge: true });
+        // Auto-renew off — access CONTINUES until expiration, so keep the source
+        // active and only flag cancelAtPeriodEnd.
+        await applySourceUpdate(uid, 'apple', { status: 'active', cancelAtPeriodEnd: true });
+        await db.collection('users').doc(uid).set({ subscriptionStatus: 'canceled', updatedAt: new Date().toISOString() }, { merge: true });
         break;
       }
       case 'EXPIRATION': {
-        // Subscription actually ended — downgrade to free.
-        await db.collection('users').doc(uid).set({
-          plan: 'free',
-          subscriptionStatus: 'expired',
-          cancelAtPeriodEnd: false,
-          updatedAt: new Date().toISOString(),
-        }, { merge: true });
+        // Sub actually ended — mark the APPLE source expired. The mirror drops to
+        // free ONLY if no other rail (Stripe/trial) is still active.
+        await applySourceUpdate(uid, 'apple', { status: 'expired', cancelAtPeriodEnd: false });
+        await db.collection('users').doc(uid).set({ subscriptionStatus: 'expired', updatedAt: new Date().toISOString() }, { merge: true });
         break;
       }
       case 'BILLING_ISSUE': {
-        // Apple couldn't charge — grace period. Keep access for now, flag status.
-        await db.collection('users').doc(uid).set({
-          subscriptionStatus: 'past_due',
-          updatedAt: new Date().toISOString(),
-        }, { merge: true });
+        // Apple couldn't charge — grace period keeps access (past_due is active).
+        await applySourceUpdate(uid, 'apple', { status: 'past_due' });
+        await db.collection('users').doc(uid).set({ subscriptionStatus: 'past_due', updatedAt: new Date().toISOString() }, { merge: true });
         break;
       }
       case 'NON_RENEWING_PURCHASE':
@@ -3968,11 +4077,9 @@ exports.adminInspectUser = onRequest({ cors: true }, async (req, res) => {
       ownedTeams,
       subcollectionCounts,
       // Final entitlement check — what `getMe` would return for this user
+      entitlement: computeEntitlement(userData || {}).entitlement, // reconciler view for support
       effectivePlan: (() => {
-        const personalRaw = (userData && userData.plan) || 'free';
-        const personalPlan = personalRaw === 'trial'
-          ? ((userData.trialEndsAt && new Date(userData.trialEndsAt) > new Date()) ? 'scorecard' : 'free')
-          : personalRaw;
+        const personalPlan = computeEntitlement(userData || {}).plan;
         if (!team) return personalPlan;
         const teamActive = team.active === true ||
           team.subscriptionStatus === 'active' ||
@@ -7535,7 +7642,7 @@ function _buildWelcomeHtml(firstName, iosAppUrl, unsubUrl, prefsUrl) {
     <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:0 0 24px;"><tr>
       <td style="border-left:3px solid #E63946;background:#fcf3f4;padding:12px 16px;border-radius:0 6px 6px 0;">
         <p style="margin:0 0 7px;font:400 14px/1.55 Arial,sans-serif;color:#444;"><span style="font-weight:700;color:#E63946;">1.</span> Log today's points. Every conversation, follow-through, and meeting counts.</p>
-        <p style="margin:0 0 7px;font:400 14px/1.55 Arial,sans-serif;color:#444;"><span style="font-weight:700;color:#E63946;">2.</span> Add the people you met this week. Do not let those handshakes go to waste.</p>
+        <p style="margin:0 0 7px;font:400 14px/1.55 Arial,sans-serif;color:#444;"><span style="font-weight:700;color:#E63946;">2.</span> Log the people you met this week. Every new contact you add is 2 points toward your goal.</p>
         <p style="margin:0;font:400 14px/1.55 Arial,sans-serif;color:#444;"><span style="font-weight:700;color:#E63946;">3.</span> Set your weekly goal. 150 points is the sweet spot for most networkers.</p>
       </td></tr></table>
     <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
@@ -7570,7 +7677,7 @@ ${appLine}
 
 Three moves to start strong:
 1. Log today's points. Every conversation, follow-through, and meeting counts.
-2. Add the people you met this week. Do not let those handshakes go to waste.
+2. Log the people you met this week. Every new contact you add is 2 points toward your goal.
 3. Set your weekly goal. 150 points is the sweet spot for most networkers.
 
 Open your Scorecard: https://app.stopwastinghandshakes.com
