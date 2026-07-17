@@ -231,6 +231,21 @@ matching the CRM's system activity.
 
 ## 10. Roadmap / open items
 
+**Update 2026-07-16 PM — IN-APP REGISTRATION (HEY model, Austen; supersedes login-only entry):**
+entry = Get Started (create in-app via Google/Apple/email) + Sign In. Bare first-time identities
+are ADOPTED at boot: `ensureWebTrial {source:'ios'}` attaches the no-card 60-day trial
+(one-trial-per-identity-EVER, subscription-history guard), profile collected in-app, user lands
+in the live app. 3.1.3(f) posture UNCHANGED: nothing sold, no pricing, no purchase CTAs — the
+HEY precedent (2020) is the compliance anchor. Boot hardening shipped with it: bootNative catch →
+recoverable "Something went wrong" screen (Try Again / Sign out) — kills the stranded-loader
+freeze class; malformed-data degradation; getMe now returns the mandatory-profile fields (their
+omission re-showed onboarding to complete users every boot). Tested: 10-state boot matrix against
+real boot code + live server e2e (probe account: signup→trial→contract→profile→one-trial-ever
+refusal→self-delete) ALL PASS. Landed f3c70e3 (note: carried the SWH thread's trial-email-spine
+WIP as a ride-along), functions + hosting deployed, device build installed. KNOWN GAP: swhFunnel
+no-ops on native, so boot_unhandled/boot_trial_attach_failed beacons don't emit from the app —
+console-only until the SWH thread opens the emitter to native auth_error events.
+
 **Update 2026-07-15 — registration + billing overhaul (ALL LANDED: c3222d2 carried the
 registration/Stripe work, 2c2e724 profile-first, 45ccfd0 login-only; deployed + synced):**
 the iOS app is **LOGIN-ONLY** (Austen). Native entry = single Sign In CTA + plain-text pointer
