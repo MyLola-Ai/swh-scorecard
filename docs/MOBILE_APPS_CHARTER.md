@@ -231,6 +231,19 @@ matching the CRM's system activity.
 
 ## 10. Roadmap / open items
 
+**SUBMITTED 2026-07-17: Scorecard 1.45 (32) is IN APP REVIEW.** The full arc shipped in one
+version: in-app registration (Get Started → 60-day no-card trial auto-attach → in-app profile),
+browse-don't-save for free/expired users, dual-billing IAP (subscribe sheet arms from the live
+entitlement contract; $9.99/mo, NO intro offer — verified none exists in ASC), boot hardening
+(recoverable error screen, no dead spinners), instant purchase-tap feedback, tier-true copy.
+Review fixtures: appreview@stopwastinghandshakes.com (active trial, full access) +
+appreview-expired@… (expired → exercises the subscribe flow); review notes rewritten for the
+current app. During review expect REAL revenueCatWebhook events from Apple's sandbox purchases.
+Known open: Austen's own sandbox purchase never completed (tester password) — the reviewer's
+purchase is the first full IAP loop. ASC finding: offer-code campaign ATX100 (free first YEAR,
+code-only) is live on Scorecard Monthly — Austen deciding keep/kill. Next: CRM port (boot
+hardening + IAP client + browse-don't-save) gated on Austen's CRM front-door call.
+
 **MODEL UPDATE 2026-07-17 PM — BROWSE-DON'T-SAVE (Austen; shipped 21b2800):** free/expired
 users land IN the app and browse everything; every write gates through requirePaid() → contextual
 subscribe sheet (IAP when the entitlement backend lights, Stripe on web). The hard boot wall is
