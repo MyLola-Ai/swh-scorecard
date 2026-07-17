@@ -633,8 +633,15 @@
       dismissedAnnouncements = me.dismissedAnnouncements || {};
       activities = normalizeActivities(me.activities || DEFAULT_ACTIVITIES.map(a => ({...a})));
       todayCounts = me.todayCounts || {};
-      history = (me.history || []).map(d => (typeof _rehydrateDay === 'function' ? _rehydrateDay(d) : d)).filter(d => (d.totalPts || 0) > 0);
+      // One malformed day doc must not strand the boot — degrade to empty.
+      try {
+        history = (me.history || []).map(d => (typeof _rehydrateDay === 'function' ? _rehydrateDay(d) : d)).filter(d => (d.totalPts || 0) > 0);
+      } catch(e) { console.warn('[boot] history rehydrate failed:', e.message); history = []; }
       lagHistory = me.lagHistory || [];
+      // Trial surfacing: getMe maps an active trial to plan 'scorecard' and
+      // exposes the raw personalPlan; the billing row shows the end date.
+      window._trialInfo = (me.personalPlan === 'trial' && userPlan === 'scorecard')
+        ? { endsAt: me.trialEndsAt || null, active: true } : null;
       weeklyGoal = me.settings.weeklyGoal || 150;
       userPhone = me.settings.phone || '';
       userProfileOk = computeProfileOk(me.settings || {});
@@ -693,15 +700,36 @@
         return;
       }
 
-      // ACCOUNT POLICY (Austen, 2026-07-15): a web-created account is required
-      // to get in. A "bare" account = the implicit-creation edge (first-time
-      // Google/Apple sign-in, never signed up on web): no profile, no plan,
-      // no legacy phone, no logged history. Legit older accounts have phone
-      // and/or history and fall through to the normal gates.
+      // IN-APP REGISTRATION (Austen, 2026-07-16 — the HEY model, supersedes the
+      // 2026-07-15 account-required gate): a bare account (first sign-in with
+      // no profile, plan, phone, or history) is ADOPTED on the spot. The
+      // server attaches the no-card trial — ensureWebTrial is transactional,
+      // one-trial-per-identity-EVER, and refuses accounts with subscription
+      // history — then the profile is collected in-app. Nothing is sold and
+      // no price is shown in the app (3.1.3(f) posture unchanged).
       const _paidPlan = (userPlan === 'scorecard' || userPlan === 'pro');
       if (!_paidPlan && !userProfileOk && !userPhone && (!history || history.length === 0)) {
-        console.log('[boot] bare account — showing account-required screen');
-        showAccountRequired();
+        console.log('[boot] bare account — in-app adoption (trial attach)');
+        let r = null;
+        try {
+          r = await NativeAPI.call('ensureWebTrial', { source: 'ios' }, { timeout: 10000 });
+        } catch(e) {
+          console.warn('[boot] trial attach failed:', e.message);
+          try { swhFunnel('auth_error', 'boot_trial_attach_failed'); } catch(_) {}
+          showBootError();
+          return;
+        }
+        console.log('[boot] adoption:', r && r.reason, '— plan:', r && r.plan);
+        if (r && r.adopted) {
+          userPlan = 'scorecard';
+          window._trialInfo = { endsAt: r.trialEndsAt || null, active: true };
+        } else {
+          // Not adoptable (trial already used / subscription history):
+          // treat as a normal unpaid account — profile first, then the
+          // plan screen via saveOnboardingProfile's exit routing.
+          userPlan = (r && (r.plan === 'scorecard' || r.plan === 'pro')) ? r.plan : 'free';
+        }
+        prepOnboarding(); showScreen('onboarding');
         return;
       }
 
@@ -728,12 +756,22 @@
       showLoggedIn();
       console.log('[boot] navigation complete');
 
+    } catch (e) {
+      // Any unexpected throw between auth and routing used to strand the
+      // loader forever (finally disarms the watchdog). Fail VISIBLY instead:
+      // loader off, recoverable error screen, structured beacon.
+      console.error('[boot] unhandled boot error:', e);
+      try { swhFunnel('auth_error', 'boot_unhandled'); } catch(_) {}
+      try { showLoader(false); } catch(_) {}
+      try { showBootError(); } catch(_) { try { showNativeSignIn(); } catch(__) {} }
     } finally {
       _bootDone = true;
       clearTimeout(_bootWatchdog);
       console.log('[boot] bootNative finally — watchdog cleared');
     }
   }
+  // Expose for the boot-error Try Again path (and tests).
+  window._bootNative = bootNative;
 
   // NOTE: actual bootstrap call is at the end of this module script, after all
   // window.X helper functions (renderActivities, renderHistory, etc.) have been
@@ -1059,7 +1097,7 @@
     const isUp = window._signMode === 'up';
     document.getElementById('signin-title').textContent = isUp ? 'Create your account' : 'Sign in';
     document.getElementById('signin-subtitle').textContent = isUp
-      ? 'New to SWH? Set up your account in 10 seconds. Cancel anytime.'
+      ? 'Set up your SWH account in about 10 seconds.'
       : 'Welcome back to Stop Wasting Handshakes.';
     document.getElementById('signin-submit-btn').textContent = isUp ? 'Create account →' : 'Sign in with email';
     document.getElementById('signin-forgot-btn').style.display = isUp ? 'none' : '';
@@ -1081,6 +1119,7 @@
   // login-only app (Austen, 2026-07-15): account creation is web-only, so
   // there is no sign-up entry point on native.
   window.openSignIn = function() { window._signMode = 'in'; applySignMode(); openPaywall('signin'); };
+  window.openSignUp = function() { window._signMode = 'up'; applySignMode(); openPaywall('signin'); };
 
   // Single submit dispatcher — routes to sign-in or sign-up based on mode.
   window.submitSigninForm = function() {
@@ -1089,12 +1128,6 @@
   };
 
   window.submitEmailSignUp = async function() {
-    if (isNativeEarly) {
-      // LOGIN-ONLY + 3.1.3(f): no account creation on iOS, no signup steering.
-      // The sign-up UI is web-only; this guard covers any residual path.
-      showToast('Accounts can\'t be created in the app. Sign in with your SWH account');
-      return;
-    }
     const email = (document.getElementById('signin-email').value || '').trim().toLowerCase();
     const password = document.getElementById('signin-password').value || '';
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { showToast('⚠️ Enter a valid email'); return; }
@@ -1103,7 +1136,28 @@
     const btn = document.getElementById('signin-submit-btn');
     btn.disabled = true; btn.textContent = 'Creating account…';
     try {
-      {
+      if (isNativeEarly) {
+        // IN-APP REGISTRATION (HEY model, 2026-07-16): create the account,
+        // attach the no-card trial server-side (one-trial-per-identity-ever),
+        // then collect the profile in-app. Nothing is sold in the app.
+        await NativeAPI.signUp(email, password);
+        currentUser = { uid: NativeAPI.uid, email: NativeAPI.email, displayName: '' };
+        demoMode = false;
+        activities = normalizeActivities(DEFAULT_ACTIVITIES.map(a => ({...a})));
+        todayCounts = {}; history = []; lagHistory = [];
+        let r = null;
+        try { r = await NativeAPI.call('ensureWebTrial', { source: 'ios' }, { timeout: 10000 }); }
+        catch(e) { console.warn('[signup] trial attach failed (profile continues):', e.message); }
+        if (r && r.adopted) {
+          userPlan = 'scorecard';
+          window._trialInfo = { endsAt: r.trialEndsAt || null, active: true };
+        } else {
+          userPlan = 'free';
+        }
+        closePaywall();
+        prepOnboarding();
+        showScreen('onboarding');
+      } else {
         const cred = await withTimeout(createUserWithEmailAndPassword(auth, email, password), 15000, 'createUserWithEmailAndPassword');
         // Initialize user doc so they have a /users/{uid} record from day 1.
         // `doc` + `setDoc` are already imported at the top of this module from
@@ -3800,6 +3854,23 @@
   }
   window.showNativeSignIn = showNativeSignIn;
 
+  // ── BOOT ERROR (recoverable) ── shown by bootNative's catch and the trial-
+  // attach failure path. Try Again re-runs the whole boot; Sign out escapes.
+  window.showBootError = function() {
+    try { showLoader(false); } catch(_) {}
+    try { document.getElementById('bottom-nav').style.display = 'none'; } catch(_) {}
+    ['screen-account-required','screen-upgrade'].forEach(id => {
+      try { const el = document.getElementById(id); if (el) el.style.display = 'none'; } catch(_) {}
+    });
+    try { document.getElementById('paywall-modal').classList.remove('open'); } catch(_) {}
+    try { document.getElementById('screen-boot-error').style.display = 'flex'; } catch(_) {}
+  };
+  window.retryBoot = function() {
+    try { document.getElementById('screen-boot-error').style.display = 'none'; } catch(_) {}
+    showNativeSignIn();
+    if (typeof window._bootNative === 'function') window._bootNative();
+  };
+
   // ── ACCOUNT-REQUIRED STATE (native) ──
   // Shown when a sign-in resolves to a "bare" account (implicit first-time
   // Google/Apple creation; person never signed up on the web). Web signup
@@ -4706,6 +4777,17 @@
   </div>
 </div>
 
+<!-- ════ BOOT ERROR (native; recoverable — never a dead spinner) ════ -->
+<div id="screen-boot-error" class="screen" style="display:none;flex-direction:column;align-items:center;justify-content:flex-start;min-height:100vh;width:100%;padding:max(48px,12vh) 24px max(48px,calc(env(safe-area-inset-bottom) + 24px));background:linear-gradient(160deg,var(--navy) 0%,#000 100%);box-sizing:border-box;">
+  <img src="assets/swh/swh-lockup-dark.png" style="width:80px;height:80px;margin-bottom:24px;" alt="SWH">
+  <div style="margin-top:0;width:100%;max-width:340px;text-align:center;display:flex;flex-direction:column;align-items:center;">
+    <div style="font-family:'Playfair Display',serif;font-size:28px;font-weight:900;color:#fff;line-height:1.2;">Something went wrong</div>
+    <p class="hero-subtitle">We couldn't finish loading your account. Check your connection and try again.</p>
+    <button onclick="retryBoot()" style="margin-top:32px;width:100%;padding:16px 24px;background:linear-gradient(135deg,#EC1825,#C8101B);border:none;border-radius:14px;font-family:'DM Sans',sans-serif;font-size:16px;font-weight:800;color:#fff;cursor:pointer;box-shadow:0 6px 18px rgba(236,24,37,0.35);">Try Again</button>
+    <button onclick="doLogout()" style="margin-top:16px;width:100%;padding:15px 24px;background:transparent;border:1.5px solid rgba(255,255,255,0.25);border-radius:14px;font-family:'DM Sans',sans-serif;font-size:15px;font-weight:700;color:rgba(255,255,255,0.85);cursor:pointer;">Sign out</button>
+  </div>
+</div>
+
 <div id="screen-upgrade" class="screen" style="display:none;flex-direction:column;align-items:center;justify-content:flex-start;min-height:100vh;width:100%;padding:max(48px,12vh) 24px max(48px,calc(env(safe-area-inset-bottom) + 24px));background:linear-gradient(160deg,var(--navy) 0%,#000 100%);box-sizing:border-box;">
   <!-- Logo — shared by web and native; spacing differs via margin-bottom -->
   <img src="assets/swh/swh-lockup-dark.png" style="width:80px;height:80px;margin-bottom:24px;" alt="SWH">
@@ -4722,13 +4804,13 @@
     <!-- Subtitle — 16px below headline. width:100% ensures text-align:center works against
          the full container width, not just the content-shrunk box. -->
     <p class="hero-subtitle">Track every connection. Build real networking momentum.</p>
-    <!-- Sign In — 32px below subtitle. LOGIN-ONLY APP (Austen, 2026-07-15):
-         no account creation on iOS; sign-up lives on the web. Demo/"Try for
-         free" was removed 2026-07 as well. -->
-    <button onclick="openSignIn()" style="margin-top:32px;width:100%;padding:16px 24px;background:linear-gradient(135deg,#EC1825,#C8101B);border:none;border-radius:14px;font-family:'DM Sans',sans-serif;font-size:16px;font-weight:800;color:#fff;cursor:pointer;box-shadow:0 6px 18px rgba(236,24,37,0.35);">Sign In</button>
-    <!-- No signup pointer at all (Austen 2026-07-16, matching the paid-only
-         comps: RAD CRM and Salesforce ship bare login screens). Strictest
-         3.1.3(f) reading — the entry is Sign In + legal links only. -->
+    <!-- IN-APP REGISTRATION (Austen, 2026-07-16 — HEY model, supersedes the
+         login-only entry): Get Started creates the account in-app (SSO or
+         email), the server attaches the no-card trial, and the profile is
+         collected in-app. NO pricing, NO purchase CTAs anywhere (3.1.3(f)
+         posture unchanged — nothing is sold in the app). -->
+    <button onclick="openSignUp()" style="margin-top:32px;width:100%;padding:16px 24px;background:linear-gradient(135deg,#EC1825,#C8101B);border:none;border-radius:14px;font-family:'DM Sans',sans-serif;font-size:16px;font-weight:800;color:#fff;cursor:pointer;box-shadow:0 6px 18px rgba(236,24,37,0.35);">Get Started</button>
+    <button onclick="openSignIn()" style="margin-top:16px;width:100%;padding:15px 24px;background:transparent;border:1.5px solid rgba(255,255,255,0.25);border-radius:14px;font-family:'DM Sans',sans-serif;font-size:15px;font-weight:700;color:rgba(255,255,255,0.85);cursor:pointer;">Sign In</button>
 
     <!-- (Sign out removed 2026-07-16 per Austen — this screen is the signed-OUT
          landing. Signed-in gated users switch accounts via the auth form or the
@@ -5552,9 +5634,9 @@
       </div>
       <button id="signin-submit-btn" onclick="submitSigninForm()" style="width:100%;margin-top:16px;padding:14px;background:linear-gradient(135deg,var(--gold),#b8252f);border:none;border-radius:14px;font-family:'DM Sans',sans-serif;font-size:15px;font-weight:800;color:#fff;cursor:pointer;">Sign in with email</button>
       <button id="signin-forgot-btn" onclick="sendPasswordReset()" style="width:100%;margin-top:10px;background:transparent;border:none;font-size:13px;color:rgba(255,255,255,0.55);cursor:pointer;padding:8px;font-weight:600;">Forgot password?</button>
-      <!-- Sign-in / Create Account toggle — WEB ONLY (iOS is login-only per
-           Austen 2026-07-15; account creation happens on the web) -->
-      <div class="web-only" style="text-align:center;margin-top:14px;padding-top:14px;border-top:1px solid rgba(255,255,255,0.08);">
+      <!-- Sign-in / Create Account toggle — both platforms again as of
+           2026-07-16 (in-app registration restored, HEY model) -->
+      <div style="text-align:center;margin-top:14px;padding-top:14px;border-top:1px solid rgba(255,255,255,0.08);">
         <span id="signmode-hint" style="font-size:12px;color:rgba(255,255,255,0.5);">Don't have an account?</span>
         <button id="signmode-toggle" onclick="toggleSignMode()" style="background:transparent;border:none;font-size:13px;font-weight:700;color:var(--gold);cursor:pointer;padding:6px 8px;margin-left:4px;">Create one →</button>
       </div>

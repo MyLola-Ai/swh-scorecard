@@ -307,6 +307,14 @@ exports.getMe = onRequest({ cors: true }, async (req, res) => {
       settings: {
         phone: settings.phone || '',
         smsOptIn: settings.smsOptIn || false,
+        // Mandatory-profile fields — the native apps' profile gate
+        // (computeProfileOk) reads these from me.settings; omitting them made
+        // the gate fail on every boot and re-show onboarding to complete users.
+        firstName: settings.firstName || '',
+        lastName: settings.lastName || '',
+        company: settings.company || '',
+        industry: settings.industry || '',
+        profileCompletedAt: settings.profileCompletedAt || null,
         weeklyGoal: settings.weeklyGoal || 150,
         displayName: settings.displayName || '',
         weekStartDay: settings.weekStartDay || 'monday',
@@ -589,12 +597,119 @@ exports.ensureWebTrial = onRequest({ cors: true, invoker: 'public' }, async (req
         plan: 'trial',
         trialStartedAt: now.toISOString(),
         trialEndsAt: ends.toISOString(),
-        trialSource: 'web',
+        // 'ios' = in-app registration (HEY-model flow); anything else = web.
+        trialSource: (req.body && req.body.source === 'ios') ? 'ios' : 'web',
         email: u.email || decoded.email || '',
       }, { merge: true });
       return { adopted: true, reason: 'trial_started', plan: 'trial', trialEndsAt: ends.toISOString() };
     });
     res.json({ ok: true, ...out });
+  } catch (e) { sendErr(res, e); }
+});
+
+// ===== Trial email spine (funnel part c) — day 7/30/50/58 of the 60-day trial =====
+// Separate track from the 14-day onboarding curriculum, same SWH shell.
+// Day 30 plays the user's OWN numbers back (recap engine at send time).
+// Windows tolerate missed cron days; only the highest eligible milestone
+// sends and stale lower ones are marked skipped. One-trial-ever upstream
+// means this spine runs at most once per identity. Converted users drop out.
+const TRIAL_SPINE = [
+  { key: 'd7', from: 7, to: 13,
+    subject: "Your first week's score, explained",
+    preheader: 'What the points are telling you.',
+    heading: "One week in. Here's what your score means.",
+    body: (s) => s
+      ? `You put ${s.totalPts} points on the board this week across ${s.daysLogged} active day${s.daysLogged === 1 ? '' : 's'}. That lands you at ${s.tier.name}. The number matters less than the habit: networkers who log 3 or more days a week keep relationships moving instead of letting them stall. Your lead points (the actions you control) are the ones that predict referrals two months from now.`
+      : `Your first week is in the books. The score matters less than the habit: networkers who log 3 or more days a week keep relationships moving instead of letting them stall. Lead points (the actions you control) are the ones that predict referrals two months from now.`,
+    tryline: 'log one FORMing conversation today. Five points, two minutes.',
+    ctaText: 'See my Scorecard', ctaUrl: 'https://app.stopwastinghandshakes.com' },
+  { key: 'd30', from: 30, to: 36,
+    subject: 'Thirty days of handshakes: your numbers',
+    preheader: 'Your month, played back.',
+    heading: 'Halfway through your trial. Here are YOUR numbers.',
+    body: (s) => s
+      ? `This week alone: ${s.totalPts} points across ${s.daysLogged} active day${s.daysLogged === 1 ? '' : 's'}${s.bestDay && s.bestDay.pts ? ', best day ' + s.bestDay.pts + ' points' : ''}. You're a ${s.tier.name}${s.streak > 1 ? ' on a ' + s.streak + '-week streak' : ''}. A month ago these conversations lived in your head. Now they're a system you can see. The next 30 days are where follow-through turns into referrals.`
+      : `A month ago your networking lived in your head. Now it's a system you can see. The next 30 days are where follow-through turns into referrals. Open your Scorecard and look at your month: the points show exactly where the momentum is.`,
+    tryline: 'check your Wasted Handshakes list and revive ONE relationship this week.',
+    ctaText: 'See my month', ctaUrl: 'https://app.stopwastinghandshakes.com' },
+  { key: 'd50', from: 50, to: 55,
+    subject: "Don't break the streak you built",
+    preheader: 'Ten days left on your trial.',
+    heading: "You built something here. Don't let it stop.",
+    body: (s) => s && s.totalPts > 0
+      ? `You've kept score for seven weeks${s.streak > 1 ? ', including a ' + s.streak + '-week logging streak' : ''}. That consistency is the whole game: relationships are built, not harvested, and your streak IS the building. Your trial ends in about 10 days. Subscribing keeps every contact, every point, and every streak exactly where they are.`
+      : `Your trial ends in about 10 days. Everything you've tracked stays exactly where it is when you subscribe: every contact, every point, every follow-through. The habit you started is the hard part. Keeping it costs less than one coffee meeting a month.`,
+    tryline: 'subscribe from Settings in about 60 seconds. Everything stays.',
+    ctaText: 'Keep my Scorecard', ctaUrl: 'https://app.stopwastinghandshakes.com' },
+  { key: 'd58', from: 58, to: 59,
+    subject: 'Your trial ends in 2 days',
+    preheader: 'Last call. Everything stays if you subscribe.',
+    heading: 'Two days left. Keep the scoreboard running.',
+    body: () =>
+      `Your 60-day trial wraps up in about two days. After that the Scorecard locks until you subscribe, but nothing is deleted: your contacts, points, streaks, and follow-through history are all waiting. Subscribing takes about a minute from Settings, and you are only charged going forward. If SWH helped you stop wasting handshakes these two months, keep it in your corner.`,
+    tryline: 'open Settings and tap Subscribe. One minute, everything stays.',
+    ctaText: 'Subscribe now', ctaUrl: 'https://app.stopwastinghandshakes.com' },
+];
+
+async function runTrialSpine() {
+  const snap = await db.collection('users').where('plan', '==', 'trial').get();
+  let sent = 0;
+  for (const d of snap.docs) {
+    const u = d.data();
+    if (!u.trialStartedAt) continue;
+    if (u.stripeSubscriptionId || u.subscriptionStatus) continue; // converted — spine over
+    const days = Math.floor((Date.now() - new Date(u.trialStartedAt).getTime()) / 86400000);
+    const sentMap = u.trialEmailsSent || {};
+    const eligible = TRIAL_SPINE.filter((m) => days >= m.from && days <= m.to && !sentMap[m.key]);
+    if (!eligible.length) continue;
+    const m = eligible[eligible.length - 1];
+    const skipped = {};
+    TRIAL_SPINE.forEach((x) => { if (x.from < m.from && !sentMap[x.key]) skipped[x.key] = 'skipped_stale'; });
+    const email = u.email || '';
+    if (!email) continue;
+    const settingsSnap = await db.doc(`users/${d.id}/config/settings`).get();
+    const settings = settingsSnap.exists ? settingsSnap.data() : {};
+    if (settings.onboardingDripUnsubscribed) continue; // one marketing-unsub switch for now
+    if (/@example\.com$/i.test(email)) {
+      await d.ref.set({ trialEmailsSent: { ...sentMap, ...skipped, [m.key]: 'skipped_test' } }, { merge: true });
+      continue;
+    }
+    let stats = null;
+    try { stats = await computeUserWeeklyStats(d.id); } catch (_) {}
+    const firstName = settings.firstName || String(settings.displayName || '').split(' ')[0] || 'there';
+    const entry = { ...m, body: m.body(stats), day1Book: false };
+    const unsubUrl = _makeUnsubUrl(d.id, OAUTH_STATE_SECRET.value());
+    try {
+      await db.collection('mail').add({
+        from: _DRIP_FROM, replyTo: _DRIP_REPLY, to: [email],
+        message: {
+          subject: entry.subject,
+          html: _buildDripHtml(entry, firstName, unsubUrl, _PREFS_URL),
+          text: _buildDripText(entry, firstName, unsubUrl),
+        },
+      });
+      await d.ref.set({ trialEmailsSent: { ...sentMap, ...skipped, [m.key]: new Date().toISOString() } }, { merge: true });
+      sent++;
+      console.log('[trialSpine]', m.key, '->', d.id);
+    } catch (e) { console.error('[trialSpine] failed for', d.id, e.message); }
+  }
+  console.log('[trialSpine] done, sent=' + sent);
+  return { sent };
+}
+
+exports.sendTrialSpine = onSchedule({
+  schedule: '45 9 * * *',
+  timeZone: 'America/Chicago',
+  secrets: [OAUTH_STATE_SECRET],
+}, runTrialSpine);
+
+// Manual trigger (e2e + catch-up after outages). Any-auth is safe: the run is
+// idempotent (milestone stamps) and only sends what the daily cron would.
+exports.sendTrialSpineNow = onRequest({ cors: true, invoker: 'public', secrets: [OAUTH_STATE_SECRET] }, async (req, res) => {
+  try {
+    await requireAuth(req);
+    const result = await runTrialSpine();
+    res.json({ ok: true, ...result });
   } catch (e) { sendErr(res, e); }
 });
 
