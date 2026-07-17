@@ -708,37 +708,35 @@
         return;
       }
 
-      // IN-APP REGISTRATION (Austen, 2026-07-16 — the HEY model, supersedes the
-      // 2026-07-15 account-required gate): a bare account (first sign-in with
-      // no profile, plan, phone, or history) is ADOPTED on the spot. The
-      // server attaches the no-card trial — ensureWebTrial is transactional,
-      // one-trial-per-identity-EVER, and refuses accounts with subscription
-      // history — then the profile is collected in-app. Nothing is sold and
-      // no price is shown in the app (3.1.3(f) posture unchanged).
+      // IN-APP REGISTRATION (Austen, 2026-07-16/17 — the HEY model): ANY
+      // signed-in identity whose plan resolves free gets ONE server-side
+      // trial-attach attempt. The SERVER is the sole eligibility judge —
+      // ensureWebTrial is transactional, one-trial-per-identity-EVER, and
+      // refuses accounts with subscription history — so re-used test
+      // identities, legacy free accounts, and fresh signups all resolve
+      // correctly without a fragile client-side "bareness" pre-filter.
+      // (The old bare-only gate made established free accounts skip the
+      // trial and land on "Subscription required" — the 2026-07-17 bug.)
       const _paidPlan = (userPlan === 'scorecard' || userPlan === 'pro');
-      if (!_paidPlan && !userProfileOk && !userPhone && (!history || history.length === 0)) {
-        console.log('[boot] bare account — in-app adoption (trial attach)');
+      const _trulyBare = !userProfileOk && !userPhone && (!history || history.length === 0);
+      if (!_paidPlan) {
+        console.log('[boot] plan is free — server trial-attach attempt');
         let r = null;
         try {
           r = await NativeAPI.call('ensureWebTrial', { source: 'ios' }, { timeout: 10000 });
         } catch(e) {
           console.warn('[boot] trial attach failed:', e.message);
           try { swhFunnel('auth_error', 'boot_trial_attach_failed'); } catch(_) {}
-          showBootError();
-          return;
+          if (_trulyBare) { showBootError(); return; }
+          // Established account: don't block boot on a failed attach — fall
+          // through to the normal gates; the foreground re-check retries.
         }
-        console.log('[boot] adoption:', r && r.reason, '— plan:', r && r.plan);
+        if (r) console.log('[boot] adoption:', r.reason, '— plan:', r.plan);
         if (r && r.adopted) {
           userPlan = 'scorecard';
           window._trialInfo = { endsAt: r.trialEndsAt || null, active: true };
-        } else {
-          // Not adoptable (trial already used / subscription history):
-          // treat as a normal unpaid account — profile first, then the
-          // plan screen via saveOnboardingProfile's exit routing.
-          userPlan = (r && (r.plan === 'scorecard' || r.plan === 'pro')) ? r.plan : 'free';
+          if (typeof refreshBillingRow === 'function') setTimeout(refreshBillingRow, 0);
         }
-        prepOnboarding(); showScreen('onboarding');
-        return;
       }
 
       // Profile-first ordering (Austen, 2026-07-15): collect identity BEFORE
@@ -1165,6 +1163,7 @@
         if (r && r.adopted) {
           userPlan = 'scorecard';
           window._trialInfo = { endsAt: r.trialEndsAt || null, active: true };
+          if (typeof refreshBillingRow === 'function') setTimeout(refreshBillingRow, 0);
         } else {
           userPlan = 'free';
         }
