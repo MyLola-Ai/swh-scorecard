@@ -262,9 +262,12 @@ freeze class; malformed-data degradation; getMe now returns the mandatory-profil
 omission re-showed onboarding to complete users every boot). Tested: 10-state boot matrix against
 real boot code + live server e2e (probe account: signup→trial→contract→profile→one-trial-ever
 refusal→self-delete) ALL PASS. Landed f3c70e3 (note: carried the SWH thread's trial-email-spine
-WIP as a ride-along), functions + hosting deployed, device build installed. KNOWN GAP: swhFunnel
-no-ops on native, so boot_unhandled/boot_trial_attach_failed beacons don't emit from the app —
-console-only until the SWH thread opens the emitter to native auth_error events.
+WIP as a ride-along), functions + hosting deployed, device build installed. BEACON GAP RESOLVED BY DECISION (SWH thread, 2026-07-17): native emission ALLOWED,
+platform-tagged ('native'|'web'); server buckets so the web funnel alert math stays web-only
+while device boot/purchase failures get their own native-error signal. Keep emitting
+boot_unhandled/boot_trial_attach_failed (+ future IAP purchase-path codes) — they light up when
+the SWH thread ships the emitter change on Austen's deploy word. Also: SWH may land the getMe
+computed-access reconciliation EARLY (pre-IAP) as hardening, with a legacy-plan fallback.
 
 **Update 2026-07-15 — registration + billing overhaul (ALL LANDED: c3222d2 carried the
 registration/Stripe work, 2c2e724 profile-first, 45ccfd0 login-only; deployed + synced):**
