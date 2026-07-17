@@ -231,6 +231,19 @@ matching the CRM's system activity.
 
 ## 10. Roadmap / open items
 
+**DIRECTIVE PENDING CTO RULING (2026-07-17) — IAP RETURNS, DUAL BILLING:** Austen reversed
+Stripe-only. Apple IAP comes back as an ADDITIVE in-app subscribe path (Stripe stays on web).
+Rationale: mobile conversion (one-tap Face ID) beats the reader-pattern margin save; Small
+Business Program = 15% (requires ASC enrollment — confirm); IAP makes review EASIER than the
+3.1.3(f) tightrope. Supersedes-when-ratified: 3.1.3(f) end-state, no-pricing metadata rider,
+CRM triple's no-purchase leg. Composition with in-app registration (below): unchanged — everyone
+starts on our 60-day no-card trial; IAP is the conversion moment at/after expiry. Design already
+input: Apple products carry NO intro offer (our trial is the trial; deletes the double-trial
+seam). Ownership: SWH thread = getMe entitlement reconciliation (Apple+Stripe+trial → one access
+answer; today's webhook is last-writer-wins on plan — being redesigned); this thread = RC client
+revival from the LEGACY banners, subscribe UI, restore purchases, ASC products, submission.
+NO client code moves until the CTO rules and Austen approves each step.
+
 **Update 2026-07-16 PM — IN-APP REGISTRATION (HEY model, Austen; supersedes login-only entry):**
 entry = Get Started (create in-app via Google/Apple/email) + Sign In. Bare first-time identities
 are ADOPTED at boot: `ensureWebTrial {source:'ios'}` attaches the no-card 60-day trial
