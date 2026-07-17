@@ -231,18 +231,25 @@ matching the CRM's system activity.
 
 ## 10. Roadmap / open items
 
-**DIRECTIVE PENDING CTO RULING (2026-07-17) — IAP RETURNS, DUAL BILLING:** Austen reversed
-Stripe-only. Apple IAP comes back as an ADDITIVE in-app subscribe path (Stripe stays on web).
-Rationale: mobile conversion (one-tap Face ID) beats the reader-pattern margin save; Small
-Business Program = 15% (requires ASC enrollment — confirm); IAP makes review EASIER than the
-3.1.3(f) tightrope. Supersedes-when-ratified: 3.1.3(f) end-state, no-pricing metadata rider,
-CRM triple's no-purchase leg. Composition with in-app registration (below): unchanged — everyone
-starts on our 60-day no-card trial; IAP is the conversion moment at/after expiry. Design already
-input: Apple products carry NO intro offer (our trial is the trial; deletes the double-trial
-seam). Ownership: SWH thread = getMe entitlement reconciliation (Apple+Stripe+trial → one access
-answer; today's webhook is last-writer-wins on plan — being redesigned); this thread = RC client
-revival from the LEGACY banners, subscribe UI, restore purchases, ASC products, submission.
-NO client code moves until the CTO rules and Austen approves each step.
+**RULED 2026-07-17 — IAP RETURNS, DUAL BILLING (CTO; build authorized, SUBMIT gated on
+Austen's veto window):** Apple IAP comes back as an ADDITIVE in-app subscribe path; Stripe
+stays on web. Rationale: conversion at the moment of intent (one-tap Face ID) beats ~12pts of
+margin; Small Business Program = 15%. Composition with in-app registration (below) unchanged:
+everyone starts on our 60-day no-card trial; IAP is the conversion moment at/after expiry.
+BINDING RULINGS: (1) entitlement model = source-scoped fields (apple.*/stripe.*/trial.*) with
+access COMPUTED server-side in getMe as the union of active entitlements — last-writer-wins on
+plan rejected; client NEVER computes entitlement; SWH thread owns and lands FIRST. (2)
+doubleBilling flag when both rails active; support policy: user cancels Apple themselves or we
+refund/cancel Stripe — never eat a double charge silently. (3) NO Apple intro offer — our trial
+is the only free period (double-trial seam deleted by design). (4) Revival = RevenueCat un-park,
+not StoreKit rebuild; LEGACY banners come off only as each piece verifies live. (5) Price parity
+IAP vs web. (6) Sequence: SWH getMe reconciliation → native revival + subscribe UI + restore →
+ASC products verified → 1.44 submission (metadata rider updates: in-app pricing legal again;
+3.1.3(f) scrub converts to standard IAP metadata hygiene). CRM triple: no-purchase leg
+superseded; login-only + Stripe-web legs stand. (7) HARD GATE on Austen: confirm/enroll App
+Store Small Business Program in ASC before pricing screens or margin math. Per-deploy approval
+unchanged. THIS THREAD'S STATUS: holding client code until the SWH reconciliation contract
+arrives; then revive per (4).
 
 **Update 2026-07-16 PM — IN-APP REGISTRATION (HEY model, Austen; supersedes login-only entry):**
 entry = Get Started (create in-app via Google/Apple/email) + Sign In. Bare first-time identities
