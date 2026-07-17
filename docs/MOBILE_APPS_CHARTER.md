@@ -231,6 +231,13 @@ matching the CRM's system activity.
 
 ## 10. Roadmap / open items
 
+**MODEL UPDATE 2026-07-17 PM — BROWSE-DON'T-SAVE (Austen; shipped 21b2800):** free/expired
+users land IN the app and browse everything; every write gates through requirePaid() → contextual
+subscribe sheet (IAP when the entitlement backend lights, Stripe on web). The hard boot wall is
+gone on native. Trial program unchanged (60-day auto-trial still attaches; this is the post-trial
+state). Foreground re-check runs for any free user. OPEN: web-boot parity + server-side write
+enforcement are with the SWH thread (flagged 2026-07-17).
+
 **RULED 2026-07-17 — IAP RETURNS, DUAL BILLING (CTO; build authorized, SUBMIT gated on
 Austen's veto window):** Apple IAP comes back as an ADDITIVE in-app subscribe path; Stripe
 stays on web. Rationale: conversion at the moment of intent (one-tap Face ID) beats ~12pts of
