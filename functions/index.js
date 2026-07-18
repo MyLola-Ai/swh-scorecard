@@ -85,6 +85,10 @@ const TEAM_MIN_SEATS = 3;
 // no apple.*/stripe.* fall back to the exact legacy resolution.
 const TIER_RANK = { free: 0, scorecard: 1, pro: 2 };
 const ENTITLEMENT_ACTIVE = { active: 1, trialing: 1, past_due: 1 }; // past_due = grace, keep access
+// The one 60-day trial per identity tastes the FULL platform (Austen 2026-07-17:
+// the CRM front door is identical to the Scorecard's, so the trial unlocks
+// either app fully). Change here to re-scope what a trial grants.
+const TRIAL_TIER = 'pro';
 
 function computeEntitlement(u) {
   u = u || {};
@@ -97,13 +101,19 @@ function computeEntitlement(u) {
   const hasScoped = !!(u.apple || u.stripe);
 
   if (!hasScoped) {
-    // Legacy doc — preserve exact current behavior.
-    let plan = u.plan || 'free';
-    if (plan === 'trial') plan = trialActive ? 'scorecard' : 'free';
+    // Legacy doc — access mapping IDENTICAL to the old getMe (raw plan drives
+    // access; only plan:'trial' + active grants scorecard). Source label now
+    // reflects the real origin: a trial reports 'trial' (ensureWebTrial writes
+    // plan:'trial' top-level, so it lands here), a legacy paid plan 'legacy'.
+    const raw = u.plan || 'free';
+    let plan, source, tEnds = null;
+    if (raw === 'trial') { plan = trialActive ? TRIAL_TIER : 'free'; source = trialActive ? 'trial' : 'none'; tEnds = trialActive ? trialEndsAt : null; }
+    else if (raw === 'free') { plan = 'free'; source = 'none'; }
+    else { plan = raw; source = 'legacy'; }
     return { plan, entitlement: {
-      source: (plan === 'free' || plan == null) ? (trialActive ? 'trial' : 'none') : 'legacy',
+      source,
       doubleBilling: false,
-      trialEndsAt: trialActive ? trialEndsAt : null,
+      trialEndsAt: tEnds,
       currentPeriodEnd: u.currentPeriodEnd || null,
       cancelAtPeriodEnd: !!u.cancelAtPeriodEnd,
     } };
@@ -114,7 +124,7 @@ function computeEntitlement(u) {
   const sources = [];
   if (appleActive) sources.push({ src: 'apple', tier: u.apple.tier || 'scorecard', cpe: u.apple.currentPeriodEnd || null, cape: !!u.apple.cancelAtPeriodEnd });
   if (stripeActive) sources.push({ src: 'stripe', tier: u.stripe.tier || 'scorecard', cpe: u.stripe.currentPeriodEnd || null, cape: !!u.stripe.cancelAtPeriodEnd });
-  if (trialActive) sources.push({ src: 'trial', tier: 'scorecard', cpe: null, cape: false });
+  if (trialActive) sources.push({ src: 'trial', tier: TRIAL_TIER, cpe: null, cape: false });
 
   let plan = 'free', winner = null;
   for (const s of sources) if ((TIER_RANK[s.tier] || 0) > (TIER_RANK[plan] || 0)) { plan = s.tier; winner = s; }
