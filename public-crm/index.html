@@ -1216,7 +1216,8 @@ html.dark-theme .st-sect-head{color:rgba(255,255,255,.55);}
         Continue with Microsoft
       </button>
       <!-- Signup steering is WEB ONLY (iOS is login-only per 3.1.3(f) posture) -->
-      <div class="web-only" style="text-align:center;margin-top:28px;padding-bottom:8px;">
+      <!-- Signup steering restored on BOTH platforms (2026-07-18 ruling) -->
+      <div style="text-align:center;margin-top:28px;padding-bottom:8px;">
         <span class="login-link-muted" style="color:rgba(255,255,255,0.4);font-size:14px;">Don't have an account?&nbsp;</span><button onclick="switchAuthTab('signup')" class="login-link-bold" style="background:none;border:none;color:rgba(255,255,255,0.8);font-family:'DM Sans',sans-serif;font-size:14px;font-weight:700;cursor:pointer;padding:0;">Create one →</button>
       </div>
     </div>
@@ -1328,7 +1329,22 @@ html.dark-theme .st-sect-head{color:rgba(255,255,255,.55);}
   <div class="native-only" style="max-width:360px;text-align:center;">
     <div style="font-family:'Playfair Display',serif;font-size:28px;font-weight:900;color:#fff;line-height:1.2;">Subscription required</div>
     <div style="color:rgba(255,255,255,0.55);font-size:14px;margin-top:12px;line-height:1.7;">This app is a companion to your SWH CRM account. Sign in with an account that has an active CRM subscription to continue.</div>
-    <button onclick="recheckCrmPlanFromServer()" style="margin-top:24px;width:100%;padding:14px;background:transparent;border:1.5px solid rgba(255,255,255,0.25);border-radius:14px;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:700;color:rgba(255,255,255,0.85);cursor:pointer;">Already subscribed? Refresh status</button>
+    <!-- IAP subscribe block — hidden until the entitlement contract is live
+         AND RC offerings load; revealed by setIAPButtonState('ready'). -->
+    <div id="crm-iap-block" style="display:none;margin-top:24px;">
+      <button id="crm-iap-btn" onclick="iosPurchase()" disabled
+        style="width:100%;padding:18px 20px;background:linear-gradient(135deg,var(--gold),#b8252f);border:none;border-radius:14px;font-family:'DM Sans',sans-serif;cursor:default;text-align:left;display:flex;align-items:center;gap:14px;box-shadow:0 4px 18px rgba(230,57,70,0.35);opacity:0.6;box-sizing:border-box;">
+        <div style="font-size:24px;">⚡</div>
+        <div style="flex:1;">
+          <div id="crm-iap-btn-label" style="font-size:15px;font-weight:800;color:#fff;">Loading…</div>
+          <div id="crm-iap-btn-sub" style="font-size:12px;color:rgba(255,255,255,0.9);line-height:1.4;margin-top:2px;"></div>
+        </div>
+        <div style="color:#fff;font-size:18px;font-weight:800;">→</div>
+      </button>
+      <button onclick="iosRestorePurchases()" style="width:100%;margin-top:8px;background:transparent;border:none;font-size:12px;font-weight:600;color:rgba(255,255,255,0.5);cursor:pointer;padding:8px;text-decoration:underline;">Restore Purchases</button>
+      <div style="margin-top:6px;text-align:center;font-size:11px;color:rgba(255,255,255,0.3);line-height:1.6;">Subscription auto-renews monthly until canceled in your Apple ID settings.</div>
+    </div>
+    <button onclick="recheckCrmPlanFromServer()" style="margin-top:14px;width:100%;padding:14px;background:transparent;border:1.5px solid rgba(255,255,255,0.25);border-radius:14px;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:700;color:rgba(255,255,255,0.85);cursor:pointer;">Already subscribed? Refresh status</button>
   </div>
   <div class="web-only" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:18px;margin-top:32px;width:100%;max-width:760px;">
     <div id="upgrade-scorecard-card" style="display:flex;flex-direction:column;background:#fff;border-radius:18px;padding:28px;color:var(--navy);box-shadow:0 8px 32px rgba(0,0,0,0.25);">
@@ -1378,6 +1394,15 @@ html.dark-theme .st-sect-head{color:rgba(255,255,255,.55);}
   <div style="color:rgba(255,255,255,0.55);font-size:14px;margin-top:12px;max-width:340px;line-height:1.7;">This sign-in isn't connected to an SWH account yet. Accounts are created on the web. Once yours is set up, come back and tap refresh.</div>
   <button onclick="recheckCrmAccountState()" style="margin-top:28px;width:100%;max-width:340px;padding:15px 24px;background:linear-gradient(135deg,#EC1825,#C8101B);border:none;border-radius:14px;font-family:'DM Sans',sans-serif;font-size:15px;font-weight:800;color:#fff;cursor:pointer;">I've set up my account →</button>
   <button onclick="doLogout()" style="margin-top:14px;background:transparent;border:none;font-size:13px;font-weight:600;color:rgba(255,255,255,0.5);cursor:pointer;padding:8px 16px;">Sign out / use a different account</button>
+</div>
+
+<!-- ════ BOOT ERROR (native; recoverable — never a dead spinner) ════ -->
+<div id="screen-crm-boot-error" style="display:none;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;width:100%;padding:32px 24px;background:linear-gradient(160deg,#0f0f0f 0%,#1f1f1f 100%);box-sizing:border-box;text-align:center;">
+  <img src="assets/swh/swh-lockup-dark.png" style="width:64px;height:64px;border-radius:14px;margin-bottom:18px;background:#1a1a1a;" alt="SWH">
+  <div style="font-family:'Playfair Display',serif;font-size:28px;font-weight:900;color:#fff;line-height:1.2;">Something went wrong</div>
+  <div style="color:rgba(255,255,255,0.55);font-size:14px;margin-top:12px;max-width:340px;line-height:1.7;">We couldn't finish loading your account. Check your connection and try again.</div>
+  <button onclick="retryCrmBoot()" style="margin-top:28px;width:100%;max-width:340px;padding:15px 24px;background:linear-gradient(135deg,#EC1825,#C8101B);border:none;border-radius:14px;font-family:'DM Sans',sans-serif;font-size:15px;font-weight:800;color:#fff;cursor:pointer;">Try Again</button>
+  <button onclick="doLogout()" style="margin-top:14px;background:transparent;border:none;font-size:13px;font-weight:600;color:rgba(255,255,255,0.5);cursor:pointer;padding:8px 16px;">Sign out</button>
 </div>
 
 <div class="app" id="app-shell" style="display:none;">
@@ -4581,15 +4606,47 @@ async function _onCrmSignedIn(user) {
   const isMSLogin = user.providerData?.some(p => p.providerId === 'microsoft.com');
   if (isMSLogin) tryClaimMicrosoftTeam().catch(() => {});
   await loadAllData();
+  if (isNativeEarly && NativeAPI.isReady) {
+    // DUAL BILLING (CTO-ruled 2026-07-17): authoritative access + the
+    // entitlement contract come from getMe — the server computes access from
+    // the union of rails (apple/stripe/trial incl. the pro-tier trial);
+    // the client never derives it. loadAllData's Firestore read stays for
+    // data; plan defers to the server's computed answer. Contract presence
+    // (me.entitlement) is also the feature flag that arms the IAP UI.
+    try {
+      const me = await NativeAPI.call('getMe', null, { timeout: 10000 });
+      userPlan = me.plan || userPlan || 'free';
+      window._entitlement = me.entitlement || null;
+      window._entContract = !!me.entitlement;
+    } catch(e) { console.warn('[crm boot] getMe failed (using Firestore plan):', e.message); }
+  }
   showLoader(false);
-  // Stripe-only + 3.1.3(f) posture (2026-07-16): no RevenueCat on boot, no
-  // purchase surface on native. Plan truth is Firestore via the Stripe
-  // webhook. Bare implicit accounts (first-time Google/Apple sign-in that
+  // Bare implicit accounts (first-time Google/Apple sign-in that
   // never signed up on the web) get the Account-required state; signed-up
-  // but unpaid users get the neutral subscription-required screen via
-  // showApp()'s native rendering.
+  // but unpaid users get the subscription-required screen via
+  // showApp()'s native rendering (with the IAP subscribe block when armed).
   if (isNativeEarly && window._crmBareAccount) {
-    showAccountRequired();
+    // IN-APP REGISTRATION (ruling 2026-07-18): ADOPT the fresh identity —
+    // the server attaches the pro-tier 60-day trial (ensureWebTrial:
+    // transactional, one-per-identity-EVER, subscription-history guard).
+    // Supersedes the account-required reject gate from 2026-07-15.
+    let r = null;
+    try {
+      r = await NativeAPI.call('ensureWebTrial', { source: 'ios' }, { timeout: 10000 });
+    } catch(e) {
+      console.warn('[crm boot] trial attach failed:', e.message);
+      showCrmBootError();
+      return;
+    }
+    console.log('[crm boot] adoption:', r && r.reason, '— plan:', r && r.plan);
+    window._crmBareAccount = false;
+    if (r && r.adopted) {
+      userPlan = 'pro'; // trial resolves pro-tier (CTO-ruled); server confirms on next getMe
+    } else {
+      userPlan = (r && (r.plan === 'pro' || r.plan === 'scorecard')) ? r.plan : 'free';
+    }
+    showApp();
+    if (window._crmProfileOk === false) { try { showProfileGate(); } catch(_){} }
   } else {
     showApp();
   }
@@ -4647,6 +4704,28 @@ function showAccountRequired() {
 }
 window.showAccountRequired = showAccountRequired;
 
+// ── BOOT ERROR (recoverable — never a dead spinner) ──
+window.showCrmBootError = function() {
+  try { showLoader(false); } catch(_) {}
+  ['login-screen','app-shell','upgrade-screen','screen-account-required'].forEach(id => {
+    try { const el = document.getElementById(id); if (el) el.style.display = 'none'; } catch(_) {}
+  });
+  try { const bn = document.querySelector('.bottom-nav'); if (bn) bn.style.display = 'none'; } catch(_) {}
+  try { const pg = document.getElementById('profile-gate'); if (pg) pg.style.display = 'none'; } catch(_) {}
+  try { document.getElementById('screen-crm-boot-error').style.display = 'flex'; } catch(_) {}
+};
+window.retryCrmBoot = async function() {
+  try { document.getElementById('screen-crm-boot-error').style.display = 'none'; } catch(_) {}
+  showLoader(true);
+  try {
+    await _onCrmSignedIn(currentUser || _makeCrmUser(NativeAPI));
+  } catch(e) {
+    console.error('[crm boot] retry failed:', e);
+    try { showLoader(false); } catch(_) {}
+    showCrmBootError();
+  }
+};
+
 window.recheckCrmPlanFromServer = async function(opts) {
   const silent = !!(opts && opts.silent);
   if (!isNativeEarly || !NativeAPI.isReady) return false;
@@ -4654,6 +4733,8 @@ window.recheckCrmPlanFromServer = async function(opts) {
   try {
     const me = await NativeAPI.call('getMe', null, { timeout: 10000 });
     userPlan = me.plan || 'free';
+    window._entitlement = me.entitlement || null;
+    window._entContract = !!me.entitlement;
     if (userPlan === 'pro') {
       document.getElementById('screen-account-required').style.display = 'none';
       showToast('✅ Subscription active. Welcome!');
@@ -4675,6 +4756,8 @@ window.recheckCrmAccountState = async function(opts) {
   try {
     const me = await NativeAPI.call('getMe', null, { timeout: 10000 });
     userPlan = me.plan || 'free';
+    window._entitlement = me.entitlement || null;
+    window._entContract = !!me.entitlement;
     const s = me.settings || {};
     const profileOk = !!(s.firstName && s.lastName && s.company && s.industry && s.phone);
     const bare = !profileOk && !s.phone
@@ -4715,7 +4798,15 @@ window.recheckCrmAccountState = async function(opts) {
       showLoader(true);
       document.getElementById('login-screen').style.display = 'none';
       currentUser = _makeCrmUser(NativeAPI);
-      await _onCrmSignedIn(currentUser);
+      try {
+        await _onCrmSignedIn(currentUser);
+      } catch(e) {
+        // Any unexpected throw between auth and routing used to strand the
+        // loader forever. Fail VISIBLY: recoverable error screen instead.
+        console.error('[crm boot] unhandled boot error:', e);
+        try { showLoader(false); } catch(_) {}
+        try { showCrmBootError(); } catch(_) { try { showLogin(); } catch(__) {} }
+      }
     } else {
       showLoader(false);
       showLogin();
@@ -4861,11 +4952,8 @@ window.doMicrosoftLogin = async (loginHint) => {
 
 // ── TAB SWITCHING ──
 window.switchAuthTab = function(tab) {
-  if (isNativeEarly && tab === 'signup') {
-    // LOGIN-ONLY app: the signup panel is web-only.
-    showToast('Accounts can\'t be created in the app. Sign in with your SWH account');
-    return;
-  }
+  // IN-APP REGISTRATION (Austen ruling 2026-07-18): signup restored on native —
+  // the exact Scorecard model, backed by the pro-tier 60-day trial.
   const isSignin = tab === 'signin';
   document.getElementById('panel-signin').style.display = isSignin ? 'block' : 'none';
   document.getElementById('panel-signup').style.display = isSignin ? 'none' : 'block';
@@ -4924,11 +5012,9 @@ window.signupStep2 = function() {
 
 // ── EMAIL SIGN UP ──
 window.doEmailSignUp = async function() {
-  if (isNativeEarly) {
-    // LOGIN-ONLY app: no account creation on iOS, no signup steering.
-    showToast('Accounts can\'t be created in the app. Sign in with your SWH account');
-    return;
-  }
+  // In-app registration restored (2026-07-18): the native branch below signs
+  // up via NativeAPI REST, then _onCrmSignedIn adopts the identity — the
+  // server attaches the pro-tier trial (one-per-identity-ever).
   const first = document.getElementById('su-first')?.value?.trim();
   const last = document.getElementById('su-last')?.value?.trim();
   const email = document.getElementById('su-email')?.value?.trim();
@@ -5427,6 +5513,11 @@ function showApp() {
     // IAP modal overlay a gated user could otherwise tab into the CRM shell.
     if (_bn) _bn.style.display = 'none';
     renderUpgradeScreen();
+    // Dual billing: arm the IAP subscribe block only when the entitlement
+    // contract is live (getMe returned the entitlement field).
+    if (isNativeEarly && window._entContract && !_rcOfferingsLoaded) {
+      loadRCOfferings().catch(() => {});
+    }
     return;
   }
   if (_bn) _bn.style.display = '';
@@ -6551,14 +6642,13 @@ window.openBillingPortal = async function() {
 };
 
 // ================================================================
-// LEGACY IAP (RevenueCat) — RETIRED 2026-07-16. Stripe is the only
-// billing rail (3.1.3(f) free-companion posture: the app sells nothing).
-// Nothing below here is invoked anymore: the boot call, paywall openers,
-// billing-row and startUpgrade callers were all removed. Kept temporarily
-// so legacy references can't break; delete this whole block once the
-// RevenueCat account is closed and legacy IAP subs have migrated.
-// The revenueCatWebhook stays live server-side for legacy entitlements.
-// Product was: com.impactleadershipgroup.swh.crm.monthly ($25/mo)
+// REVENUECAT — REVIVED 2026-07-18 (dual billing, CTO-ruled): purchase +
+// restore ONLY. The client NEVER computes entitlement — after purchase we
+// poll getMe until the webhook's apple.* write recomputes plan to 'pro'.
+// Subscribe UI arms only when getMe returns the entitlement contract.
+// Product: com.impactleadershipgroup.swh.crm.monthly ($24.99/mo, NO intro
+// offer — policy: our pro-tier web trial is the only free period).
+// reconcileEntitlementsFromRC stays DEAD (client-compute ban).
 // ================================================================
 let _rcConfigured    = false;
 let _rcLoadedPackage = null;
@@ -6581,18 +6671,21 @@ function hideSyncingPaywall() {
   if (syncing) syncing.style.display = 'none';
 }
 
+let _rcReadyLabel = null; // ready-state label, for re-arming after cancel/error
+
 function setIAPButtonState(state, label) {
   const btn = document.getElementById('crm-iap-btn');
   if (!btn) return;
   const lbl = document.getElementById('crm-iap-btn-label');
   const sub = document.getElementById('crm-iap-btn-sub');
   if (state === 'ready') {
+    const blk = document.getElementById('crm-iap-block'); if (blk) blk.style.display = 'block';
     btn.disabled = false; btn.style.opacity = '1'; btn.style.cursor = 'pointer';
     if (lbl) lbl.textContent = label || 'Start free trial';
-    if (sub) sub.textContent = 'Free for 60 days, then $24.99/month. Cancel anytime.';
+    if (sub) sub.textContent = 'Unlocks contacts, pipeline, and follow-through. Cancel anytime.';
   } else if (state === 'loading') {
     btn.disabled = true; btn.style.opacity = '0.6'; btn.style.cursor = 'default';
-    if (lbl) lbl.textContent = 'Loading…';
+    if (lbl) lbl.textContent = label || 'Loading…';
     if (sub) sub.textContent = '';
   } else {
     btn.disabled = true; btn.style.opacity = '0.45'; btn.style.cursor = 'default';
@@ -6620,8 +6713,9 @@ window.closePaywall = function() {
 async function setupRevenueCat(uid) {
   if (!isNativeEarly) return;
   if (_rcConfigured) {
+    // Re-associate the RC session with the current uid (purchase attribution).
+    // No entitlement reconcile — the server computes access (CTO binding).
     try { const P = window.Capacitor.Plugins.Purchases; await P.logIn({ appUserID: uid }); } catch(_) {}
-    await reconcileEntitlementsFromRC().catch(() => {});
     return;
   }
   if (!REVENUECAT_CRM_IOS_KEY || REVENUECAT_CRM_IOS_KEY.startsWith('TODO')) {
@@ -6634,7 +6728,6 @@ async function setupRevenueCat(uid) {
     await withTimeout(Purchases.configure({ apiKey: REVENUECAT_CRM_IOS_KEY, appUserID: uid || null }), 6000, 'RC.configure');
     _rcConfigured = true;
     console.log('[RC] configured for CRM');
-    await reconcileEntitlementsFromRC().catch(() => {});
   } catch(e) {
     console.warn('[RC] setup failed (non-fatal):', e && e.message);
   }
@@ -6703,8 +6796,13 @@ async function loadRCOfferings() {
     _rcOfferingsLoaded = true;
     _rcLoadError = null;
     const price = (pkg.product && pkg.product.priceString) || '$24.99';
-    const hasIntro = !!(pkg.product && pkg.product.introPrice);
-    setIAPButtonState('ready', hasIntro ? 'Start 60-day free trial' : `Subscribe (${price}/mo)`);
+    // POLICY (Austen, 2026-07-17): the ONLY free period is our trial — the
+    // IAP is always a direct paid subscription; never advertise an intro offer.
+    if (pkg.product && pkg.product.introPrice) {
+      console.warn('[RC] ASC product still has an intro offer attached — remove it in App Store Connect (policy: no Apple trials)');
+    }
+    _rcReadyLabel = `Subscribe (${price}/mo)`;
+    setIAPButtonState('ready', _rcReadyLabel);
     console.log('[RC] CRM package ready:', pkg.identifier, price);
   } catch(e) {
     _rcLoadError = 'getOfferings failed: ' + (e.message || e);
@@ -6712,25 +6810,56 @@ async function loadRCOfferings() {
   }
 }
 
+// Server-authoritative entitlement poll (CTO binding: client never computes
+// access from RC data). Bounded waits until getMe's computed plan goes 'pro'.
+async function _pollCrmServerEntitlement(waits) {
+  const schedule = waits || [0, 2000, 3000, 4000, 5000];
+  for (let i = 0; i < schedule.length; i++) {
+    if (schedule[i]) await new Promise(r => setTimeout(r, schedule[i]));
+    try {
+      const me = await NativeAPI.call('getMe', null, { timeout: 8000 });
+      userPlan = me.plan || 'free';
+      window._entitlement = me.entitlement || null;
+      window._entContract = !!me.entitlement;
+      if (userPlan === 'pro') return true;
+    } catch(e) { console.warn('[RC] entitlement poll error:', e.message); }
+  }
+  return false;
+}
+
 window.iosPurchase = async function() {
   if (!isNativeEarly) { showToast('IAP only on iOS'); return; }
+  if (!window._entContract) {
+    showToast('Subscriptions aren\'t available just yet. Try again soon');
+    return;
+  }
   if (!_rcLoadedPackage) {
     await loadRCOfferings();
     if (!_rcLoadedPackage) { showToast('⚠️ ' + (_rcLoadError || 'Subscription not available')); return; }
   }
   const Purchases = window.Capacitor.Plugins.Purchases;
-  let purchaseCustomerInfo = null;
   let alreadyOwned = false;
   try {
+    // Acknowledge the tap ON the button — sandbox StoreKit can take ~5s to
+    // present the sheet and a silent button reads as a dead tap.
+    setIAPButtonState('loading', 'Opening Apple purchase…');
     showToast('⏳ Opening Apple purchase…');
     const result = await Purchases.purchasePackage({ aPackage: _rcLoadedPackage });
-    purchaseCustomerInfo = result && result.customerInfo;
+    const info = result && result.customerInfo;
+    if (info) console.log('[RC] SDK-side active entitlements (informational):', info.entitlements && info.entitlements.active ? Object.keys(info.entitlements.active) : 'none');
   } catch(purchaseErr) {
     const code = String((purchaseErr && (purchaseErr.code || purchaseErr.underlyingErrorCode)) || '');
     const msg  = String((purchaseErr && purchaseErr.message) || '');
-    if (purchaseErr && (purchaseErr.userCancelled === true || code === 'PURCHASE_CANCELLED' || code === '1')) return;
+    if (purchaseErr && (purchaseErr.userCancelled === true || code === 'PURCHASE_CANCELLED' || code === '1')) {
+      setIAPButtonState('ready', _rcReadyLabel);
+      return;
+    }
     const isAlreadyOwned = code === 'PRODUCT_ALREADY_PURCHASED' || code === '7' || msg.toLowerCase().includes('already');
-    if (!isAlreadyOwned) { showToast('⚠️ ' + (msg || 'Purchase failed')); return; }
+    if (!isAlreadyOwned) {
+      showToast('⚠️ ' + (msg || 'Purchase failed'));
+      setIAPButtonState('ready', _rcReadyLabel);
+      return;
+    }
     alreadyOwned = true;
   }
   showSyncingPaywall();
@@ -6739,20 +6868,16 @@ window.iosPurchase = async function() {
     hardTimeoutFired = true;
     _syncingSubscription = false;
     hideSyncingPaywall();
-    showToast('⚠️ Could not verify. Please close and reopen the app.');
-    openPaywall('upgrade');
-  }, 13000);
+    showToast('Purchase received — access is still syncing. Tap "Refresh status" in a moment');
+    setIAPButtonState('ready', _rcReadyLabel);
+  }, 25000);
   try {
-    let confirmed = false;
-    if (purchaseCustomerInfo) {
-      const active = purchaseCustomerInfo.entitlements && purchaseCustomerInfo.entitlements.active;
-      const has = k => active && Object.prototype.hasOwnProperty.call(active, k);
-      if (has('crm') || has('pro')) confirmed = await reconcileEntitlementsFromRC();
-    }
-    if (!confirmed && !hardTimeoutFired) confirmed = await reconcileEntitlementsFromRC();
-    for (let i = 1; i <= 4 && !confirmed && !hardTimeoutFired; i++) {
-      await new Promise(r => setTimeout(r, 1500));
-      confirmed = await reconcileEntitlementsFromRC();
+    let confirmed = await _pollCrmServerEntitlement();
+    if (!confirmed && !hardTimeoutFired) {
+      try {
+        await Purchases.restorePurchases();
+        confirmed = await _pollCrmServerEntitlement([0, 2000, 3000]);
+      } catch(_) {}
     }
     if (hardTimeoutFired) return;
     clearTimeout(hardTimeout);
@@ -6761,14 +6886,8 @@ window.iosPurchase = async function() {
       showToast(alreadyOwned ? '✅ Subscription verified!' : '✅ Subscription active!');
       setTimeout(() => { closePaywall(); showApp && showApp(); }, 600);
     } else {
-      try { await Purchases.restorePurchases(); confirmed = await reconcileEntitlementsFromRC(); } catch(_) {}
-      if (confirmed) {
-        showToast('✅ Subscription restored!');
-        setTimeout(() => { closePaywall(); showApp && showApp(); }, 600);
-      } else {
-        showToast('⚠️ Could not verify. Please close and reopen the app.');
-        openPaywall('upgrade');
-      }
+      showToast('Purchase received — access is still syncing. Tap "Refresh status" in a moment');
+      setIAPButtonState('ready', _rcReadyLabel);
     }
   } finally {
     clearTimeout(hardTimeout);
@@ -6778,12 +6897,19 @@ window.iosPurchase = async function() {
 
 window.iosRestorePurchases = async function() {
   if (!isNativeEarly) return;
-  if (!_rcConfigured) { showToast('Purchases not ready'); return; }
   try {
+    if (!_rcConfigured) await loadRCOfferings();
     const Purchases = window.Capacitor.Plugins.Purchases;
+    if (!Purchases || !_rcConfigured) { showToast('⚠️ Purchases not ready'); return; }
+    showToast('⏳ Restoring purchases…');
     await Purchases.restorePurchases();
-    const confirmed = await reconcileEntitlementsFromRC();
-    showToast(confirmed ? '✅ Purchases restored' : '⚠️ No active subscription found');
+    const ok = await _pollCrmServerEntitlement([0, 2000, 3000, 4000]);
+    if (ok) {
+      showToast('✅ Subscription restored');
+      closePaywall(); showApp && showApp();
+    } else {
+      showToast('No active subscription found for this Apple ID');
+    }
   } catch(e) {
     showToast('⚠️ ' + (e.message || 'Could not restore'));
   }
