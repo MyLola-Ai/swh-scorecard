@@ -231,6 +231,15 @@ matching the CRM's system activity.
 
 ## 10. Roadmap / open items
 
+**RULED 2026-07-18 (Austen via CTO): CRM FRONT DOOR = EXACT SCORECARD MODEL + PRO-TIER TRIAL.**
+One identity, one 60-day no-card trial, covering BOTH apps: unexpired trial resolves to PRO
+(CRM open); after expiry each app gates to its own subscribe path. SWH thread owns the
+computeEntitlement tier change (trial→pro incl. legacy fallback) + regression re-run; this
+thread's CRM registration ships only after that deploy is observed live. CRM port now IN
+PROGRESS: boot hardening, entitlement-contract wiring, browse-don't-save native, IAP client
+(crm.monthly→pro, $24.99), Get Started registration. CRM needs a NET-NEW ASC listing (Austen's
+hands or ASC API key). ATX100 offer codes STAY by ruling — intentional limited comp channel.
+
 **SUBMITTED 2026-07-17: Scorecard 1.45 (32) is IN APP REVIEW.** The full arc shipped in one
 version: in-app registration (Get Started → 60-day no-card trial auto-attach → in-app profile),
 browse-don't-save for free/expired users, dual-billing IAP (subscribe sheet arms from the live
