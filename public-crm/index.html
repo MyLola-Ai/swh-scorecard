@@ -2174,7 +2174,6 @@ html.dark-theme .st-sect-head{color:rgba(255,255,255,.55);}
         <!-- NATIVE: import from the phone's address book (system picker, no
              permission prompt needed). Revealed by openAddContact on iOS. -->
         <button type="button" id="ac-import-phone" onclick="importFromPhoneContacts()" style="display:none;align-items:center;justify-content:center;gap:8px;width:100%;padding:12px;background:var(--bg);border:1.5px dashed var(--border);border-radius:11px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:700;color:var(--navy);cursor:pointer;">📇 Import from iPhone Contacts</button>
-        <button type="button" id="ac-save-phone" onclick="saveContactToPhone()" style="display:none;align-items:center;justify-content:center;gap:8px;width:100%;padding:12px;background:var(--bg);border:1.5px dashed var(--border);border-radius:11px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:700;color:var(--navy);cursor:pointer;">📲 Save to iPhone Contacts</button>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
           <div>
             <label class="ctx-label">First Name <span style="color:var(--red);">*</span></label>
@@ -8328,6 +8327,7 @@ function buildExpandDetail(c) {
         <button onclick="openEditContact('${c.id}')" style="padding:9px 14px;border:1.5px solid var(--border);border-radius:9px;background:var(--card);font-size:12px;font-weight:600;color:var(--text);cursor:pointer;">Edit</button>
         <button onclick="deleteContact('${c.id}')" style="padding:9px 14px;border:1.5px solid #fecaca;border-radius:9px;background:#fff4f4;font-size:12px;font-weight:600;color:var(--red);cursor:pointer;">Remove</button>
       </div>
+      ${(isNativeEarly && window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Contacts) ? `<button onclick="saveContactToPhoneById('${c.id}')" style="width:100%;margin-top:8px;padding:9px;border:1.5px dashed var(--border);border-radius:9px;background:var(--card);font-size:12px;font-weight:600;color:var(--text);cursor:pointer;">📲 Save to iPhone Contacts</button>` : ''}
     </div>
     <div class="ne-panel" id="nep-${c.id}-activity">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
@@ -9685,11 +9685,14 @@ window.importFromPhoneContacts = async function() {
   }
 };
 
-// NATIVE (2026-07-19): the export mirror — write the open contact to the
-// phone's address book (which syncs onward to iCloud/Google/wherever the
-// phone lives). Unlike the picker, WRITING needs contacts access: one prompt.
-window.saveContactToPhone = async function() {
+// NATIVE (2026-07-19): the export mirror — write a contact to the phone's
+// address book (which syncs onward to iCloud/Google/wherever the phone
+// lives). Lives on the contact PROFILE panel under status/Edit/Remove.
+// Unlike the picker, WRITING needs contacts access: one prompt.
+window.saveContactToPhoneById = async function(id) {
   try {
+    const c = CONTACTS.find(x => x.id === id);
+    if (!c) { showToast('⚠️ Contact not found'); return; }
     const C = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Contacts;
     if (!C || typeof C.createContact !== 'function') { showToast('⚠️ Not available in this build'); return; }
     try {
@@ -9699,14 +9702,15 @@ window.saveContactToPhone = async function() {
         return;
       }
     } catch(_) { /* some versions prompt lazily on createContact */ }
-    const val = (id) => { const el = document.getElementById(id); return ((el && el.value) || '').trim(); };
-    const first = val('ac-first'), last = val('ac-last');
+    const parts = (c.name || '').trim().split(/\s+/);
+    const first = parts.shift() || '';
+    const last = parts.join(' ');
     if (!first && !last) { showToast('⚠️ Nothing to save'); return; }
     const contact = { name: { given: first, family: last } };
-    const phone = val('ac-phone'); if (phone) contact.phones = [{ type: 'mobile', number: phone }];
-    const email = val('ac-email'); if (email) contact.emails = [{ type: 'work', address: email }];
-    const company = val('ac-company'); if (company) contact.organization = { company };
-    const evt = val('ac-event'); if (evt) contact.note = `Met: ${evt} — via SWH CRM`;
+    if (c.phone) contact.phones = [{ type: 'mobile', number: c.phone }];
+    if (c.email) contact.emails = [{ type: 'work', address: c.email }];
+    if (c.company) contact.organization = { company: c.company };
+    if (c.event) contact.note = `Met: ${c.event} — via SWH CRM`;
     await C.createContact({ contact });
     showToast('✅ Saved to your iPhone contacts');
   } catch(e) {
@@ -9739,11 +9743,8 @@ window.openEditContact=function(id){
   const c=CONTACTS.find(x=>x.id===id);if(!c){showToast('⚠️ Contact not found');return;}
   editingContactId=id;
   document.getElementById('add-contact-form').reset();
-  // NATIVE (2026-07-19): export mirror of the phone-import — editing an
-  // existing contact offers "Save to iPhone Contacts" (needs write access,
-  // one prompt). The import button stays add-mode-only.
-  const _sp=document.getElementById('ac-save-phone');
-  if(_sp)_sp.style.display=(isNativeEarly&&window.Capacitor&&window.Capacitor.Plugins&&window.Capacitor.Plugins.Contacts)?'flex':'none';
+  // Import button is add-mode-only; save-to-phone lives on the contact
+  // PROFILE panel (Austen placement call, 2026-07-19).
   const _ip2=document.getElementById('ac-import-phone');
   if(_ip2)_ip2.style.display='none';
   const parts=(c.name||'').trim().split(/\s+/);
