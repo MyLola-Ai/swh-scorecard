@@ -42,6 +42,12 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // ── /system — server/admin config (e.g. lolaConnect beta flag) ──
+    // Read + written server-side (Admin SDK); admin may manage it directly.
+    match /system/{docId} {
+      allow read, write: if isAdmin();
+    }
+
     // ── /mail — Trigger Email Extension queue ──
     // Authed users can enqueue (signup notifications). Admin can blast.
     // Reads restricted to admin so users can't see each other's email payloads.

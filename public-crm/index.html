@@ -1978,7 +1978,7 @@ html.dark-theme .st-sect-head{color:rgba(255,255,255,.55);}
       <!-- ════ APPOINTMENTS ════ -->
       <div id="screen-appointments" class="screen">
         <div class="mobile-topbar mobile-only">
-          <div class="mobile-topbar-row"><div class="mobile-topbar-title">Appointments</div></div>
+          <div class="mobile-topbar-row"><div style="display:flex;align-items:center;gap:6px;"><button onclick="apptGoBack()" aria-label="Back" style="background:none;border:none;padding:0;margin:0 0 0 -4px;font-size:34px;line-height:1;color:#fff;cursor:pointer;-webkit-tap-highlight-color:transparent;">‹</button><div class="mobile-topbar-title">Appointments</div></div></div>
         </div>
         <div class="screen-body">
           <div class="content-pad" style="padding-top:12px;">
@@ -7044,6 +7044,13 @@ window.showScreen = function(name, btn) {
     console.log('[showScreen/stale-clear] todayCounts set to=', JSON.stringify(todayCounts));
     ctxEntries = {};
   }
+  // Remember the screen we're leaving so secondary screens (e.g. Appointments,
+  // reached from More on mobile) can offer a Back button back to it.
+  try {
+    const _cur = document.querySelector('.screen.active');
+    const _curName = _cur ? _cur.id.replace('screen-', '') : null;
+    if (_curName && _curName !== name) window._crmPrevScreen = _curName;
+  } catch (_) {}
   document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
   const scr = document.getElementById('screen-'+name); if(scr) scr.classList.add('active');
   document.querySelectorAll('.nav-btn,.mob-nav-btn').forEach(b=>b.classList.remove('active'));
@@ -7056,6 +7063,13 @@ window.showScreen = function(name, btn) {
   if(name==='pipeline') renderPipeline();
   if(name==='history') { renderHistory(); _refreshHistoryFromFirestore(); }
   if(name==='appointments') { renderAppointments(); }
+};
+
+// Back navigation for secondary screens (e.g. Appointments, reached from More on
+// mobile). Returns to wherever the user came from, falling back to the dashboard.
+window.apptGoBack = function() {
+  const t = (window._crmPrevScreen && window._crmPrevScreen !== 'appointments') ? window._crmPrevScreen : 'dashboard';
+  window.showScreen(t, document.getElementById('nav-' + t) || null);
 };
 
 async function _refreshHistoryFromFirestore() {

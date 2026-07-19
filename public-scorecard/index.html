@@ -6022,7 +6022,7 @@
     const prev = actions ? actions.innerHTML : '';
     if (actions) actions.innerHTML = '<span style="font-size:12px;color:var(--text-muted);">Opening…</span>';
     try {
-      const { json } = await _lolaConnectCall('connections.start', { providers: [provider || 'google'] });
+      const { json } = await _lolaConnectCall('connections.start', { providers: [provider || 'google'], returnOrigin: location.origin });
       const url = json.result && json.result.url;
       if (url) { window.location.href = url; return; }
       if (window.showToast) showToast('Could not start connection');
