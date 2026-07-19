@@ -88,6 +88,16 @@
   // racing window-global assignments. Returns null if signed out.
   window._getAuthToken = async function() {
     try {
+      // NATIVE (2026-07-19): the Web SDK is never signed in inside the
+      // WKWebView, so read the NativeAPI session token instead (refresh-if-
+      // needed first). This is what lights up Lola Connect + team calls on
+      // device — without it every _teamAuthHeader() consumer fails quiet.
+      if (isNativeEarly && window.NativeAPI && NativeAPI.isReady) {
+        try { if (typeof NativeAPI._refreshIfNeeded === 'function') await NativeAPI._refreshIfNeeded(); } catch(_) {}
+        if (NativeAPI.idToken) return NativeAPI.idToken;
+        console.warn('[_getAuthToken] native session has no idToken');
+        return null;
+      }
       const u = auth.currentUser;
       if (!u) { console.log('[_getAuthToken] no current user'); return null; }
       const t = await u.getIdToken(/* forceRefresh */ false);
@@ -5968,8 +5978,9 @@
 
   // ── Lola Connect (P4 beta) — email/calendar via the swh /lolaConnect proxy.
   // Additive + flag-gated: the whole section stays hidden unless the proxy
-  // reports this user beta-enabled (system/lolaConnect). The native app has no
-  // _getAuthToken in this scope, so the call throws and the section stays hidden.
+  // reports this user beta-enabled (system/lolaConnect). NATIVE WORKS as of
+  // 2026-07-19: _getAuthToken now reads the NativeAPI session token, so the
+  // card renders on device for beta uids too.
   let _lolaConnectConnId = null;
   async function _lolaConnectCall(op, body) {
     const headers = await _teamAuthHeader();
