@@ -3980,7 +3980,10 @@ let upcomingMeetings = [];
  * Fires after every successful SWH sign-in. Failure is non-fatal.
  */
 async function bridgeToMyAppointment() {
-  NativeAPI.call('mintApptCustomToken', {}).catch(() => {});
+  // mintApptCustomToken is an onCall fn — raw HTTP needs the callable
+  // envelope ({data} in), same as scanBusinessCard. Missing it 400'd
+  // silently and was half of the empty-Appointments symptom (2026-07-19).
+  NativeAPI.call('mintApptCustomToken', { data: {} }).catch(() => {});
   await loadApptData();
 }
 
@@ -3994,7 +3997,12 @@ window.openApptDashboard = function() {
 
 async function loadApptData() {
   try {
-    const data = await NativeAPI.call('getApptData', {});
+    // getApptData is an onCall fn — callable envelope: {data} in, {result}
+    // out (mirror of the scanBusinessCard pattern). The raw post 400'd
+    // silently → Appointments/Settings sat in the empty "set up" state on
+    // device even for live hosts (Austen, 2026-07-16 report; fixed 07-19).
+    const resp = await NativeAPI.call('getApptData', { data: {} });
+    const data = (resp && resp.result !== undefined) ? resp.result : resp;
     apptUserSlug     = data.userSlug || '';
     apptBookingPages = data.bookingPages || [];
     upcomingMeetings = (data.meetings || []).map(m => ({
