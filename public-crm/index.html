@@ -3987,11 +3987,28 @@ async function bridgeToMyAppointment() {
 }
 
 /**
- * Open myappointment.ai for booking page setup / management.
- * Called by all "Manage" and "Set up" buttons.
+ * One tap → signed-in MyAppointment dashboard. Mints a fresh SSO custom token
+ * (mintApptCustomToken is onCall — {data} in, {result:{token}} out) and hands it
+ * to the dashboard's ?token= bootstrap, which consumes + strips it. Falls back to
+ * the signed-out dashboard (never the marketing root) if the mint fails. Bare
+ * window.open('https://myappointment.ai') used to dump live hosts on the logged-out
+ * marketing page (Austen, 2026-07-16 report; fixed 07-19). Called by all
+ * "Manage" / "Set up" / "Publish" buttons.
  */
 window.openApptDashboard = function() {
-  window.open('https://myappointment.ai', '_blank');
+  const DASH = 'https://myappointment.ai/dashboard';
+  const native = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+  const mint = NativeAPI.call('mintApptCustomToken', { data: {} }, { timeout: 10000 })
+    .then(r => (r && r.result && r.result.token) ? DASH + '?token=' + encodeURIComponent(r.result.token) : DASH)
+    .catch(e => { console.warn('[appt] dashboard SSO mint failed (opening signed-out):', e && e.message); return DASH; });
+  if (native) {
+    // Native has no popup blocker and window.open returns null — mint first, open once.
+    mint.then(url => window.open(url, '_blank'));
+  } else {
+    // Web: open on the click gesture (avoids popup block), then redirect once minted.
+    const w = window.open(DASH, '_blank');
+    mint.then(url => { if (url !== DASH && w && !w.closed) { try { w.location = url; } catch (_) {} } });
+  }
 };
 
 async function loadApptData() {
@@ -4002,6 +4019,7 @@ async function loadApptData() {
     // device even for live hosts (Austen, 2026-07-16 report; fixed 07-19).
     const resp = await NativeAPI.call('getApptData', { data: {} });
     const data = (resp && resp.result !== undefined) ? resp.result : resp;
+    window._apptLoadFailed = false;
     apptUserSlug     = data.userSlug || '';
     apptBookingPages = data.bookingPages || [];
     upcomingMeetings = (data.meetings || []).map(m => ({
@@ -4021,7 +4039,11 @@ async function loadApptData() {
     if (typeof updateSettingsApptSub === 'function') updateSettingsApptSub();
     console.log('[appt] loaded', upcomingMeetings.length, 'meetings,', apptBookingPages.length, 'pages, slug:', apptUserSlug);
   } catch (err) {
-    console.warn('[appt] loadApptData failed (non-fatal):', err);
+    // Don't let a load failure masquerade as "no booking page." Flag it so the
+    // empty states can offer Retry instead of the "set up" CTA, and tell the user.
+    console.warn('[appt] loadApptData failed:', err && err.message);
+    window._apptLoadFailed = true;
+    if (typeof showToast === 'function') showToast('⚠️ Couldn\'t load your booking info — tap ⟳ to retry');
   }
 }
 
@@ -13378,6 +13400,16 @@ function renderAppointments() {
 function renderApptPagesList() {
   const el = document.getElementById('appt-pages-list');
   if (!el) return;
+  if (!apptBookingPages.length && window._apptLoadFailed) {
+    // Load failed — don't masquerade as "not set up." Offer Retry.
+    el.innerHTML = `<div style="background:var(--card);border-radius:14px;padding:24px 20px;border:1px solid var(--border);text-align:center;">
+      <div style="font-size:28px;margin-bottom:10px;">⚠️</div>
+      <div style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:6px;">Couldn't load your booking info</div>
+      <div style="font-size:13px;color:var(--muted);margin-bottom:18px;line-height:1.5;">Check your connection and try again. Your booking pages are safe.</div>
+      <button onclick="refreshApptData()" style="padding:10px 20px;background:var(--blue);color:#fff;border:none;border-radius:10px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:700;cursor:pointer;">⟳ Retry</button>
+    </div>`;
+    return;
+  }
   if (!apptBookingPages.length) {
     el.innerHTML = `<div style="background:var(--card);border-radius:14px;padding:24px 20px;border:1px solid var(--border);text-align:center;">
       <div style="font-size:28px;margin-bottom:10px;">📅</div>
