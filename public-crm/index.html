@@ -2171,6 +2171,9 @@ html.dark-theme .st-sect-head{color:rgba(255,255,255,.55);}
     </div>
     <div class="ctx-body" style="overflow-y:auto;flex:1;padding:16px 20px 12px;">
       <form id="add-contact-form" onsubmit="return false;" style="display:flex;flex-direction:column;gap:12px;">
+        <!-- NATIVE: import from the phone's address book (system picker, no
+             permission prompt needed). Revealed by openAddContact on iOS. -->
+        <button type="button" id="ac-import-phone" onclick="importFromPhoneContacts()" style="display:none;align-items:center;justify-content:center;gap:8px;width:100%;padding:12px;background:var(--bg);border:1.5px dashed var(--border);border-radius:11px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:700;color:var(--navy);cursor:pointer;">📇 Import from iPhone Contacts</button>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
           <div>
             <label class="ctx-label">First Name <span style="color:var(--red);">*</span></label>
@@ -4441,7 +4444,7 @@ window.lolaConnectConnect = async function (provider) {
   const prev = actions ? actions.innerHTML : '';
   if (actions) actions.innerHTML = '<span style="font-size:12px;color:var(--muted);">Opening…</span>';
   try {
-    const { json } = await _lolaConnectCall('connections.start', { providers: [provider || 'google'] });
+    const { json } = await _lolaConnectCall('connections.start', { providers: [provider || 'google'], returnOrigin: location.origin });
     const url = json.result && json.result.url;
     if (url) { window.location.href = url; return; }
     if (window.showToast) showToast('Could not start connection');
@@ -9649,7 +9652,29 @@ function _refreshEventSuggestions() {
   ])].sort((a,b) => a.localeCompare(b));
   dl.innerHTML = names.map(n => `<option value="${n.replace(/"/g,'&quot;')}">`).join('');
 }
-window.openAddContact=function(){editingContactId=null;_acTeamResetWarning();document.getElementById('add-contact-form').reset();setContactModalMode('add');refreshAcPlaybookOptions();_refreshEventSuggestions();document.getElementById('ac-overlay').classList.add('open');setTimeout(()=>document.getElementById('ac-first').focus(),200);};
+window.openAddContact=function(){editingContactId=null;_acTeamResetWarning();document.getElementById('add-contact-form').reset();setContactModalMode('add');refreshAcPlaybookOptions();_refreshEventSuggestions();const _ip=document.getElementById('ac-import-phone');if(_ip)_ip.style.display=(isNativeEarly&&window.Capacitor&&window.Capacitor.Plugins&&window.Capacitor.Plugins.Contacts)?'flex':'none';document.getElementById('ac-overlay').classList.add('open');setTimeout(()=>document.getElementById('ac-first').focus(),200);};
+
+// NATIVE (2026-07-19): prefill the add-contact form from the phone's address
+// book via the system contact picker (CNContactPickerViewController — no
+// permission prompt required; the user hand-picks exactly one contact).
+window.importFromPhoneContacts = async function() {
+  try {
+    const C = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Contacts;
+    if (!C || typeof C.pickContact !== 'function') { showToast('⚠️ Not available in this build'); return; }
+    const res = await C.pickContact({ projection: { name: true, phones: true, emails: true, organization: true } });
+    const c = res && res.contact;
+    if (!c) return;
+    const set = (id, v) => { const el = document.getElementById(id); if (el && v) el.value = v; };
+    set('ac-first', c.name && c.name.given);
+    set('ac-last', c.name && c.name.family);
+    set('ac-phone', c.phones && c.phones[0] && c.phones[0].number);
+    set('ac-email', c.emails && c.emails[0] && c.emails[0].address);
+    set('ac-company', c.organization && c.organization.company);
+    showToast('✅ Imported — review, add where you met, and save');
+  } catch(e) {
+    if (!/cancel/i.test((e && e.message) || '')) showToast('⚠️ ' + ((e && e.message) || 'Could not import contact'));
+  }
+};
 window.closeAddContact=function(){editingContactId=null;_acTeamResetWarning();document.getElementById('ac-overlay').classList.remove('open');};
 
 // ── Team Contact Awareness — Add Contact teammate heads-up ──
@@ -11535,9 +11560,51 @@ function formatICSEndTime(dateStr) {
   return `${compact}T${hh}0500`;
 }
 
+// NATIVE (2026-07-19, Austen): write the 8-step schedule DIRECTLY to the
+// iPhone calendar — the phone aggregates every provider (iCloud, Yahoo,
+// Exchange, anything), so the Google/Outlook-only question disappears on
+// mobile. One write-only permission prompt, then all events, no sign-in.
+async function _writeStepsToPhoneCalendar(contact, clockStart) {
+  const Cal = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.CapacitorCalendar;
+  if (!Cal) { showToast('⚠️ Calendar isn\'t available in this build'); return; }
+  try {
+    let granted = true;
+    try {
+      const perm = await (Cal.requestWriteOnlyCalendarAccess ? Cal.requestWriteOnlyCalendarAccess() : Cal.requestFullCalendarAccess());
+      granted = !perm || !perm.result || perm.result === 'granted';
+    } catch(_) { /* some versions prompt lazily on createEvent */ }
+    if (!granted) {
+      showToast('⚠️ Calendar access declined — you can allow it in iPhone Settings');
+      return;
+    }
+    const hh = (typeof calendarHour === 'number' ? calendarHour : 7);
+    let created = 0;
+    for (let i = 0; i < STEP_NAMES.length; i++) {
+      const dueDate = addDays(clockStart, STEP_SCHEDULE[i]);
+      const start = new Date(`${dueDate}T${String(hh).padStart(2,'0')}:00:00`);
+      const end = new Date(start.getTime() + 5 * 60000);
+      await Cal.createEvent({
+        title: `SWH ${STEP_FREQ[i]}: ${STEP_NAMES[i]} (${contact.name})`,
+        startDate: start.getTime(),
+        endDate: end.getTime(),
+        notes: `${STEP_DESCRIPTIONS[i]}\n\nContact: ${contact.name}\nCompany: ${contact.company || ''}\nPhone: ${contact.phone || ''}\n\nSWH 8-Step Follow-Through`,
+      });
+      created++;
+    }
+    showToast(`✅ ${created} follow-through events added to your iPhone calendar`);
+  } catch(e) {
+    console.warn('[cal] native write failed:', e && e.message);
+    showToast('⚠️ ' + ((e && e.message) || 'Could not add to calendar'));
+  }
+}
+
 function generateICS(contact) {
   const clockStart = contact.clockStarted;
   if(!clockStart) { showToast('⚠️ Start the clock first'); return; }
+
+  // Native: skip the .ics blob download (unreliable in the WKWebView) and
+  // write to the phone's own calendar instead.
+  if (isNativeEarly) { _writeStepsToPhoneCalendar(contact, clockStart); return; }
 
   const formatICSDate = (dateStr) => dateStr.replace(/-/g, '');
   const escapeICS = (str) => (str||'').replace(/,/g,'\\,').replace(/;/g,'\\;').replace(/\n/g,'\\n');
