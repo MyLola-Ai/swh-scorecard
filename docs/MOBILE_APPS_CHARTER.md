@@ -240,8 +240,11 @@ PROGRESS: boot hardening, entitlement-contract wiring, browse-don't-save native,
 (crm.monthly→pro, $24.99), Get Started registration. CRM needs a NET-NEW ASC listing (Austen's
 hands or ASC API key). ATX100 offer codes STAY by ruling — intentional limited comp channel.
 
-**NYLAS DROPPED PORTFOLIO-WIDE (CTO broadcast 2026-07-19; Lola Connect/Unipile is the sole
-email/calendar layer).** Mobile posture: mirror-not-extend — the CRM's legacy Nylas card stays
+**NYLAS DROPPED PORTFOLIO-WIDE (CTO broadcast 2026-07-19; corrected same day: subscription
+CANCELLED but service RUNS UNTIL AUG 2, 2026 — the CRM's Nylas card keeps working until
+cutover). LC cutover target JUL 28: LC wiring + user reconnects land on web, flag flips, iOS
+re-bundles in the same train; the 44-ref removal executes AFTER as one sequenced change.
+Lola Connect/Unipile is the sole go-forward email/calendar layer.** Mobile posture: mirror-not-extend — the CRM's legacy Nylas card stays
 live until the LC cutover flag flips on web, then the iOS mirror re-bundles in the same release
 train (the show/hide coupling on system/lolaConnect already exists in public-crm). Inventory on
 file with the CTO: 44 refs + nylas-email.js in the CRM; the Scorecard carries nylas-email.js +
