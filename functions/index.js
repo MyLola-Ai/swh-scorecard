@@ -182,6 +182,15 @@ async function denyIfUnpaid(uid, res) {
 // Webhook write path: merge a rail's source-scoped patch, then recompute the
 // authoritative `plan` mirror from the FULL union in one transaction so a
 // single rail's event can never stomp another rail's access.
+// A rail counts as PAID revenue only when money actually moved. 'trialing' lives
+// in ENTITLEMENT_ACTIVE because it grants access, but it is NOT a conversion —
+// including it would make every Stripe trial read as a sale in the CFO numbers.
+const PAID_STATUS = { active: 1, past_due: 1 }; // past_due = paid then failed, still a conversion
+function isPaidState(u) {
+  if (!u) return false;
+  return !!((u.apple && PAID_STATUS[u.apple.status]) || (u.stripe && PAID_STATUS[u.stripe.status]));
+}
+
 async function applySourceUpdate(uid, sourceKey, sourcePatch) {
   const ref = db.collection('users').doc(uid);
   await db.runTransaction(async (tx) => {
@@ -190,12 +199,22 @@ async function applySourceUpdate(uid, sourceKey, sourcePatch) {
     const mergedSource = { ...(u[sourceKey] || {}), ...sourcePatch, updatedAt: new Date().toISOString() };
     const merged = { ...u, [sourceKey]: mergedSource };
     const { plan, entitlement } = computeEntitlement(merged);
-    tx.set(ref, {
+    const write = {
       [sourceKey]: mergedSource,
       plan,
       doubleBilling: entitlement.doubleBilling,
       billingUpdatedAt: new Date().toISOString(),
-    }, { merge: true });
+    };
+    // Stamp the FIRST transition into a paid state, for the CFO's "paid within N
+    // days of trialEndsAt" metric (billingUpdatedAt/updatedAt drift on every later
+    // webhook write). Guarding on !isPaidState(u) — not just !u.subscribedAt —
+    // keeps us from back-stamping TODAY onto users who were already subscribed
+    // before this field existed: a missing value beats a wrong one. Historical
+    // subscribers therefore stay unstamped by design.
+    if (!u.subscribedAt && !isPaidState(u) && isPaidState(merged)) {
+      write.subscribedAt = new Date().toISOString();
+    }
+    tx.set(ref, write, { merge: true });
   });
 }
 const STRIPE_TRIAL_DAYS = 60;
@@ -2978,14 +2997,19 @@ exports.revenueCatWebhook = onRequest({
         // the same identity is never clobbered. planOverride still wins inside
         // computeEntitlement, so no need to special-case comps here.
         const periodEndSec = event.expiration_at_ms ? Math.floor(event.expiration_at_ms / 1000) : null;
-        await applySourceUpdate(uid, 'apple', {
+        const applePatch = {
           status: 'active',
           tier: resolvePlanFromRcEvent(event),
           productId: event.product_id || null,
           originalTransactionId: event.original_transaction_id || null,
           currentPeriodEnd: periodEndSec ? new Date(periodEndSec * 1000).toISOString() : null,
           cancelAtPeriodEnd: false,
-        });
+        };
+        // Offer-code redemptions (ATX100) carry offer_code. Set it ONLY when
+        // present: a later RENEWAL has no offer_code, and applySourceUpdate
+        // merges, so writing null would erase the code identifying the cohort.
+        if (event.offer_code) applePatch.offerCode = event.offer_code;
+        await applySourceUpdate(uid, 'apple', applePatch);
         // Legacy mirror fields other tooling still reads.
         await db.collection('users').doc(uid).set({ billingSource: 'apple', revenueCatAppUserId: uid, subscriptionStatus: 'active', updatedAt: new Date().toISOString() }, { merge: true });
         break;
