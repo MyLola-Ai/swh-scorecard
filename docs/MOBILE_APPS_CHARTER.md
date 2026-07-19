@@ -250,7 +250,10 @@ Cap 8 SPM resolution fails until node_modules/@capacitor-community/contacts/Pack
 patched to 8.x; a postinstall script in ios-crm/package.json re-applies it (CapApp-SPM is
 gitignored; the node_modules patch is the fix's home). Remove the patch when the plugin ships
 Cap-8. ASC NOTE for the CRM listing: privacy questionnaire must declare Contacts access
-(user-picked import only, not uploaded in bulk) + Calendar write. Scorecard native calendar
+(user-picked import only, not uploaded in bulk) + Calendar write. EXPORT MIRROR shipped same day (42acce3): edit-contact modal gains 'Save to iPhone Contacts'
+(createContact, one write prompt; import button = add mode only, save = edit mode only). CSV
+bulk export SPEC'D to the SWH thread (web People screen, round-trippable columns, reusable
+generator so native share-sheet export can follow). Scorecard native calendar
 deferred (its only calendar surface is the daily reminder). Lola Connect on-device: card WORKS
 both apps post token-fix (0caad37); per-surface OAuth redirect bug + return-UX with the Lola
 Connect thread.
