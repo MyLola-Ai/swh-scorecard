@@ -65,8 +65,30 @@ const weekAgo = new Date(now.getTime() - 7 * 864e5);
 const inMonth = (iso) => iso && new Date(iso) >= monthStart && new Date(iso) <= now;
 const CONVERSION_WINDOW_DAYS = 7;
 
-const users = await scanAll('users');
+const usersAll = await scanAll('users');
 const teams = await scanAll('teams');
+
+// Apple-review demo accounts: manually granted, excluded from ALL counts
+// (standing rule: never touched by migrations, never inflate the table).
+const DEMO_EMAILS = new Set(['appreview@stopwastinghandshakes.com', 'appreview-expired@stopwastinghandshakes.com']);
+const users = usersAll.filter(d => !DEMO_EMAILS.has(val(d.fields || {}, 'email')));
+const demoExcluded = usersAll.length - users.length;
+
+// Read a source-scoped map subfield (post-reconciliation apple.*/stripe.*).
+const mapVal = (f, m, k) => f && f[m] && f[m].mapValue && val(f[m].mapValue.fields, k);
+
+// Rail classification, derived at read time (SWH guidance 2026-07-19):
+// planOverride = deliberate comp; paid plan with no rail evidence and no
+// override = legacy/manual grant. Different categories, never conflated.
+function railOf(f, plan) {
+  const bs = val(f, 'billingSource');
+  if (bs) return bs;
+  if (mapVal(f, 'apple', 'status')) return 'apple';
+  if (mapVal(f, 'stripe', 'status') || val(f, 'stripeSubscriptionId')) return 'stripe';
+  if (plan === 'trial') return (val(f, 'trialSource') || 'web') + '-trial';
+  if (val(f, 'planOverride')) return 'comp(override)';
+  return 'legacy-grant';
+}
 
 // ── 1. Subscribers: plan × status × rail ─────────────────────────────────
 const subs = {};
@@ -74,8 +96,8 @@ for (const d of users) {
   const f = d.fields || {};
   const plan = val(f, 'plan') || 'free';
   if (plan === 'free') continue;
-  const status = val(f, 'subscriptionStatus') || (plan === 'trial' ? 'trialing' : 'unknown');
-  const rail = val(f, 'billingSource') || (val(f, 'stripeSubscriptionId') ? 'web' : (plan === 'trial' ? (val(f, 'trialSource') || 'web') + '-trial' : 'unknown'));
+  const status = val(f, 'subscriptionStatus') || (plan === 'trial' ? 'trialing' : (val(f, 'planOverride') ? 'comp' : 'granted'));
+  const rail = railOf(f, plan);
   const key = `${plan} | ${status} | ${rail}`;
   subs[key] = (subs[key] || 0) + 1;
 }
@@ -92,12 +114,15 @@ for (const d of users) {
   if (te && new Date(te) > now) bump(trials.active, src);
   if (te && (WEEKLY ? (new Date(te) >= weekAgo && new Date(te) <= now) : inMonth(te))) {
     bump(trials.ended, src);
-    // Conversion: paid rail present. Timing approximated via webhook
-    // updatedAt (precision improves when webhooks stamp subscribedAt).
-    const paid = val(f, 'billingSource') || val(f, 'stripeSubscriptionId');
-    const upd = val(f, 'updatedAt');
-    const within = upd && te && (new Date(upd) - new Date(te)) <= CONVERSION_WINDOW_DAYS * 864e5 && (new Date(upd) - new Date(te)) >= -CONVERSION_WINDOW_DAYS * 864e5;
-    if (paid && (within || !upd)) bump(trials.converted7d, src);
+    // Conversion: paid rail present. Timing: prefer subscribedAt (stamped
+    // by the webhooks post-deploy, first paid transition only — trialing
+    // never stamps, historical subs stay unstamped BY DESIGN); fall back to
+    // the updatedAt approximation for pre-stamp subs. Absence of
+    // subscribedAt is NEVER read as absence of conversion.
+    const paid = val(f, 'billingSource') || val(f, 'stripeSubscriptionId') || mapVal(f, 'apple', 'status') || mapVal(f, 'stripe', 'status');
+    const when = val(f, 'subscribedAt') || val(f, 'updatedAt');
+    const within = when && te && (new Date(when) - new Date(te)) <= CONVERSION_WINDOW_DAYS * 864e5 && (new Date(when) - new Date(te)) >= -CONVERSION_WINDOW_DAYS * 864e5;
+    if (paid && (within || !when)) bump(trials.converted7d, src);
   }
 }
 
@@ -124,7 +149,7 @@ for (const d of teams) {
 // ── Render ───────────────────────────────────────────────────────────────
 const L = [];
 L.push(`# SWH Revenue Snapshot — ${WEEKLY ? 'WEEKLY (trial cohorts)' : 'MONTHLY'} — ${now.toISOString().slice(0, 10)}`);
-L.push(`Generated ${now.toISOString()} · users scanned: ${users.length} · teams: ${teams.length}`);
+L.push(`Generated ${now.toISOString()} · users scanned: ${users.length} (+${demoExcluded} App-Review demo accounts excluded) · teams: ${teams.length}`);
 if (!WEEKLY) {
   L.push('', '## 1. Subscribers (plan | status | rail)');
   const keys = Object.keys(subs).sort();
