@@ -240,6 +240,21 @@ PROGRESS: boot hardening, entitlement-contract wiring, browse-don't-save native,
 (crm.monthly→pro, $24.99), Get Started registration. CRM needs a NET-NEW ASC listing (Austen's
 hands or ASC API key). ATX100 offer codes STAY by ruling — intentional limited comp channel.
 
+**2026-07-19: NATIVE iPHONE CALENDAR + CONTACTS in the CRM (d098c0d, installed).** The
+provider question disappears on mobile: generateICS on native writes the 8-step schedule
+straight into the iPhone calendar (@ebarooni/capacitor-calendar, one write-only prompt) — the
+phone aggregates iCloud/Yahoo/Exchange/everything; web keeps the .ics download. Add-contact
+form gains "Import from iPhone Contacts" (system picker, no permission prompt) via
+@capacitor-community/contacts. TOOLING GOTCHA: contacts 7.2.0 pins capacitor-swift-pm 7.x —
+Cap 8 SPM resolution fails until node_modules/@capacitor-community/contacts/Package.swift is
+patched to 8.x; a postinstall script in ios-crm/package.json re-applies it (CapApp-SPM is
+gitignored; the node_modules patch is the fix's home). Remove the patch when the plugin ships
+Cap-8. ASC NOTE for the CRM listing: privacy questionnaire must declare Contacts access
+(user-picked import only, not uploaded in bulk) + Calendar write. Scorecard native calendar
+deferred (its only calendar surface is the daily reminder). Lola Connect on-device: card WORKS
+both apps post token-fix (0caad37); per-surface OAuth redirect bug + return-UX with the Lola
+Connect thread.
+
 **2026-07-18: CRM PORT COMPLETE (9dd5a33, installed on Austen's device).** The CRM now runs
 the exact Scorecard model per the ruling: in-app registration (signup restored, bare identities
 adopt the PRO-TIER 60-day trial — server fa39900 resolves trials to pro, one per identity ever),
