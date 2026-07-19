@@ -2174,6 +2174,7 @@ html.dark-theme .st-sect-head{color:rgba(255,255,255,.55);}
         <!-- NATIVE: import from the phone's address book (system picker, no
              permission prompt needed). Revealed by openAddContact on iOS. -->
         <button type="button" id="ac-import-phone" onclick="importFromPhoneContacts()" style="display:none;align-items:center;justify-content:center;gap:8px;width:100%;padding:12px;background:var(--bg);border:1.5px dashed var(--border);border-radius:11px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:700;color:var(--navy);cursor:pointer;">📇 Import from iPhone Contacts</button>
+        <button type="button" id="ac-save-phone" onclick="saveContactToPhone()" style="display:none;align-items:center;justify-content:center;gap:8px;width:100%;padding:12px;background:var(--bg);border:1.5px dashed var(--border);border-radius:11px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:700;color:var(--navy);cursor:pointer;">📲 Save to iPhone Contacts</button>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
           <div>
             <label class="ctx-label">First Name <span style="color:var(--red);">*</span></label>
@@ -9675,6 +9676,35 @@ window.importFromPhoneContacts = async function() {
     if (!/cancel/i.test((e && e.message) || '')) showToast('⚠️ ' + ((e && e.message) || 'Could not import contact'));
   }
 };
+
+// NATIVE (2026-07-19): the export mirror — write the open contact to the
+// phone's address book (which syncs onward to iCloud/Google/wherever the
+// phone lives). Unlike the picker, WRITING needs contacts access: one prompt.
+window.saveContactToPhone = async function() {
+  try {
+    const C = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Contacts;
+    if (!C || typeof C.createContact !== 'function') { showToast('⚠️ Not available in this build'); return; }
+    try {
+      const perm = await C.requestPermissions();
+      if (perm && perm.contacts && perm.contacts !== 'granted') {
+        showToast('⚠️ Contacts access declined — you can allow it in iPhone Settings');
+        return;
+      }
+    } catch(_) { /* some versions prompt lazily on createContact */ }
+    const val = (id) => { const el = document.getElementById(id); return ((el && el.value) || '').trim(); };
+    const first = val('ac-first'), last = val('ac-last');
+    if (!first && !last) { showToast('⚠️ Nothing to save'); return; }
+    const contact = { name: { given: first, family: last } };
+    const phone = val('ac-phone'); if (phone) contact.phones = [{ type: 'mobile', number: phone }];
+    const email = val('ac-email'); if (email) contact.emails = [{ type: 'work', address: email }];
+    const company = val('ac-company'); if (company) contact.organization = { company };
+    const evt = val('ac-event'); if (evt) contact.note = `Met: ${evt} — via SWH CRM`;
+    await C.createContact({ contact });
+    showToast('✅ Saved to your iPhone contacts');
+  } catch(e) {
+    showToast('⚠️ ' + ((e && e.message) || 'Could not save to contacts'));
+  }
+};
 window.closeAddContact=function(){editingContactId=null;_acTeamResetWarning();document.getElementById('ac-overlay').classList.remove('open');};
 
 // ── Team Contact Awareness — Add Contact teammate heads-up ──
@@ -9701,6 +9731,13 @@ window.openEditContact=function(id){
   const c=CONTACTS.find(x=>x.id===id);if(!c){showToast('⚠️ Contact not found');return;}
   editingContactId=id;
   document.getElementById('add-contact-form').reset();
+  // NATIVE (2026-07-19): export mirror of the phone-import — editing an
+  // existing contact offers "Save to iPhone Contacts" (needs write access,
+  // one prompt). The import button stays add-mode-only.
+  const _sp=document.getElementById('ac-save-phone');
+  if(_sp)_sp.style.display=(isNativeEarly&&window.Capacitor&&window.Capacitor.Plugins&&window.Capacitor.Plugins.Contacts)?'flex':'none';
+  const _ip2=document.getElementById('ac-import-phone');
+  if(_ip2)_ip2.style.display='none';
   const parts=(c.name||'').trim().split(/\s+/);
   const first=parts.shift()||'';
   const last=parts.join(' ');
