@@ -240,6 +240,14 @@ PROGRESS: boot hardening, entitlement-contract wiring, browse-don't-save native,
 (crm.monthly→pro, $24.99), Get Started registration. CRM needs a NET-NEW ASC listing (Austen's
 hands or ASC API key). ATX100 offer codes STAY by ruling — intentional limited comp channel.
 
+**NYLAS DROPPED PORTFOLIO-WIDE (CTO broadcast 2026-07-19; Lola Connect/Unipile is the sole
+email/calendar layer).** Mobile posture: mirror-not-extend — the CRM's legacy Nylas card stays
+live until the LC cutover flag flips on web, then the iOS mirror re-bundles in the same release
+train (the show/hide coupling on system/lolaConnect already exists in public-crm). Inventory on
+file with the CTO: 44 refs + nylas-email.js in the CRM; the Scorecard carries nylas-email.js +
+nylas-calendar.js as fully UNREFERENCED dead files (frozen harmlessly into the 1.45 archive) —
+delete them from public-scorecard as part of the sequenced Nylas retirement, not before.
+
 **2026-07-19: NATIVE iPHONE CALENDAR + CONTACTS in the CRM (d098c0d, installed).** The
 provider question disappears on mobile: generateICS on native writes the 8-step schedule
 straight into the iPhone calendar (@ebarooni/capacitor-calendar, one write-only prompt) — the
