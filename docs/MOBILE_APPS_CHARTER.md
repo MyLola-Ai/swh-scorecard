@@ -240,6 +240,17 @@ PROGRESS: boot hardening, entitlement-contract wiring, browse-don't-save native,
 (crm.monthly→pro, $24.99), Get Started registration. CRM needs a NET-NEW ASC listing (Austen's
 hands or ASC API key). ATX100 offer codes STAY by ruling — intentional limited comp channel.
 
+**2026-07-18: CRM PORT COMPLETE (9dd5a33, installed on Austen's device).** The CRM now runs
+the exact Scorecard model per the ruling: in-app registration (signup restored, bare identities
+adopt the PRO-TIER 60-day trial — server fa39900 resolves trials to pro, one per identity ever),
+contract-gated IAP subscribe (crm.monthly → 'pro', server-poll verification, instant tap
+feedback), boot hardening (recoverable error screen), browse-don't-save + nav gating. Zero
+client-side entitlement computation. ATX100 offer codes STAY (Austen: intentional comp channel).
+REMAINING FOR CRM LAUNCH: net-new ASC listing (record, screenshots, description, privacy
+questionnaire, review accounts — the Scorecard's demo-account pattern reuses directly), then
+first-submission review. SWH thread holds the joint web bundle (CRM web front door + browse-
+don't-save web parity) for Austen's deploy word.
+
 **SUBMITTED 2026-07-17: Scorecard 1.45 (32) is IN APP REVIEW.** The full arc shipped in one
 version: in-app registration (Get Started → 60-day no-card trial auto-attach → in-app profile),
 browse-don't-save for free/expired users, dual-billing IAP (subscribe sheet arms from the live
