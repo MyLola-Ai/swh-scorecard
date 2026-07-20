@@ -1380,28 +1380,44 @@ function renderRecapHTML(s) {
       </table>
     </td></tr>`).join('');
 
-  return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Your Week Recap</title></head>
+  return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="light dark"><meta name="supported-color-schemes" content="light dark"><title>Your Week Recap</title>
+<style>
+  /* This email is dark BY DESIGN (white type on a near-black hero). Without the
+     color-scheme declarations above, Apple Mail and Outlook run their own dark
+     mode transform and flip that white type to dark, so the score, greeting and
+     week range go invisible against the dark panel. Declaring both schemes tells
+     the client we handle our own colors. The rules below re-assert white type
+     for the clients that transform anyway (Outlook uses [data-ogsc]/[data-ogsb]). */
+  :root { color-scheme: light dark; supported-color-schemes: light dark; }
+  [data-ogsc] .swh-on-dark, [data-ogsb] .swh-on-dark { color: #ffffff !important; }
+  [data-ogsc] .swh-dark-panel, [data-ogsb] .swh-dark-panel { background-color: #0a0a0a !important; }
+  @media (prefers-color-scheme: dark) {
+    .swh-on-dark { color: #ffffff !important; }
+    .swh-dark-panel { background-color: #0a0a0a !important; }
+  }
+</style>
+</head>
 <body style="margin:0;padding:0;background:#0a0a0a;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;color:#1a1a1a;-webkit-font-smoothing:antialiased;">
 <div style="display:none;max-height:0;overflow:hidden;font-size:1px;line-height:1px;color:#0a0a0a;opacity:0;">Final score: ${s.totalPts} pts · ${s.tier.name}${s.goalHit ? ' · Goal hit' : ''}${s.trendPct !== null ? ` · ${trendUp?'+':''}${s.trendPct}% vs last week` : ''}</div>
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#0a0a0a;padding:24px 12px;"><tr><td align="center">
-<table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="background:#ffffff;border-radius:20px;overflow:hidden;max-width:600px;width:100%;box-shadow:0 24px 64px rgba(0,0,0,0.5);">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#0a0a0a" class="swh-dark-panel" style="background:#0a0a0a;padding:24px 12px;"><tr><td align="center">
+<table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" bgcolor="#ffffff" style="background:#ffffff;border-radius:20px;overflow:hidden;max-width:600px;width:100%;box-shadow:0 24px 64px rgba(0,0,0,0.5);">
 
-<tr><td style="background:#0a0a0a;padding:20px 32px;border-bottom:1px solid rgba(255,255,255,0.06);">
+<tr><td bgcolor="#0a0a0a" class="swh-dark-panel" style="background:#0a0a0a;padding:20px 32px;border-bottom:1px solid rgba(255,255,255,0.06);">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
     <tr>
-      <td style="vertical-align:middle;"><span style="font-family:Georgia,serif;font-size:14px;font-weight:900;color:#fff;letter-spacing:0.04em;">SWH</span><span style="font-size:11px;font-weight:700;color:rgba(255,255,255,0.4);letter-spacing:0.16em;text-transform:uppercase;margin-left:10px;">Stop Wasting Handshakes</span></td>
-      <td align="right" style="vertical-align:middle;"><span style="font-size:11px;font-weight:700;color:rgba(255,255,255,0.4);letter-spacing:0.14em;text-transform:uppercase;">Week Recap</span></td>
+      <td style="vertical-align:middle;"><span class="swh-on-dark" style="font-family:Georgia,serif;font-size:14px;font-weight:900;color:#ffffff;letter-spacing:0.04em;">SWH</span><span class="swh-on-dark" style="font-size:11px;font-weight:700;color:rgba(255,255,255,0.4);letter-spacing:0.16em;text-transform:uppercase;margin-left:10px;">Stop Wasting Handshakes</span></td>
+      <td align="right" style="vertical-align:middle;"><span class="swh-on-dark" style="font-size:11px;font-weight:700;color:rgba(255,255,255,0.4);letter-spacing:0.14em;text-transform:uppercase;">Week Recap</span></td>
     </tr>
   </table>
 </td></tr>
 
-<tr><td style="background:linear-gradient(160deg,#0a0a0a 0%,#1a1a1a 60%,#2a1416 100%);padding:42px 32px 36px;text-align:center;">
-  <div style="font-size:11px;font-weight:800;color:rgba(255,255,255,0.45);letter-spacing:0.22em;text-transform:uppercase;">${s.weekStart} → ${s.weekEnd}</div>
-  <div style="font-family:Georgia,serif;font-size:18px;font-weight:400;color:rgba(255,255,255,0.7);margin-top:14px;font-style:italic;">Hey ${escHtml(s.firstName)}, here's how the week shook out.</div>
+<tr><td bgcolor="#0a0a0a" class="swh-dark-panel" style="background:#0a0a0a;background:linear-gradient(160deg,#0a0a0a 0%,#1a1a1a 60%,#2a1416 100%);padding:42px 32px 36px;text-align:center;">
+  <div class="swh-on-dark" style="font-size:11px;font-weight:800;color:#ffffff;opacity:0.45;letter-spacing:0.22em;text-transform:uppercase;">${s.weekStart} → ${s.weekEnd}</div>
+  <div class="swh-on-dark" style="font-family:Georgia,serif;font-size:18px;font-weight:400;color:#ffffff;opacity:0.7;margin-top:14px;font-style:italic;">Hey ${escHtml(s.firstName)}, here's how the week shook out.</div>
   <div style="margin-top:32px;">
     <div style="font-size:11px;font-weight:800;color:#E63946;letter-spacing:0.24em;text-transform:uppercase;">Final Score</div>
-    <div style="font-family:Georgia,serif;font-size:96px;font-weight:900;line-height:1;color:#fff;margin-top:8px;letter-spacing:-0.04em;">${s.totalPts}</div>
-    <div style="font-size:13px;font-weight:600;color:rgba(255,255,255,0.55);margin-top:6px;letter-spacing:0.04em;">Total points · ${s.daysLogged} of 7 days logged</div>
+    <div class="swh-on-dark" style="font-family:Georgia,serif;font-size:96px;font-weight:900;line-height:1;color:#ffffff;margin-top:8px;letter-spacing:-0.04em;">${s.totalPts}</div>
+    <div class="swh-on-dark" style="font-size:13px;font-weight:600;color:#ffffff;opacity:0.55;margin-top:6px;letter-spacing:0.04em;">Total points · ${s.daysLogged} of 7 days logged</div>
   </div>
   <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="margin:28px auto 0;">
     <tr><td style="background:linear-gradient(135deg,${tierBadge.fill},rgba(0,0,0,0));border:1px solid ${tierBadge.border};border-radius:999px;padding:10px 22px;">
@@ -1409,8 +1425,8 @@ function renderRecapHTML(s) {
       <span style="font-family:Georgia,serif;font-size:15px;font-weight:900;color:${tierBadge.text};letter-spacing:0.06em;text-transform:uppercase;margin-left:8px;vertical-align:middle;">${escHtml(s.tier.name)}</span>
     </td></tr>
   </table>
-  <div style="font-size:13px;color:rgba(255,255,255,0.55);font-style:italic;margin-top:12px;line-height:1.55;">"${escHtml(s.tier.msg)}"</div>
-  ${s.trendPct !== null ? `<table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="margin:24px auto 0;"><tr><td style="background:rgba(${trendUp?'90,138,106':'230,57,70'},0.18);border:1px solid rgba(${trendUp?'90,138,106':'230,57,70'},0.4);border-radius:8px;padding:8px 14px;"><span style="font-size:12px;font-weight:800;color:${trendUp?'#7BC288':'#FF8B95'};letter-spacing:0.04em;">${trendUp?'▲ +':'▼ '}${s.trendPct}%</span><span style="font-size:12px;color:rgba(255,255,255,0.6);margin-left:8px;">vs last week (${s.priorWeekPts} pts)</span></td></tr></table>` : ''}
+  <div class="swh-on-dark" style="font-size:13px;color:rgba(255,255,255,0.55);font-style:italic;margin-top:12px;line-height:1.55;">"${escHtml(s.tier.msg)}"</div>
+  ${s.trendPct !== null ? `<table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="margin:24px auto 0;"><tr><td style="background:rgba(${trendUp?'90,138,106':'230,57,70'},0.18);border:1px solid rgba(${trendUp?'90,138,106':'230,57,70'},0.4);border-radius:8px;padding:8px 14px;"><span style="font-size:12px;font-weight:800;color:${trendUp?'#7BC288':'#FF8B95'};letter-spacing:0.04em;">${trendUp?'▲ +':'▼ '}${s.trendPct}%</span><span class="swh-on-dark" style="font-size:12px;color:rgba(255,255,255,0.6);margin-left:8px;">vs last week (${s.priorWeekPts} pts)</span></td></tr></table>` : ''}
 </td></tr>
 
 <tr><td style="padding:32px 32px 8px;">
@@ -1469,7 +1485,7 @@ ${topActsRows ? `<tr><td style="padding:32px 32px 8px;">
     <div style="font-size:14px;color:#0a0a0a;line-height:1.55;margin-top:6px;">${escHtml(s.coaching.recommendation)}</div>
   </div>
   <div style="background:linear-gradient(135deg,#0a0a0a,#1a1a1a);border-radius:10px;padding:18px 20px;margin-top:14px;text-align:center;">
-    <div style="font-size:10px;font-weight:800;color:rgba(255,255,255,0.5);letter-spacing:0.18em;text-transform:uppercase;">This Week's Identity</div>
+    <div class="swh-on-dark" style="font-size:10px;font-weight:800;color:rgba(255,255,255,0.5);letter-spacing:0.18em;text-transform:uppercase;">This Week's Identity</div>
     <div style="font-family:Georgia,serif;font-size:16px;font-style:italic;color:#fff;line-height:1.5;margin-top:8px;">"${escHtml(s.tier.msg)}"</div>
   </div>
 </td></tr>
