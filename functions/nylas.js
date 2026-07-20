@@ -934,8 +934,11 @@ exports.sendFollowThroughEmail = onRequest(
         return res.status(403).json({ error: 'Not available yet.' });
       }
 
-      const { docId, contactId, stepIndex, subject, body } = req.body || {};
-      if (!docId || !contactId || stepIndex === undefined || !body) {
+      const { docId, contactId, stepIndex, subject, body, kind } = req.body || {};
+      // A 1:1 thank-you is queued by onOneOnOneLogged, not by the playbook
+      // builder, so it legitimately carries no stepIndex.
+      const isThankYou = kind === 'thankyou';
+      if (!docId || !contactId || (!isThankYou && stepIndex === undefined) || !body) {
         return res.status(400).json({ error: 'Missing required fields.' });
       }
 
@@ -981,7 +984,7 @@ exports.sendFollowThroughEmail = onRequest(
       });
 
       // (b) Activity log
-      const actId = `ftq_${contactId}_${stepIndex}_${todayKey}`;
+      const actId = `ftq_${contactId}_${isThankYou ? 'thanks' : stepIndex}_${todayKey}`;
       batch.set(db().doc(`users/${uid}/contacts/${contactId}/activities/${actId}`), {
         type: q.stepName || `Step ${stepIndex + 1}`,
         source: 'follow-through-queue',
@@ -992,8 +995,10 @@ exports.sendFollowThroughEmail = onRequest(
         contactName: contact.name,
       });
 
-      // (c) Advance steps counter (integer, capped at 8)
-      const newSteps = Math.min(8, (contact.steps || 0) + 1);
+      // (c) Advance steps counter (integer, capped at 8). A thank-you is NOT a
+      // playbook step — advancing here would silently push the contact forward
+      // a step they never actually completed, so it holds its current value.
+      const newSteps = isThankYou ? (contact.steps || 0) : Math.min(8, (contact.steps || 0) + 1);
       batch.set(db().doc(`users/${uid}/contacts/${contactId}`), {
         steps: newSteps,
         lastActivityAt: nowIso,

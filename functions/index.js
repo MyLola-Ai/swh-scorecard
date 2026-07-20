@@ -6944,6 +6944,89 @@ exports.onActivityWrite = onDocumentWritten(
   }
 );
 
+// ── AUTO THANK-YOU AFTER A COMPLETED 1:1 ──────────────────────────────────
+// Logging a completed 1:1 queues a thank-you follow-through dated +48h (Austen
+// 2026-07-20: "if I had a meeting today, it triggers today and shows up as a
+// task on Wednesday"). It lands as a DRAFT in the Morning Queue like every
+// other follow-through card — never an auto-send.
+//
+// Doc id is `${contactId}_thanks_${actId}`, so it is idempotent per logged
+// meeting AND cannot collide with buildFollowThroughQueue, which owns only
+// `${contactId}_${N}` ids and therefore can neither overwrite nor resurrect it.
+// kind:'thankyou' is what keeps it out of the step machinery on the client.
+const ONE_ON_ONE_ACTIVITY_RE = /^\s*attend 1:1, coffee, lunch/i;
+const THANKYOU_DELAY_DAYS = 2;
+
+exports.onOneOnOneLogged = onDocumentWritten(
+  { document: 'users/{uid}/contacts/{contactId}/activities/{actId}', secrets: [ANTHROPIC_API_KEY] },
+  async (event) => {
+    if (event.data?.before?.exists) return; // creates only, never edits
+    const a = event.data?.after?.data();
+    if (!a || !ONE_ON_ONE_ACTIVITY_RE.test(String(a.type || ''))) return;
+
+    const { uid, contactId, actId } = event.params;
+    const fs = admin.firestore();
+    const qRef = fs.doc(`users/${uid}/followThroughQueue/${contactId}_thanks_${actId}`);
+    if ((await qRef.get()).exists) return; // idempotent
+
+    const cSnap = await fs.doc(`users/${uid}/contacts/${contactId}`).get();
+    if (!cSnap.exists) return;
+    const c = cSnap.data();
+    if (c.wasted || c.cadencePaused) return; // same exclusions the builder applies
+
+    const uSnap = await fs.doc(`users/${uid}`).get();
+    const ud = uSnap.exists ? uSnap.data() : {};
+    const userFirstName = String(ud.displayName || ud.name || 'Austen').split(' ')[0];
+
+    const baseKey = toDateKey(a.timestamp || a.dateKey) || new Date().toISOString().slice(0, 10);
+    const dueDate = addDaysServer(baseKey, THANKYOU_DELAY_DAYS);
+
+    const stepName = 'Thank them for the 1:1';
+    const stepDescription = 'Thank them for taking the time to meet one-on-one. Reference something specific they said or are working on. Warm and short. No ask, no pitch — this is gratitude, not a follow-up sale.';
+
+    let draftSubject = stepName;
+    let draftBody = '';
+    try {
+      const draft = await draftWriteStep({
+        stepName, stepDescription,
+        contactName: c.name,
+        contactCompany: c.company || '',
+        contactEvent: c.event || '',
+        notesPreview: c.notes ? String(c.notes).slice(0, 300) : '',
+        form: c.form || {},
+        userFirstName,
+        daysSinceClockStart: 0,
+        meetRecency: 'we just met one-on-one',
+        signature: buildSignature(ud),
+        linkUrl: '',
+      });
+      draftSubject = draft.subject;
+      draftBody = draft.body;
+    } catch (e) {
+      // Still queue the card — an empty draft is recoverable via Regenerate,
+      // a missing thank-you is not.
+      console.error('[thankYou1on1] draft failed for', c.name || contactId, e.message);
+    }
+
+    await qRef.set({
+      contactId,
+      contactName: c.name || '',
+      contactEmail: c.email || '',
+      kind: 'thankyou',
+      stepName,
+      stepPoints: 0,
+      dueDate,
+      draftSubject,
+      draftBody,
+      channel: 'email',
+      status: 'pending',
+      builtAt: new Date().toISOString(),
+      sourceActivityId: actId,
+    });
+    console.log('[thankYou1on1] queued', c.name || contactId, 'due', dueDate);
+  }
+);
+
 exports.onEmailWrite = onDocumentWritten(
   'users/{uid}/contacts/{contactId}/emails/{msgId}',
   async (event) => {

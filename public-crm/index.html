@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+q.kind !== 'thankyou' && (c.steps||0) <= (q.stepIndex||0)) {${escapeHtmlCRM(q.stepName)}${q.kind === 'thankyou' ? ' · after your 1:1' : ` · Step ${(q.stepIndex||0)+1}`}<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -7468,7 +7468,7 @@ function renderTasks() {
       if(done||!dueDate) continue;
       // A pending Morning Queue card already covers this step — that card is
       // the task, so a reminder row would be a duplicate.
-      if(FOLLOW_THROUGH_QUEUE.some(q=>q.contactId===c.id&&(q.stepIndex||0)===i&&q.status==='pending')){bucketed=true;continue;}
+      if(FOLLOW_THROUGH_QUEUE.some(q=>q.contactId===c.id&&q.kind!=='thankyou'&&(q.stepIndex||0)===i&&q.status==='pending')){bucketed=true;continue;}
       if(isLate&&!bucketed){overdueList.push({contact:c,step:i,dueDate});bucketed=true;continue;}
       if(dueDate===todayKey&&!bucketed){dueTodayList.push({contact:c,step:i,dueDate});bucketed=true;continue;}
       if(!bucketed){
@@ -7593,7 +7593,16 @@ function renderTasks() {
   // already completed, e.g. sent outside the queue then checked off.
   const pendingQueue = FOLLOW_THROUGH_QUEUE.filter(q => {
     if (q.status !== 'pending') return false;
+    // Hold future-dated cards until they come due. This is what implements the
+    // 1:1 thank-you's 48h delay: it is written the moment the meeting is logged
+    // but must not surface until then. Step cards are only ever built once
+    // already due, so this never hides one of those.
+    if (q.dueDate && q.dueDate > getTodayKey()) return false;
     const c = CONTACTS.find(x => x.id === q.contactId);
+    // A thank-you is not a playbook step, so step progress must not auto-close
+    // it (it carries no stepIndex, which would read as step 0 and always look
+    // "behind").
+    if (q.kind === 'thankyou') return true;
     if (c && (c.steps||0) > (q.stepIndex||0)) { closeQueueDocsUpTo(q.contactId, c.steps||0); return false; }
     return true;
   });
@@ -11462,7 +11471,7 @@ window.ftqSend = async function(docId) {
     const resp = await fetch(`${NYLAS_FN}/sendFollowThroughEmail`, {
       method: 'POST',
       headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ docId, contactId: q.contactId, stepIndex: q.stepIndex, subject, body }),
+      body: JSON.stringify({ docId, contactId: q.contactId, stepIndex: q.stepIndex, kind: q.kind, subject, body }),
     });
     const data = await resp.json();
     if (!resp.ok) throw new Error(data.error || 'Send failed');
@@ -11503,7 +11512,7 @@ window.ftqToggleEdit = function(docId) {
 // Close pending queue docs for steps the contact has already completed —
 // keeps the Morning Queue in step with the profile step checkboxes.
 async function closeQueueDocsUpTo(contactId, stepsDone) {
-  const stale = FOLLOW_THROUGH_QUEUE.filter(q => q.contactId === contactId && q.status === 'pending' && (q.stepIndex||0) < stepsDone);
+  const stale = FOLLOW_THROUGH_QUEUE.filter(q => q.contactId === contactId && q.status === 'pending' && q.kind !== 'thankyou' && (q.stepIndex||0) < stepsDone);
   for (const q of stale) {
     q.status = 'done';
     try { await updateDoc(doc(db, 'users', currentUser.uid, 'followThroughQueue', q.id), { status: 'done', closedBy: 'step_completed', closedAt: new Date().toISOString() }); }
