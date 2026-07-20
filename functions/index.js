@@ -191,6 +191,18 @@ function isPaidState(u) {
   return !!((u.apple && PAID_STATUS[u.apple.status]) || (u.stripe && PAID_STATUS[u.stripe.status]));
 }
 
+// Accounts that must NEVER receive lifecycle mail. @example.com covers e2e/test
+// identities. The appreview fixtures are Apple's review accounts, and appreview@
+// deliberately sits in a LIVE trial (docs/MOBILE_APPS_CHARTER.md) so it matches
+// the trial-spine's plan=='trial' query exactly — without this guard the day
+// 7/30/50/58 emails land in Apple's reviewer inbox mid-review.
+const REVIEW_FIXTURE_RE = /^appreview(-expired)?@stopwastinghandshakes\.com$/i;
+function isNonMailableAccount(email) {
+  const e = String(email || '').trim();
+  if (!e) return true; // fail closed: a missing address is never mailable
+  return /@example\.com$/i.test(e) || REVIEW_FIXTURE_RE.test(e);
+}
+
 async function applySourceUpdate(uid, sourceKey, sourcePatch) {
   const ref = db.collection('users').doc(uid);
   await db.runTransaction(async (tx) => {
@@ -625,8 +637,9 @@ exports.onProfileCompleted = onDocumentWritten(
     if (u.welcomeEmailQueuedAt) return;
     const email = after.email || u.email || '';
     if (!email) return;
-    if (/@example\.com$/i.test(email)) {
-      // e2e/test identities: exercise the whole path minus the real send
+    if (isNonMailableAccount(email)) {
+      // e2e/test identities + Apple review fixtures: exercise the whole path
+      // minus the real send.
       await userRef.set({ welcomeEmailQueuedAt: 'skipped_test' }, { merge: true });
       return;
     }
@@ -819,7 +832,7 @@ async function runTrialSpine() {
     const settingsSnap = await db.doc(`users/${d.id}/config/settings`).get();
     const settings = settingsSnap.exists ? settingsSnap.data() : {};
     if (settings.onboardingDripUnsubscribed) continue; // one marketing-unsub switch for now
-    if (/@example\.com$/i.test(email)) {
+    if (isNonMailableAccount(email)) {
       await d.ref.set({ trialEmailsSent: { ...sentMap, ...skipped, [m.key]: 'skipped_test' } }, { merge: true });
       continue;
     }
