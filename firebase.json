@@ -121,6 +121,9 @@
       "target": "landing",
       "public": "public-landing",
       "cleanUrls": true,
+      "redirects": [
+        { "source": "/marketing-tools", "destination": "/follow-through-tools", "type": 301 }
+      ],
       "ignore": [
         "firebase.json",
         "**/.*",
