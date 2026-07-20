@@ -113,6 +113,30 @@
   .foot-row{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px;}
   .foot-links{display:flex;gap:18px;flex-wrap:wrap;}
   .foot-links a:hover{color:#fff;}
+
+  /* MOBILE NAV — hamburger + drop panel (below 680px) */
+  .nav-toggle{display:none;align-items:center;justify-content:center;width:44px;height:44px;margin-left:10px;background:none;border:1px solid var(--border);border-radius:11px;cursor:pointer;color:var(--navy);flex:0 0 auto;}
+  .nav-toggle:hover{background:var(--bg);}
+  .nav-toggle .bar{display:block;width:18px;height:2px;background:currentColor;position:relative;transition:background .15s;}
+  .nav-toggle .bar::before,.nav-toggle .bar::after{content:"";position:absolute;left:0;width:18px;height:2px;background:currentColor;transition:transform .18s;}
+  .nav-toggle .bar::before{top:-6px;}
+  .nav-toggle .bar::after{top:6px;}
+  .nav-toggle[aria-expanded="true"] .bar{background:transparent;}
+  .nav-toggle[aria-expanded="true"] .bar::before{transform:translateY(6px) rotate(45deg);}
+  .nav-toggle[aria-expanded="true"] .bar::after{transform:translateY(-6px) rotate(-45deg);}
+  .mobile-menu{display:none;border-top:1px solid var(--border);background:#fff;}
+  .mobile-menu.open{display:block;}
+  .mobile-menu a{display:block;padding:17px 24px;font-size:17px;font-weight:600;color:var(--navy);border-bottom:1px solid var(--border);}
+  .mobile-menu a:last-child{border-bottom:none;}
+  .mobile-menu a:active{background:var(--bg);}
+  @media (max-width:680px){
+    .nav-toggle{display:inline-flex;}
+    .nav-links .nav-signin{display:none;}
+    .nav-links{gap:0;}
+    .nav-cta{padding:10px 14px;font-size:13.5px;}
+  }
+  @media (min-width:681px){ .mobile-menu{display:none !important;} }
+  @media (prefers-reduced-motion:reduce){ .nav-toggle .bar,.nav-toggle .bar::before,.nav-toggle .bar::after{transition:none;} }
 </style>
 </head>
 <body>
@@ -122,11 +146,18 @@
     <a href="/" class="brand" aria-label="Stop Wasting Handshakes home"><img src="/logo-landscape.png" alt="Stop Wasting Handshakes" class="brand-logo"></a>
     <div class="nav-links">
       <a href="/#manifesto" class="nav-link">Manifesto</a>
-      <a href="/marketing-tools" class="nav-link">The Tools</a>
+      <a href="/resources" class="nav-link">Resources</a>
       <a href="/#pricing" class="nav-link">Pricing</a>
       <a href="https://crm.stopwastinghandshakes.com" class="nav-signin">Log in</a>
       <a href="/#pricing" class="nav-cta">Start free trial</a>
     </div>
+      <button class="nav-toggle" type="button" aria-label="Open menu" aria-expanded="false" aria-controls="mobile-menu"><span class="bar"></span></button>
+  </div>
+  <div class="mobile-menu" id="mobile-menu">
+      <a href="/#manifesto">Manifesto</a>
+      <a href="/resources">Resources</a>
+      <a href="/#pricing">Pricing</a>
+      <a href="https://crm.stopwastinghandshakes.com">Log in</a>
   </div>
 </nav>
 
@@ -282,7 +313,7 @@
     <div class="foot-links">
       <a href="/">Home</a>
       <a href="/#manifesto">Manifesto</a>
-      <a href="/marketing-tools">The Tools</a>
+      <a href="/resources">Resources</a>
       <a href="/#pricing">Pricing</a>
       <a href="/privacy">Privacy</a>
       <a href="/terms">Terms</a>
@@ -290,5 +321,22 @@
   </div>
 </footer>
 
+
+<script>
+(function(){
+  var btn = document.querySelector('.nav-toggle');
+  var menu = document.getElementById('mobile-menu');
+  if (!btn || !menu) return;
+  function setOpen(open){
+    menu.classList.toggle('open', open);
+    btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    btn.setAttribute('aria-label', open ? 'Close menu' : 'Open menu');
+  }
+  btn.addEventListener('click', function(){ setOpen(!menu.classList.contains('open')); });
+  // Close after tapping a link, and on Escape.
+  menu.addEventListener('click', function(e){ if (e.target.closest('a')) setOpen(false); });
+  document.addEventListener('keydown', function(e){ if (e.key === 'Escape') setOpen(false); });
+})();
+</script>
 </body>
 </html>
