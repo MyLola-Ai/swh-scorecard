@@ -1968,7 +1968,6 @@ html.dark-theme .st-sect-head{color:rgba(255,255,255,.55);}
 <div style="display:flex;justify-content:center;padding:14px 0 8px;">
   <span class="lola-badge"><span class="lola-orb"></span><span class="lola-text">powered by</span> <span class="lola-name">Lola</span></span>
 </div>
-<div style="text-align:center;padding:0 0 24px;font-size:11px;letter-spacing:0.04em;color:var(--muted);">1 Peter 4:10-11</div>
               </div>
             </div>
           </div>
@@ -4010,6 +4009,69 @@ window.openApptDashboard = function() {
     mint.then(url => { if (url !== DASH && w && !w.closed) { try { w.location = url; } catch (_) {} } });
   }
 };
+
+// ── MyAppointment SSO bounce (?apptSso=1) ─────────────────────────────────
+// The dashboard's "Continue with Stop Wasting Handshakes" button sends
+// CRM-provisioned hosts here: their MyAppointment accounts were created via
+// custom token, so the dashboard's own Google sign-in can't reach them and this
+// bounce is their correct entry path. Mirror of openApptDashboard, opposite
+// direction — same mint, we redirect instead of opening a tab.
+function _apptSsoSafePath(raw) {
+  const FALLBACK = '/dashboard';
+  if (!raw || typeof raw !== 'string') return FALLBACK;
+  let p;
+  try { p = decodeURIComponent(raw); } catch (_) { return FALLBACK; }
+  // RELATIVE PATH ONLY. A crafted returnTo would otherwise hand a live sign-in
+  // token to an attacker's host, so: must start with a single "/", never "//"
+  // (protocol-relative = another origin), and never contain a backslash (some
+  // browsers normalise "\" to "/").
+  if (!p.startsWith('/') || p.startsWith('//') || p.indexOf('\\') > -1) return FALLBACK;
+  return p;
+}
+
+// Capture at parse time and stash it, so the intent survives the sign-in flow
+// (and any reload) even after the URL is cleaned up.
+(function () {
+  try {
+    const q = new URLSearchParams(location.search);
+    if (q.get('apptSso') === '1') sessionStorage.setItem('apptSsoReturnTo', _apptSsoSafePath(q.get('returnTo')));
+  } catch (_) {}
+})();
+
+async function _runApptSsoBounce() {
+  let returnTo = null;
+  try { returnTo = sessionStorage.getItem('apptSsoReturnTo'); } catch (_) {}
+  if (!returnTo || !currentUser) return;
+  try { sessionStorage.removeItem('apptSsoReturnTo'); } catch (_) {} // one-shot
+  try {
+    const r = await NativeAPI.call('mintApptCustomToken', { data: {} }, { timeout: 15000 });
+    const token = r && r.result && r.result.token;
+    if (!token) throw new Error('no token returned');
+    location.replace('https://myappointment.ai' + returnTo + '?token=' + encodeURIComponent(token));
+  } catch (e) {
+    console.warn('[apptSso] bounce failed:', e && e.message);
+    if (window.showToast) showToast('Could not sign you in to MyAppointment — try Manage on the Appointments tab.');
+  }
+}
+
+// Fire once auth resolves. Polling (rather than acting immediately) is what keeps
+// the bounce working when the user has to sign in first. Only runs when a bounce
+// is actually pending, so it costs nothing on a normal load.
+(function () {
+  let pending = false;
+  try { pending = !!sessionStorage.getItem('apptSsoReturnTo'); } catch (_) {}
+  if (!pending) return;
+  let tries = 0;
+  const poll = setInterval(() => {
+    tries++;
+    if (typeof currentUser !== 'undefined' && currentUser && !currentUser.isAnonymous) {
+      clearInterval(poll);
+      _runApptSsoBounce();
+    } else if (tries > 240) {
+      clearInterval(poll); // ~2 min, ample for a sign-in
+    }
+  }, 500);
+})();
 
 async function loadApptData() {
   try {
