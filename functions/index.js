@@ -7302,7 +7302,12 @@ async function runFollowThroughQueueBuild(opts) {
       let hadDraft = false;
       if (existingSnap.exists) {
         const ex = existingSnap.data();
-        if (ex.status === 'sent' || ex.status === 'skipped') continue;
+        // 'done' is set by the client's closeQueueDocsUpTo() when a step is
+        // completed from the profile's step checkboxes rather than from the
+        // queue itself. Without it in this list the build fell through and
+        // rewrote the doc back to status:'pending', resurrecting a step the
+        // user had already finished (Austen / Ryan Weber, 2026-07-20).
+        if (ex.status === 'sent' || ex.status === 'skipped' || ex.status === 'done') continue;
         if (!force && ex.builtAt && ex.builtAt.slice(0, 10) === todayKey) continue;
         hadDraft = !!ex.draftBody;
       }
