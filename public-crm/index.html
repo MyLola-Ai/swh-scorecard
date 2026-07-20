@@ -262,6 +262,14 @@ body{height:100%;min-height:100dvh;background:#111111;overscroll-behavior:none;}
   .screen-body{flex:1;overflow-y:auto;padding-bottom:calc(148px + env(safe-area-inset-bottom,0px));background:var(--bg);overscroll-behavior-y:contain;}
   .screen-body::-webkit-scrollbar{display:none;}
 
+  /* Dashboard + History scroll their own pane instead of using .screen-body.
+     These properties MUST stay inside this mobile query. Carried as inline
+     styles they applied at every width, so on desktop each pane became a
+     scroll container with nothing to scroll — and overscroll-behavior:contain
+     stops a full pane from chaining the wheel to .content, which left the
+     desktop dashboard unscrollable. */
+  .scroll-pane{overflow-y:auto;overscroll-behavior-y:contain;}
+
   /* Bottom nav — iOS 26 Liquid Glass floating capsule.
      Hovers just above the home indicator (like Mail/Music/Photos): a small
      6px gap above the safe area — the float comes from transparency and
@@ -1475,7 +1483,7 @@ html.dark-theme .st-sect-head{color:rgba(255,255,255,.55);}
             <div class="avatar-mob mob-avatar-btn" onclick="openProfile()" style="cursor:pointer;">?</div>
           </div>
         </div>
-        <div style="flex:1;overflow-y:auto;padding-bottom:160px;background:var(--bg);overscroll-behavior-y:contain;">
+        <div class="scroll-pane" style="flex:1;padding-bottom:160px;background:var(--bg);">
         <div id="announcements-banner" style="display:none;margin:20px 0 0;"></div>
         <div class="dash-grid">
           <div class="kpi navy" id="dash-kpi-1" onclick="showScreen('log',document.querySelectorAll('.mob-nav-btn')[2])"><div class="kpi-ey">Lead Points</div><div class="kpi-val">—</div></div>
@@ -1752,7 +1760,7 @@ html.dark-theme .st-sect-head{color:rgba(255,255,255,.55);}
             <div class="avatar-mob mob-avatar-btn" onclick="openProfile()" style="cursor:pointer;">?</div>
           </div>
         </div>
-        <div class="main-content" style="flex:1;overflow-y:auto;padding-bottom:100px;background:var(--bg);overscroll-behavior-y:contain;">
+        <div class="main-content scroll-pane" style="flex:1;padding-bottom:100px;background:var(--bg);">
           <div style="display:flex;gap:8px;padding:16px 16px 8px;overflow-x:auto;">
             <button class="hist-toggle active" onclick="setHistView('week',this)">This Week</button>
             <button class="hist-toggle" onclick="setHistView('month',this)">This Month</button>
@@ -5561,6 +5569,22 @@ window.dismissAnnouncement = async function(id) {
 // ── WASTED HANDSHAKE DETECTION ──
 function detectWastedHandshakes() {
   const now = new Date();
+  // A booked next touch clears the flag (Austen 2026-07-20): "if I have a
+  // pending task on the schedule and that pending task is not behind, I should
+  // not be getting this alert." The thresholds below only read PAST activity,
+  // so a contact you just booked a coffee with still read as stalled.
+  // Only a scheduled activity that is itself overdue leaves the flag standing.
+  const todayKey = getTodayKey();
+  const bookedAhead = new Set(
+    (RELATIONSHIP_TASKS || [])
+      .filter(t => {
+        if (t.type !== 'scheduled_activity' || t.status !== 'open' || !t.contactId) return false;
+        // MyAppointment-sourced tasks may carry only startTime (ISO); fall back to its date part.
+        const due = t.dueDate || (typeof t.startTime === 'string' ? t.startTime.slice(0, 10) : '');
+        return due && due >= todayKey;
+      })
+      .map(t => t.contactId)
+  );
   CONTACTS.forEach(c => {
     let wasted = false;
     const addedAt = c.addedAt ? new Date(c.addedAt) : null;
@@ -5569,6 +5593,8 @@ function detectWastedHandshakes() {
     if (addedAt && (c.steps||0) === 0 && daysBetween(addedAt,now) > THRESHOLDS.clockNeverStarted) wasted = true;
     // No contact touch in 21 days
     if (lastActivity && daysBetween(lastActivity,now) > THRESHOLDS.noContactTouch) wasted = true;
+    // Next touch already on the calendar and not yet due → not stalled.
+    if (bookedAhead.has(c.id)) wasted = false;
     c.wasted = wasted;
   });
 }
@@ -7428,6 +7454,14 @@ function renderTasks() {
   const weekHorizon=new Date(todayDate); weekHorizon.setDate(weekHorizon.getDate()+7);
   CONTACTS.forEach(c=>{
     if(!c.clockStarted) return;
+    // Match the server's queue builder, which skips these two before queueing
+    // (functions/index.js: `if (c.wasted) continue; if (c.cadencePaused) continue;`).
+    // Without this the panel reported steps as overdue for contacts the system
+    // has deliberately stopped working, so they could never produce a Morning
+    // Queue prompt — they just accumulated as permanent phantom rows. Wasted
+    // contacts also have their own bucket below and were being double-counted
+    // in totalCritical.
+    if(c.wasted||c.cadencePaused) return;
     let bucketed=false;
     for(let i=0;i<8;i++){
       const {done,dueDate,isLate}=getStepStatus(c,i);
