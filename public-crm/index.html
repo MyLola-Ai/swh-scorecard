@@ -186,6 +186,10 @@ body{height:100%;min-height:100dvh;background:#111111;overscroll-behavior:none;}
 .avatar-sm{width:32px;height:32px;border-radius:50%;background:var(--gold);display:flex;align-items:center;justify-content:center;font-family:'Playfair Display',serif;font-size:12px;font-weight:700;color:var(--navy);flex-shrink:0;}
 .user-name{font-size:13px;font-weight:600;color:rgba(255,255,255,0.8);}
 .user-plan{font-size:10px;color:rgba(255,255,255,0.32);}
+.theme-seg{display:flex;gap:3px;background:rgba(255,255,255,0.05);border-radius:10px;padding:3px;margin-bottom:10px;}
+.theme-seg-btn{flex:1;display:flex;align-items:center;justify-content:center;gap:4px;padding:7px 3px;border:none;background:transparent;border-radius:7px;font-family:'DM Sans',sans-serif;font-size:11px;font-weight:600;color:rgba(255,255,255,0.55);cursor:pointer;transition:background .15s,color .15s;white-space:nowrap;}
+.theme-seg-btn:hover{color:rgba(255,255,255,0.85);}
+.theme-seg-btn.active{background:rgba(230,57,70,0.16);color:var(--gold);}
 
 /* MAIN */
 .main{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0;}
@@ -1450,6 +1454,11 @@ html.dark-theme .st-sect-head{color:rgba(255,255,255,.55);}
       <button class="nav-btn" onclick="goToScorecard()" title="Open the Scorecard app"><span class="nav-icon">↗️</span><span class="nav-text">Open Scorecard</span></button>
     </div>
     <div class="sidebar-footer">
+      <div class="theme-seg" role="group" aria-label="Color theme">
+        <button class="theme-seg-btn" id="tseg-light" onclick="saveThemePref('light')" title="Light mode">☀️ Light</button>
+        <button class="theme-seg-btn" id="tseg-dark" onclick="saveThemePref('dark')" title="Dark mode">🌙 Dark</button>
+        <button class="theme-seg-btn" id="tseg-system" onclick="saveThemePref('system')" title="Follow device">Auto</button>
+      </div>
       <div class="user-row">
         <div class="avatar-sm" id="sidebar-avatar">?</div>
         <div><div class="user-name" id="sidebar-name">Loading…</div><div class="user-plan" id="sidebar-plan">SWH CRM · Open Beta</div></div>
@@ -3701,6 +3710,12 @@ function applyTheme(pref) {
   // Refresh the settings label
   const sub = document.getElementById('settings-theme-sub');
   if (sub) sub.textContent = { light: 'Light', dark: 'Dark', system: 'System (follows device)' }[_themePref] || 'System';
+  // Keep the sidebar segmented control in sync regardless of where the theme
+  // was changed from (sidebar, Settings, or login).
+  ['light', 'dark', 'system'].forEach((p) => {
+    const b = document.getElementById('tseg-' + p);
+    if (b) b.classList.toggle('active', _themePref === p);
+  });
 }
 
 async function saveThemePref(pref) {
@@ -3728,6 +3743,13 @@ async function loadThemePref() {
 if (_sysDarkMQ?.addEventListener) {
   _sysDarkMQ.addEventListener('change', () => { if (_themePref === 'system') applyTheme(); });
 }
+
+// Expose to inline onclick handlers. These functions live in this module, but
+// the login theme buttons and the sidebar segmented control call them via inline
+// onclick, which resolves against global scope only. Without this the theme
+// toggles silently no-op (this was already true for the login buttons).
+window.saveThemePref = saveThemePref;
+window.applyTheme = applyTheme;
 
 window.openThemeSheet = function() {
   const current = _themePref;
