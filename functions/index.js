@@ -23,6 +23,9 @@ const REVENUECAT_WEBHOOK_AUTH = defineSecret('REVENUECAT_WEBHOOK_AUTH');
 // that lives in functions/mylola (loaniq-75a20).
 const MYAPPOINTMENT_SA_KEY        = defineSecret('MYAPPOINTMENT_SERVICE_ACCOUNT_KEY');
 const MYAPPOINTMENT_UPGRADE_SECRET = defineSecret('MYAPPOINTMENT_UPGRADE_SECRET');
+// Platform identity resolver (S2S) — the ONE canonical-account definition, served
+// by myappointment-ai-8756e's resolveApptIdentity. mintApptCustomToken flips first.
+const APPT_IDENTITY_SERVICE_TOKEN = defineSecret('APPT_IDENTITY_SERVICE_TOKEN');
 // SA key for loaniq-75a20 — the ACTUAL project where mylola.ai user data lives
 // (schedulingProfile, bookingPages, meetings). Distinct from myappointment-ai-8756e.
 const LOANIQ_SA_KEY               = defineSecret('LOANIQ_SERVICE_ACCOUNT_KEY');
@@ -5997,8 +6000,34 @@ function getLoaniqAdminApp() {
   return _loaniqAdminApp;
 }
 
+// Resolve a person to their ONE canonical MyAppointment account across all
+// "doors" (SWH, MyLola, ...). Returns { ok, canonicalUid, provision }. THROWS on
+// any non-200 / bad body / ~5s timeout / network error so the caller can FAIL
+// OPEN to its legacy resolution — a resolver outage must never break a sign-in.
+const APPT_IDENTITY_RESOLVER_URL = 'https://us-central1-myappointment-ai-8756e.cloudfunctions.net/resolveApptIdentity';
+async function resolveApptIdentity({ door, doorUid, email, emailVerified }) {
+  const body = { door, doorUid, emailVerified: emailVerified === true };
+  if (email) body.email = email; // omit when absent — never send a blank
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 5000);
+  try {
+    const res = await fetch(APPT_IDENTITY_RESOLVER_URL, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${APPT_IDENTITY_SERVICE_TOKEN.value()}` },
+      body: JSON.stringify(body),
+      signal: ctrl.signal,
+    });
+    if (res.status !== 200) { const e = new Error(`resolver HTTP ${res.status}`); e.status = res.status; throw e; }
+    const json = await res.json().catch(() => null);
+    if (!json || json.ok !== true || !json.canonicalUid) { const e = new Error('resolver bad body'); e.status = 'bad_body'; throw e; }
+    return json;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 exports.mintApptCustomToken = onCall({
-  secrets: [MYAPPOINTMENT_SA_KEY, MYAPPOINTMENT_UPGRADE_SECRET],
+  secrets: [MYAPPOINTMENT_SA_KEY, MYAPPOINTMENT_UPGRADE_SECRET, APPT_IDENTITY_SERVICE_TOKEN],
 }, async (request) => {
   // Was `throw new Error('unauthenticated')` which the v2 onCall harness
   // surfaces as a 500 INTERNAL — wrong category, pollutes logs, and lets
@@ -6010,16 +6039,34 @@ exports.mintApptCustomToken = onCall({
   const swhUid = request.auth.uid;
   const email  = request.auth.token?.email || null;
   const name   = request.auth.token?.name  || null;
+  // Honest verification state — NEVER hardcode true. An unverified email must not
+  // let the resolver auto-link this door account to someone else's canonical one.
+  const emailVerified = request.auth.token?.email_verified === true;
 
   const apptAuth = admin.auth(getApptAdminApp());
 
+  let targetUid = null;
+
+  // Platform identity resolver first: the ONE canonical account across all doors.
+  // FAIL OPEN — any resolver error leaves targetUid null and drops through to the
+  // legacy per-email logic below, so a resolver outage never breaks a sign-in.
+  try {
+    const r = await resolveApptIdentity({ door: 'swh', doorUid: swhUid, email, emailVerified });
+    targetUid = r.canonicalUid;
+    console.log(`[mint] resolver ok door=swh doorUid=${swhUid} canonicalUid=${targetUid} provision=${r.provision}`);
+  } catch (e) {
+    console.warn('[mint] resolver fallback', e && (e.status || e.message || String(e)));
+  }
+
+  // ── Legacy resolution (unchanged) — the fail-open fallback ──
   // Strategy: if this user already has a myappointment-ai account under their
   // email (created via mylola.ai), mint a token for THAT uid so their existing
   // booking pages and scheduling profile are visible.  If no account exists yet
   // fall back to provisioning with the SWH uid.
-  let targetUid = swhUid;
+  if (!targetUid) {
+   targetUid = swhUid;
 
-  if (email) {
+   if (email) {
     try {
       const existing = await apptAuth.getUserByEmail(email);
       // Found an existing myappointment-ai account for this email — use its uid.
@@ -6059,6 +6106,7 @@ exports.mintApptCustomToken = onCall({
       }
     }
   }
+  } // ── end fail-open fallback (if (!targetUid)) ──
 
   const token = await apptAuth.createCustomToken(targetUid);
   console.log(`[mintApptCustomToken] issued token for appt uid=${targetUid}`);
