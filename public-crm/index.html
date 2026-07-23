@@ -1026,6 +1026,27 @@ html.dark-theme .st-sect-head{color:rgba(255,255,255,.55);}
 .ne-form-ta:focus{outline:none;border-color:var(--gold);}
 .ne-notes-ta{width:100%;padding:9px 11px;border:1.5px solid var(--border);border-radius:10px;font-family:'DM Sans',sans-serif;font-size:13px;color:var(--text);resize:none;background:var(--bg);min-height:70px;}
 .ne-notes-ta:focus{outline:none;border-color:var(--gold);}
+.ne-form-lbl .form-icon{font-size:13px;margin-right:4px;}
+/* Lola FORM auto-fill */
+.lola-fill{margin-bottom:12px;}
+.lola-fill-toggle{width:100%;display:flex;align-items:center;justify-content:center;gap:7px;padding:10px 14px;border:1.5px dashed #A78BFA;border-radius:11px;background:linear-gradient(135deg,rgba(91,91,214,0.07),rgba(167,139,250,0.11));color:#5B4FC7;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:700;cursor:pointer;transition:all 0.15s;}
+.lola-fill-toggle:hover{background:linear-gradient(135deg,rgba(91,91,214,0.14),rgba(167,139,250,0.20));border-color:#5B5BD6;}
+.lola-fill-toggle .lf-spark{font-size:15px;}
+.lola-fill-panel{margin-top:9px;}
+.lola-fill-ta{width:100%;padding:11px 13px;border:1.5px solid var(--border);border-radius:11px;font-family:'DM Sans',sans-serif;font-size:13px;line-height:1.5;color:var(--text);resize:vertical;background:var(--bg);box-sizing:border-box;min-height:100px;}
+.lola-fill-ta:focus{outline:none;border-color:#A78BFA;}
+.lola-fill-row{display:flex;gap:8px;margin-top:8px;}
+.lola-fill-cancel{padding:9px 16px;border:1.5px solid var(--border);border-radius:10px;background:var(--card);color:var(--muted);font-family:'DM Sans',sans-serif;font-size:13px;font-weight:700;cursor:pointer;}
+.lola-fill-go{flex:1;padding:9px 16px;border:none;border-radius:10px;background:linear-gradient(135deg,#5B5BD6,#A78BFA);color:#fff;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:700;cursor:pointer;transition:opacity 0.15s;}
+.lola-fill-go:hover{opacity:0.92;}
+.lola-fill-go:disabled{opacity:0.6;cursor:default;}
+.lola-review{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:10px 13px;margin-bottom:12px;border-radius:11px;background:linear-gradient(135deg,rgba(91,91,214,0.11),rgba(167,139,250,0.15));border:1.5px solid #A78BFA;}
+.lola-review .lr-text{font-size:12px;font-weight:700;color:#5B4FC7;line-height:1.4;flex:1;min-width:150px;}
+.lola-review .lr-btns{display:flex;gap:7px;}
+.lola-review .lr-undo{padding:7px 13px;border:1.5px solid var(--border);border-radius:9px;background:var(--card);color:var(--muted);font-family:'DM Sans',sans-serif;font-size:12px;font-weight:700;cursor:pointer;}
+.lola-review .lr-save{padding:7px 15px;border:none;border-radius:9px;background:linear-gradient(135deg,#5B5BD6,#A78BFA);color:#fff;font-family:'DM Sans',sans-serif;font-size:12px;font-weight:700;cursor:pointer;}
+html.dark-theme .lola-fill-toggle{color:#C4B5FD;}
+html.dark-theme .lola-review .lr-text{color:#C4B5FD;}
 
 /* Steps */
 .ne-step{display:flex;align-items:flex-start;gap:11px;padding:11px 0;border-bottom:1px solid var(--border);}
@@ -8534,17 +8555,36 @@ function buildExpandDetail(c) {
       <div id="activity-timeline-${c.id}" style="font-size:13px;color:var(--muted);text-align:center;padding:16px;">Loading…</div>
     </div>
     <div class="ne-panel" id="nep-${c.id}-form">
+      <div class="lola-fill" id="lolafill-${c.id}">
+        <button class="lola-fill-toggle" onclick="toggleLolaFill('${c.id}')"><span class="lf-spark">✨</span> Fill from a transcript</button>
+        <div class="lola-fill-panel" id="lolafill-panel-${c.id}" style="display:none;">
+          <textarea id="lolafill-ta-${c.id}" class="lola-fill-ta" rows="5" placeholder="Paste your notes or a transcript from Plaud, Gemini, Otter, or anywhere. Lola reads it and fills the FORM below for you to review."></textarea>
+          <div class="lola-fill-row">
+            <button class="lola-fill-cancel" onclick="toggleLolaFill('${c.id}')">Cancel</button>
+            <button class="lola-fill-go" id="lolafill-go-${c.id}" onclick="runLolaFill('${c.id}')">✨ Fill with Lola</button>
+          </div>
+        </div>
+      </div>
+      <div class="lola-review" id="lolareview-${c.id}" style="display:none;">
+        <span class="lr-text">✨ Lola filled this from your transcript. Review, then save.</span>
+        <div class="lr-btns">
+          <button class="lr-undo" onclick="undoLolaFill('${c.id}')">Undo</button>
+          <button class="lr-save" onclick="saveLolaFill('${c.id}')">Save all</button>
+        </div>
+      </div>
       <label class="ne-form-lbl"><span class="form-letter">F</span> Family</label>
-      <textarea class="ne-form-ta" rows="2" placeholder="Spouse, kids, family life…" onblur="saveFormNote('${c.id}','family',this.value)">${c.form?.family||''}</textarea>
+      <textarea class="ne-form-ta" id="form-family-${c.id}" rows="2" placeholder="Spouse, kids, family life…" onblur="saveFormNote('${c.id}','family',this.value)">${c.form?.family||''}</textarea>
       <label class="ne-form-lbl"><span class="form-letter">O</span> Occupation</label>
-      <textarea class="ne-form-ta" rows="2" placeholder="What they do, how long, proud of…" onblur="saveFormNote('${c.id}','occupation',this.value)">${c.form?.occupation||''}</textarea>
+      <textarea class="ne-form-ta" id="form-occupation-${c.id}" rows="2" placeholder="What they do, how long, proud of…" onblur="saveFormNote('${c.id}','occupation',this.value)">${c.form?.occupation||''}</textarea>
       <label class="ne-form-lbl"><span class="form-letter">R</span> Recreation</label>
-      <textarea class="ne-form-ta" rows="2" placeholder="Hobbies, interests, free time…" onblur="saveFormNote('${c.id}','recreation',this.value)">${c.form?.recreation||''}</textarea>
+      <textarea class="ne-form-ta" id="form-recreation-${c.id}" rows="2" placeholder="Hobbies, interests, free time…" onblur="saveFormNote('${c.id}','recreation',this.value)">${c.form?.recreation||''}</textarea>
       <label class="ne-form-lbl"><span class="form-letter">M</span> Motivation</label>
-      <textarea class="ne-form-ta" rows="2" placeholder="What drives them? What are they working toward?" onblur="saveFormNote('${c.id}','motivation',this.value)">${c.form?.motivation||''}</textarea>
+      <textarea class="ne-form-ta" id="form-motivation-${c.id}" rows="2" placeholder="What drives them? What are they working toward?" onblur="saveFormNote('${c.id}','motivation',this.value)">${c.form?.motivation||''}</textarea>
+      <label class="ne-form-lbl"><span class="form-icon">🤝</span> Referral asks</label>
+      <textarea class="ne-form-ta" id="form-referralAsks-${c.id}" rows="2" placeholder="Who they want to meet. The clients or partners they're looking for…" onblur="saveFormNote('${c.id}','referralAsks',this.value)">${c.form?.referralAsks||''}</textarea>
       <div style="height:1px;background:var(--border);margin:14px 0;"></div>
       <label class="ne-form-lbl" style="margin-top:0;">📝 Notes</label>
-      <textarea class="ne-notes-ta" rows="3" placeholder="Anything worth remembering…" onblur="saveFormNote('${c.id}','notes',this.value)">${c.notes||''}</textarea>
+      <textarea class="ne-notes-ta" id="form-notes-${c.id}" rows="3" placeholder="Anything worth remembering…" onblur="saveFormNote('${c.id}','notes',this.value)">${c.notes||''}</textarea>
     </div>
     <div class="ne-panel" id="nep-${c.id}-steps">
       ${PLAYBOOKS.length > 1 ? `<div style="margin-bottom:10px;">
@@ -9795,6 +9835,87 @@ window.saveFormNote=async function(contactId,field,value){
   else{c.form[field]=value;await updateDoc(doc(db,'users',currentUser.uid,'contacts',contactId),{[`form.${field}`]:value});}
 };
 
+// ── Lola FORM auto-fill: read a pasted transcript, fill the FORM for review ──
+const LOLA_FILL_FIELDS = ['family','occupation','recreation','motivation','referralAsks'];
+const _lolaFillBackup = {}; // contactId -> field values before Lola filled, for Undo
+
+window.toggleLolaFill = function(cid){
+  const panel  = document.getElementById('lolafill-panel-'+cid);
+  const toggle = document.querySelector('#lolafill-'+cid+' .lola-fill-toggle');
+  if(!panel) return;
+  const opening = panel.style.display === 'none';
+  panel.style.display = opening ? 'block' : 'none';
+  if(toggle) toggle.style.display = opening ? 'none' : 'flex';
+  if(opening){ const ta=document.getElementById('lolafill-ta-'+cid); if(ta) setTimeout(()=>ta.focus(),0); }
+};
+
+window.runLolaFill = async function(cid){
+  const ta = document.getElementById('lolafill-ta-'+cid);
+  const transcript = ((ta && ta.value) || '').trim();
+  if(transcript.length < 15){ showToast('Paste a bit more for Lola to read.'); return; }
+  const btn  = document.getElementById('lolafill-go-'+cid);
+  const orig = btn ? btn.textContent : '';
+  if(btn){ btn.disabled = true; btn.textContent = '✨ Lola is reading…'; }
+  try{
+    const c = CONTACTS.find(x=>x.id===cid) || {};
+    const existing = {};
+    LOLA_FILL_FIELDS.forEach(f => existing[f] = (c.form && c.form[f]) || '');
+    const res  = await callLolaFn('lolaExtractForm', { transcript, existing, contactName: c.name || '' }, 90000);
+    const form = (res && res.data && res.data.form) || {};
+    // snapshot current field values for Undo, then drop Lola's text into the fields
+    _lolaFillBackup[cid] = {};
+    LOLA_FILL_FIELDS.forEach(f => {
+      const el = document.getElementById('form-'+f+'-'+cid);
+      _lolaFillBackup[cid][f] = el ? el.value : '';
+      if(el && typeof form[f] === 'string') el.value = form[f];
+    });
+    // collapse the paste panel, clear it, reveal the review bar
+    const panel=document.getElementById('lolafill-panel-'+cid); if(panel) panel.style.display='none';
+    const toggle=document.querySelector('#lolafill-'+cid+' .lola-fill-toggle'); if(toggle) toggle.style.display='flex';
+    if(ta) ta.value='';
+    const bar=document.getElementById('lolareview-'+cid); if(bar) bar.style.display='flex';
+  }catch(e){
+    console.warn('[lolaExtractForm]', e);
+    showToast('⚠️ Lola could not read that transcript. Try again.');
+  }finally{
+    if(btn){ btn.disabled=false; btn.textContent = orig || '✨ Fill with Lola'; }
+  }
+};
+
+window.saveLolaFill = async function(cid){
+  const c = CONTACTS.find(x=>x.id===cid); if(!c) return;
+  if(!c.form) c.form={};
+  const upd = {};
+  LOLA_FILL_FIELDS.forEach(f => {
+    const el = document.getElementById('form-'+f+'-'+cid);
+    if(el){ c.form[f] = el.value; upd['form.'+f] = el.value; }
+  });
+  const bar=document.getElementById('lolareview-'+cid);
+  try{
+    await updateDoc(doc(db,'users',currentUser.uid,'contacts',cid), upd);
+    if(bar) bar.style.display='none';
+    delete _lolaFillBackup[cid];
+    showToast('✅ FORM saved');
+  }catch(e){ console.warn(e); showToast('⚠️ Could not save. Try again.'); }
+};
+
+window.undoLolaFill = async function(cid){
+  const b = _lolaFillBackup[cid]; if(!b) return;
+  const c = CONTACTS.find(x=>x.id===cid);
+  const upd = {};
+  LOLA_FILL_FIELDS.forEach(f => {
+    const val = (typeof b[f]==='string' ? b[f] : '');
+    const el = document.getElementById('form-'+f+'-'+cid);
+    if(el) el.value = val;
+    if(c){ if(!c.form)c.form={}; c.form[f]=val; upd['form.'+f]=val; }
+  });
+  const bar=document.getElementById('lolareview-'+cid); if(bar) bar.style.display='none';
+  delete _lolaFillBackup[cid];
+  // Undo is authoritative: restore pre-Lola values in case a field was
+  // auto-saved via its onblur handler while the user was reviewing.
+  try{ if(c) await updateDoc(doc(db,'users',currentUser.uid,'contacts',cid), upd); }catch(e){ console.warn(e); }
+};
+
 window.deleteContact=async function(id){
   if(!confirm('Remove this contact? This cannot be undone.'))return;
   await deleteDoc(doc(db,'users',currentUser.uid,'contacts',id));
@@ -10215,7 +10336,7 @@ async function saveContactImpl(){
   // Read campaign checkbox BEFORE closeAddContact() clears the overlay
   const startCampaign = document.getElementById('ac-start-campaign')?.checked === true;
   const color=AVATAR_COLORS[CONTACTS.length%AVATAR_COLORS.length];
-  const data={name,initials,color,phone:phone||'',email:email||'',company:company||'',event:event||'',status,grade:null,notes:notes||'',steps:0,wasted:false,playbookId,form:{family:'',occupation:'',recreation:'',motivation:''},addedAt:new Date().toISOString(),lastActivityAt:new Date().toISOString()};
+  const data={name,initials,color,phone:phone||'',email:email||'',company:company||'',event:event||'',status,grade:null,notes:notes||'',steps:0,wasted:false,playbookId,form:{family:'',occupation:'',recreation:'',motivation:'',referralAsks:''},addedAt:new Date().toISOString(),lastActivityAt:new Date().toISOString()};
   const ref=await addDoc(collection(db,'users',currentUser.uid,'contacts'),data);
   data.id=ref.id;CONTACTS.unshift(data);CONTACTS.sort((a,b)=>a.name.localeCompare(b.name));
   teamIndexUpsert(ref.id,phone,data.addedAt);
@@ -12272,7 +12393,7 @@ async function saveScannedContactImpl() {
     phone, email, company,
     event: event||'', status:'new', notes,
     steps:0, wasted:false,
-    form:{family:'',occupation:'',recreation:'',motivation:''},
+    form:{family:'',occupation:'',recreation:'',motivation:'',referralAsks:''},
     addedAt: new Date().toISOString(),
     lastActivityAt: new Date().toISOString(),
   };

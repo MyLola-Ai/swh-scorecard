@@ -8021,6 +8021,110 @@ exports.draftContactEmail = onCall({ secrets: [ANTHROPIC_API_KEY] }, async (requ
 });
 
 // ===================================================================
+// LOLA FORM AUTO-FILL
+// Reads a raw conversation transcript (pasted today; synced in from
+// Plaud / Fireflies / Gemini notes / etc. in Phase 2) and extracts the
+// contact's FORM intel: Family, Occupation, Recreation, Motivation, plus
+// Referral asks. The extractor is a shared helper so the paste door
+// (lolaExtractForm) and the future transcript inbox feed the same engine.
+// Enriches existing FORM content; never invents beyond the transcript.
+// ===================================================================
+
+const FORM_EXTRACT_FIELDS = ['family', 'occupation', 'recreation', 'motivation', 'referralAsks'];
+
+const FORM_EXTRACT_SYSTEM = `You extract relationship intelligence from a networking or sales conversation and organize it into a contact's FORM profile.
+
+FORM stands for Family, Occupation, Recreation, Motivation. There is also a Referral asks field.
+
+Rules:
+- Return ONLY valid JSON, no prose, no markdown fences.
+- Write each field as concise, scannable third-person notes, the way a thoughtful networker jots them after a coffee. Natural fragments are fine. No em-dashes anywhere.
+- Only include what the conversation actually supports. Never invent, assume, or embellish. If a field has no support in the text, return an empty string for it.
+- You are given the EXISTING FORM content. Enrich it: keep what is already there and still accurate, weave in the new details, and do not delete the user's existing notes. If a new detail updates an old one, prefer the newer information but keep useful prior context.
+- Family: spouse or partner, kids, family life, personal milestones, how they spend time with family.
+- Occupation: what they do, role and company, how long, what they are proud of, their current work focus and challenges.
+- Recreation: hobbies, interests, sports, travel, how they recharge outside work.
+- Motivation: what drives them, what they are working toward, their goals and where they want to grow.
+- referralAsks: who they want to be introduced to, the kinds of clients or partners they are looking for, and any warm intros that would genuinely help them.
+
+Return this exact JSON shape:
+{"family":"","occupation":"","recreation":"","motivation":"","referralAsks":""}`;
+
+async function extractFormFromTranscript({ transcript, existing, contactName }) {
+  const clean = String(transcript || '').slice(0, 24000).trim();
+  if (clean.length < 15) throw new HttpsError('invalid-argument', 'Transcript too short to read');
+  const ex = existing && typeof existing === 'object' ? existing : {};
+  const existingLines = FORM_EXTRACT_FIELDS
+    .map(k => (ex[k] ? `${k}: ${String(ex[k]).slice(0, 800)}` : ''))
+    .filter(Boolean)
+    .join('\n') || '(all fields currently empty)';
+
+  const userMessage = [
+    contactName ? `This conversation is with: ${contactName}` : '',
+    'EXISTING FORM (enrich, do not erase):',
+    existingLines,
+    '',
+    'CONVERSATION TRANSCRIPT / NOTES:',
+    clean,
+    '',
+    'Extract and merge into the FORM JSON now.',
+  ].filter(Boolean).join('\n');
+
+  const apiResp = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': ANTHROPIC_API_KEY.value(),
+      'anthropic-version': '2023-06-01',
+    },
+    body: JSON.stringify({
+      model: 'claude-opus-4-8',
+      max_tokens: 1500,
+      system: FORM_EXTRACT_SYSTEM,
+      messages: [{ role: 'user', content: userMessage }],
+    }),
+  });
+  if (!apiResp.ok) throw new Error(`Anthropic ${apiResp.status}`);
+  const result = await apiResp.json();
+  const raw    = result.content?.[0]?.text || '';
+  const match  = raw.match(/\{[\s\S]*\}/);
+  const out = { family: '', occupation: '', recreation: '', motivation: '', referralAsks: '' };
+  if (match) {
+    try {
+      const parsed = JSON.parse(match[0]);
+      for (const k of FORM_EXTRACT_FIELDS) {
+        if (typeof parsed[k] === 'string') out[k] = parsed[k].trim();
+      }
+    } catch (_) { /* leave out as empty defaults */ }
+  }
+  return out;
+}
+
+exports.lolaExtractForm = onCall({ secrets: [ANTHROPIC_API_KEY] }, async (request) => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in required');
+  const uid        = request.auth.uid;
+  const transcript = String(request.data?.transcript || '');
+  const contactId  = String(request.data?.contactId || '').trim();
+
+  // If a contactId is supplied, load the authoritative existing FORM + name
+  // server-side (the synced inbox will always use this path). The paste door
+  // may also pass `existing` straight from the open contact card.
+  let existingForm = request.data?.existing || {};
+  let contactName  = String(request.data?.contactName || '');
+  if (contactId) {
+    const snap = await db.doc(`users/${uid}/contacts/${contactId}`).get();
+    if (snap.exists) {
+      const c = snap.data();
+      existingForm = { ...(c.form || {}), ...(existingForm || {}) };
+      contactName  = contactName || c.name || '';
+    }
+  }
+
+  const form = await extractFormFromTranscript({ transcript, existing: existingForm, contactName });
+  return { form };
+});
+
+// ===================================================================
 // SWH CRM ONBOARDING DRIP
 // 14 emails, one per business day (Mon-Fri 7am America/Chicago).
 // Enrollment: top-level onboardingDrip/{uid} — single-field range query,
