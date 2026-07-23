@@ -59,12 +59,24 @@
           "source": "/crm.html",
           "destination": "https://crm.stopwastinghandshakes.com",
           "type": 301
+        },
+        {
+          "source": "/help",
+          "destination": "/help.html",
+          "type": 301
         }
       ]
     },
     {
       "target": "crm",
       "public": "public-crm",
+      "redirects": [
+        {
+          "source": "/help",
+          "destination": "/help.html",
+          "type": 301
+        }
+      ],
       "ignore": [
         "firebase.json",
         "**/.*",
