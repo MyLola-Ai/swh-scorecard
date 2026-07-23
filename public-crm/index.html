@@ -5510,6 +5510,28 @@ async function loadAllData() {
   await loadAnnouncementsForUser();
 }
 
+// Desktop-web loads everything once via loadAllData() on boot and had no way to
+// re-check, so an activity logged elsewhere (the iOS app, another device) only
+// showed up after a manual reload. Re-pull on tab-focus (throttled) so returning
+// to the desktop tab shows fresh data on its own. Native iOS renders its own
+// writes locally, so this is really a desktop-web freshness fix.
+(function installFocusRefetch() {
+  let _lastFocusRefetch = Date.now();
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) return;
+    if (typeof currentUser === 'undefined' || !currentUser || currentUser.isAnonymous) return;
+    if (Date.now() - _lastFocusRefetch < 20000) return; // throttle rapid tab-switching
+    _lastFocusRefetch = Date.now();
+    loadAllData()
+      .then(() => {
+        const active = document.querySelector('.screen.active');
+        const name = active ? active.id.replace('screen-', '') : null;
+        if (name && window.showScreen) window.showScreen(name); // re-render current view
+      })
+      .catch((e) => console.warn('[focus-refetch] failed:', e && e.message));
+  });
+})();
+
 async function applyGlobalCatalogOverrides() {
   try {
     const snap = await getDoc(doc(db,'platform','activities'));
