@@ -4547,9 +4547,13 @@ window.refreshLolaConnectStatus = async function () {
   const actions = document.getElementById('settings-lolaconnect-actions');
   try {
     const { status, json } = await _lolaConnectCall('connections.list');
-    if (status === 403) { card.style.display = 'none'; _lcLegacy(true); return; } // not beta → keep legacy
+    if (status === 403) { card.style.display = 'none'; _lcLegacy(true); return; } // not enabled → keep legacy
     card.style.display = '';
-    _lcLegacy(false); // beta user → Lola Connect card replaces the legacy one
+    // Release-to-everyone (2026-07-22): BOTH cards show. Lola Connect is the
+    // connect path going forward, but auto-log/send/calendar still consume the
+    // Nylas connection until the feature wiring lands — hiding the legacy card
+    // here is what stranded new users on 7-19. Re-couple only at R2 (Nylas retire).
+    _lcLegacy(true);
     const conns = (json.result && json.result.connections) || [];
     const active = conns.find(c => c.status === 'connected');
     if (active) {
