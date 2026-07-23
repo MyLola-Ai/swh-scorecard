@@ -19,6 +19,7 @@
 // ============================================================
 
 const { onRequest } = require('firebase-functions/v2/https');
+const { onSchedule } = require('firebase-functions/v2/scheduler');
 const { defineSecret } = require('firebase-functions/params');
 const admin = require('firebase-admin');
 
@@ -253,6 +254,137 @@ async function lcTryCreateEvent(uid, { title, startISO, endISO, description, loc
 exports.lcTrySendEmail = lcTrySendEmail;
 exports.lcTryCreateEvent = lcTryCreateEvent;
 exports.LOLA_CONNECT_SERVICE_TOKEN = LOLA_CONNECT_SERVICE_TOKEN;
+
+// ── Leg 2: email auto-log via LC pull-sync ──────────────────────────────────
+// Every 15 minutes, for each SWH user with a connected LC account, pull new
+// mail and log it onto matched contacts' timelines — the LC replacement for
+// the Nylas webhook auto-log. Same doc shape as the legacy writers, with
+// source:'lola-connect' and lc_-prefixed ids.
+//
+// Double-log guard: the Nylas webhook (live until R2) logs the same mail for
+// users with a working grant, under a DIFFERENT doc id. Before writing, we
+// skip any message whose (sentAt, direction) already exists on that contact —
+// cheap contact-scoped equality query, no cross-stack id mapping needed.
+
+const normEmail = (e) => String(e || '').trim().toLowerCase();
+
+async function lcBuildContactIndex(uid) {
+  const snap = await db().collection(`users/${uid}/contacts`).select('email').get();
+  const index = {};
+  snap.forEach((doc) => {
+    const em = normEmail((doc.data() || {}).email);
+    if (!em) return;
+    (index[em] = index[em] || []).push(doc.id);
+  });
+  return index;
+}
+
+async function lcSyncUserEmails(uid, connection, gwCall) {
+  const stateRef = db().doc(`users/${uid}/integrations/lolaConnectSync`);
+  const state = (await stateRef.get()).data() || {};
+  // First run: look back 1h only (no historical backfill from a cron tick).
+  // 5-min overlap on later runs; the dedup check absorbs the replays.
+  const after = state.cursorAfter || new Date(Date.now() - 60 * 60 * 1000).toISOString();
+  const runStarted = new Date().toISOString();
+
+  const page = await gwCall({
+    op: 'emails.list',
+    connectionId: connection.id,
+    after,
+    limit: 50,
+    metaOnly: true,
+  });
+  const items = ((page.json.result && page.json.result.items) || []).filter((m) => m && m.id);
+  if (!items.length) {
+    await stateRef.set({ cursorAfter: runStarted, lastRunAt: runStarted, lastCount: 0 }, { merge: true });
+    return { logged: 0, seen: 0 };
+  }
+
+  const index = await lcBuildContactIndex(uid);
+  const selfEmail = normEmail(connection.email);
+  let logged = 0;
+
+  for (const m of items) {
+    const fromEmail = normEmail(m.from && m.from.email);
+    const toEmails = (m.to || []).map((p) => normEmail(p.email)).filter(Boolean);
+    const ccEmails = (m.cc || []).map((p) => normEmail(p.email)).filter(Boolean);
+    const direction = fromEmail && fromEmail === selfEmail ? 'sent' : 'received';
+    const targets = direction === 'sent' ? [...toEmails, ...ccEmails] : fromEmail ? [fromEmail] : [];
+    const matched = new Set();
+    targets.forEach((em) => (index[em] || []).forEach((cid) => matched.add(cid)));
+    if (!matched.size) continue;
+
+    const sentAt = m.date || runStarted;
+    const emailDoc = {
+      direction,
+      sentAt,
+      subject: m.subject || '(no subject)',
+      snippet: m.snippet || '',
+      fromEmail,
+      toEmails,
+      ccEmails,
+      threadId: m.threadId || '',
+      source: 'lola-connect',
+      syncedAt: new Date().toISOString(),
+    };
+    for (const contactId of matched) {
+      const emailsCol = db().collection(`users/${uid}/contacts/${contactId}/emails`);
+      // Double-log guard vs the Nylas webhook's differently-keyed doc.
+      const dup = await emailsCol.where('sentAt', '==', sentAt).where('direction', '==', direction).limit(1).get();
+      if (!dup.empty) continue;
+      const batch = db().batch();
+      batch.set(emailsCol.doc(`lc_${m.id}`), emailDoc, { merge: true });
+      batch.update(db().doc(`users/${uid}/contacts/${contactId}`), { lastActivityAt: sentAt });
+      await batch.commit();
+      logged++;
+    }
+  }
+
+  await stateRef.set(
+    {
+      cursorAfter: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
+      lastRunAt: runStarted,
+      lastCount: logged,
+    },
+    { merge: true },
+  );
+  return { logged, seen: items.length };
+}
+
+exports.lolaConnectEmailSyncCron = onSchedule(
+  { schedule: 'every 15 minutes', secrets: [LOLA_CONNECT_SERVICE_TOKEN], timeoutSeconds: 300, memory: '512MiB' },
+  async () => {
+    const gwCallFor = (uid) => async (body) => {
+      const r = await fetch(GATEWAY_URL, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${LOLA_CONNECT_SERVICE_TOKEN.value()}`,
+        },
+        body: JSON.stringify({ subject: { pool: SWH_POOL, uid }, product: SWH_PRODUCT, ...body }),
+      });
+      return { status: r.status, json: await r.json().catch(() => ({})) };
+    };
+
+    // Enumerate this pool's connections (service-scoped; uid here is nominal).
+    const listing = await gwCallFor('service')({ op: 'connections.listByPool' });
+    const conns = (listing.json.result && listing.json.result.connections) || [];
+    const connected = conns.filter((c) => c.status === 'connected' && c.products && c.products.swh);
+
+    let totalLogged = 0;
+    for (const conn of connected) {
+      for (const uid of conn.uids || []) {
+        try {
+          const r = await lcSyncUserEmails(uid, conn, gwCallFor(uid));
+          totalLogged += r.logged;
+        } catch (e) {
+          console.warn(`[lcEmailSync] uid=${uid} failed:`, e.message);
+        }
+      }
+    }
+    console.log(`[lcEmailSync] connections=${connected.length} logged=${totalLogged}`);
+  },
+);
 
 exports.lolaConnect = onRequest(
   { cors: true, secrets: [LOLA_CONNECT_SERVICE_TOKEN], timeoutSeconds: 60 },
