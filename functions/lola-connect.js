@@ -201,7 +201,57 @@ async function lcTrySendEmail(uid, { to, name, subject, html }) {
   return { providerEmailId: send.json.result && send.json.result.providerEmailId };
 }
 
+// ── Leg 3: calendar event via the caller's LC connection ────────────────────
+// Mirrors lcTrySendEmail: null when the user has no connected LC account
+// (caller falls back to Nylas), throws on a genuine create failure.
+// Times are ISO strings; notify defaults true so attendees get real invites
+// (the layer passes it to the vendor; NOTE Outlook always notifies regardless).
+async function lcTryCreateEvent(uid, { title, startISO, endISO, description, location, attendees, notify }) {
+  if (!(await featureAllowed(uid))) return null;
+  const call = async (body) => {
+    const r = await fetch(GATEWAY_URL, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${LOLA_CONNECT_SERVICE_TOKEN.value()}`,
+      },
+      body: JSON.stringify({ subject: { pool: SWH_POOL, uid }, product: SWH_PRODUCT, ...body }),
+    });
+    return { status: r.status, json: await r.json().catch(() => ({})) };
+  };
+  const list = await call({ op: 'connections.list' });
+  const conns = (list.json.result && list.json.result.connections) || [];
+  const active = conns.find((c) => c.status === 'connected');
+  if (!active) return null;
+
+  const cals = await call({ op: 'calendars.list', connectionId: active.id });
+  const arr = (cals.json.result && cals.json.result.calendars) || [];
+  const cal = arr.find((c) => c.isDefault) || arr[0];
+  if (!cal) throw new Error('Lola Connect: no calendar available on the connected account');
+
+  const created = await call({
+    op: 'events.create',
+    connectionId: active.id,
+    calendarId: cal.id,
+    event: {
+      title,
+      start: startISO,
+      end: endISO,
+      ...(description ? { description } : {}),
+      ...(location ? { location } : {}),
+      attendees: Array.isArray(attendees) ? attendees : [],
+      notify: notify !== false,
+    },
+  });
+  if (!created.json.ok && !(created.json.result && created.json.result.event)) {
+    throw new Error(`Lola Connect event create failed (${created.status}): ${created.json.error || 'unknown'}`);
+  }
+  const ev = (created.json.result && created.json.result.event) || {};
+  return { eventId: ev.id || '', calendarId: cal.id };
+}
+
 exports.lcTrySendEmail = lcTrySendEmail;
+exports.lcTryCreateEvent = lcTryCreateEvent;
 exports.LOLA_CONNECT_SERVICE_TOKEN = LOLA_CONNECT_SERVICE_TOKEN;
 
 exports.lolaConnect = onRequest(

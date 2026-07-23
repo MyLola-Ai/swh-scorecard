@@ -730,16 +730,13 @@ exports.nylasSyncContacts = onRequest(
 // when starting a campaign, and to remove them when stopping sync.
 // Only the user's own calendar is written — no invites are sent.
 exports.createNylasEvent = onRequest(
-  { cors: true, secrets: [NYLAS_API_KEY], invoker: 'public' },
+  { cors: true, secrets: [NYLAS_API_KEY, lolaConnectModule.LOLA_CONNECT_SERVICE_TOKEN], invoker: 'public' },
   async (req, res) => {
     try {
       const decoded = await requireAuth(req);
       const src = req.body || {};
       const { title, startTime, endTime, description, participants, location } = src;
       if (!title || !startTime || !endTime) throw new Error('Missing title, startTime, or endTime');
-
-      const integration = await loadActiveGrant(decoded.uid, res);
-      if (!integration) return;
 
       // Attendees — the calendar provider emails them a real invite
       const attendees = Array.isArray(participants)
@@ -748,6 +745,30 @@ exports.createNylasEvent = onRequest(
             .slice(0, 10)
             .map(p => ({ email: p.email.trim(), name: String(p.name || '').slice(0, 80) }))
         : [];
+
+      // Feature wiring leg 3 (2026-07-23): create via the user's Lola Connect
+      // connection when they have one. MUST run before loadActiveGrant, which
+      // ends the response when no Nylas grant exists — the exact state where
+      // an LC-connected user needs this path. Dual-run until R2.
+      try {
+        const lc = await lolaConnectModule.lcTryCreateEvent(decoded.uid, {
+          title: String(title),
+          startISO: new Date(Math.floor(Number(startTime)) * 1000).toISOString(),
+          endISO: new Date(Math.floor(Number(endTime)) * 1000).toISOString(),
+          description: description ? String(description).slice(0, 2000) : undefined,
+          location: location ? String(location).slice(0, 200) : undefined,
+          attendees,
+          notify: attendees.length > 0,
+        });
+        if (lc) {
+          return res.json({ ok: true, eventId: lc.eventId, invited: attendees.length, via: 'lola-connect' });
+        }
+      } catch (lcErr) {
+        console.warn('[createNylasEvent] Lola Connect create failed, falling back to Nylas:', lcErr.message);
+      }
+
+      const integration = await loadActiveGrant(decoded.uid, res);
+      if (!integration) return;
 
       const requestBody = {
         title: String(title),
