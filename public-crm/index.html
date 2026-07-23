@@ -4034,9 +4034,14 @@ window.openApptDashboard = function() {
     // Native has no popup blocker and window.open returns null — mint first, open once.
     mint.then(url => window.open(url, '_blank'));
   } else {
-    // Web: open on the click gesture (avoids popup block), then redirect once minted.
-    const w = window.open(DASH, '_blank');
-    mint.then(url => { if (url !== DASH && w && !w.closed) { try { w.location = url; } catch (_) {} } });
+    // Web: open a BLANK window on the click gesture (avoids the popup blocker),
+    // then navigate it to the minted ?token= URL. Opening the bare dashboard here
+    // would let it adopt the browser's persisted Firebase session in the moment
+    // before the token lands — the cross-account landing the platform dedup fix
+    // closes (CTO/MyAppointment §5A). A blank intermediate never loads the
+    // dashboard without a token; on a mint failure it falls back to bare DASH.
+    const w = window.open('', '_blank');
+    mint.then(url => { if (w && !w.closed) { try { w.location = url; } catch (_) {} } });
   }
 };
 
