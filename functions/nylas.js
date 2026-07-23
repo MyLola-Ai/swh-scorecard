@@ -28,6 +28,9 @@ const { onSchedule } = require('firebase-functions/v2/scheduler');
 const { defineSecret } = require('firebase-functions/params');
 const crypto = require('crypto');
 const admin = require('firebase-admin');
+// Feature wiring (leg 1): LC-first email send with Nylas fallback. The module
+// exports the helper + its secret ref (needed in this function's secrets list).
+const lolaConnectModule = require('./lola-connect');
 
 // Lazily resolve Firestore — admin.initializeApp() runs in index.js before
 // this module is required, so we never touch firestore() at import time.
@@ -866,7 +869,7 @@ function textBodyToHtml(body) {
 }
 
 exports.sendContactEmail = onRequest(
-  { cors: true, secrets: [NYLAS_API_KEY], invoker: 'public' },
+  { cors: true, secrets: [NYLAS_API_KEY, lolaConnectModule.LOLA_CONNECT_SERVICE_TOKEN], invoker: 'public' },
   async (req, res) => {
     try {
       const decoded = await requireAuth(req);
@@ -880,10 +883,39 @@ exports.sendContactEmail = onRequest(
       const contact = contactDoc.data();
       if (!contact.email) return res.status(400).json({ error: 'Contact has no email address.' });
 
+      const html = textBodyToHtml(body);
+
+      // Feature wiring leg 1 (2026-07-23): send via the user's Lola Connect
+      // connection when they have one; fall back to the Nylas grant otherwise.
+      // Dual-run until R2 — Nylas users see zero change.
+      try {
+        const lc = await lolaConnectModule.lcTrySendEmail(uid, {
+          to: contact.email,
+          name: contact.name || contact.email,
+          subject: subject || 'Hello',
+          html,
+        });
+        if (lc) {
+          const lcMsgId = lc.providerEmailId || `lc_${Date.now()}`;
+          await db().doc(`users/${uid}/contacts/${contactId}/emails/${lcMsgId}`).set({
+            direction: 'sent',
+            subject: subject || '',
+            snippet: String(body).slice(0, 200),
+            sentAt: new Date().toISOString(),
+            source: 'lola-draft',
+            via: 'lola-connect',
+            syncedAt: admin.firestore.FieldValue.serverTimestamp(),
+          });
+          return res.json({ ok: true, id: lcMsgId, via: 'lola-connect' });
+        }
+      } catch (lcErr) {
+        // LC connection exists but the send failed — fall through to Nylas
+        // rather than failing the user while both stacks are live.
+        console.warn('[sendContactEmail] Lola Connect send failed, falling back to Nylas:', lcErr.message);
+      }
+
       const integration = await loadActiveGrant(uid, res);
       if (!integration) return;
-
-      const html = textBodyToHtml(body);
 
       const nylas = nylasClient();
       const sendResp = await nylas.messages.send({

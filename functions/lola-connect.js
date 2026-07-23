@@ -167,6 +167,43 @@ function buildGatewayBody(op, uid, req) {
   }
 }
 
+// ── Server-side LC consumption (feature wiring, leg 1: email send) ──────────
+// Lets OTHER swh functions send through the caller's Lola Connect connection.
+// Returns { providerEmailId } on success, or null when this user has no
+// connected LC account (caller falls back to Nylas — dual-run, nobody breaks).
+// Throws only on a genuine send failure so the caller can surface it.
+async function lcTrySendEmail(uid, { to, name, subject, html }) {
+  if (!(await featureAllowed(uid))) return null;
+  const call = async (body) => {
+    const r = await fetch(GATEWAY_URL, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${LOLA_CONNECT_SERVICE_TOKEN.value()}`,
+      },
+      body: JSON.stringify({ subject: { pool: SWH_POOL, uid }, product: SWH_PRODUCT, ...body }),
+    });
+    return { status: r.status, json: await r.json().catch(() => ({})) };
+  };
+  const list = await call({ op: 'connections.list' });
+  const conns = (list.json.result && list.json.result.connections) || [];
+  const active = conns.find((c) => c.status === 'connected');
+  if (!active) return null;
+
+  const send = await call({
+    op: 'emails.send',
+    connectionId: active.id,
+    draft: { to: [{ email: to, ...(name ? { name } : {}) }], subject, body: html },
+  });
+  if (!send.json.ok) {
+    throw new Error(`Lola Connect send failed (${send.status}): ${send.json.error || 'unknown'}`);
+  }
+  return { providerEmailId: send.json.result && send.json.result.providerEmailId };
+}
+
+exports.lcTrySendEmail = lcTrySendEmail;
+exports.LOLA_CONNECT_SERVICE_TOKEN = LOLA_CONNECT_SERVICE_TOKEN;
+
 exports.lolaConnect = onRequest(
   { cors: true, secrets: [LOLA_CONNECT_SERVICE_TOKEN], timeoutSeconds: 60 },
   async (req, res) => {
