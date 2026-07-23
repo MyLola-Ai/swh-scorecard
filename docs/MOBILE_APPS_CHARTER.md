@@ -168,6 +168,16 @@ Memory entries: `tech_ios26_home_indicator_capacitor`, `tech_swh_capacitor_fireb
    transition list. Never fix by increasing slide distance. A cross-product audit for this exact
    pattern ran 2026-07-03 (CTO thread, workflow `phantom-toast-audit`).
 4. Test device reference: iPhone 17 Pro Max, iOS 26.5.1.
+5. **Mobile scroll rules belong in the mobile media query, never in an inline `style=`.**
+   Inline styles ignore `@media`, so a mobile-only scroll pane stays a scroll container at desktop
+   widths too — where `.screen.active` is `display:block; height:auto`, giving it nothing to scroll
+   while `overscroll-behavior-y:contain` still blocks the wheel from chaining to `.content`. Result:
+   the desktop screen looks fine and simply will not scroll. Bit the CRM dashboard + History screens
+   (fixed 2026-07-20: properties moved to the mobile-scoped `.scroll-pane` class, matching how
+   `.screen-body` has always worked). Every screen using `.screen-body` was unaffected. When adding a
+   screen, give its scroll pane `.screen-body` or `.scroll-pane` — do not hand-roll the inline
+   version. Diagnosis shortcut: at desktop width, a pane whose computed `overflow-y` is not `visible`
+   while `scrollHeight === clientHeight` is the trap.
 
 ## 8. Design standards (mobile) — iOS 26 Liquid Glass, APPROVED DO-NOT-REGRESS
 
