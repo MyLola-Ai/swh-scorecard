@@ -4349,13 +4349,29 @@ async function loadLolaCrmContext(uid) {
   const todayKey = new Date().toISOString().slice(0, 10);
 
   // Load all of the user's contacts + opps + recent days in parallel
-  const [contactsSnap, oppsSnap, daysSnap, playbooksSnap, userSnap] = await Promise.all([
+  const [contactsSnap, oppsSnap, daysSnap, playbooksSnap, userSnap, tasksSnap] = await Promise.all([
     admin.firestore().collection(`users/${uid}/contacts`).get(),
     admin.firestore().collection(`users/${uid}/opportunities`).get(),
     admin.firestore().collection(`users/${uid}/days`).orderBy('dateKey', 'desc').limit(30).get(),
     admin.firestore().collection(`users/${uid}/playbooks`).get(),
     admin.firestore().doc(`users/${uid}`).get(),
+    admin.firestore().collection(`users/${uid}/tasks`).where('status', '==', 'open').get(),
   ]);
+
+  // Contacts with an open scheduled activity due today or later. Mirrors the
+  // CRM client's detectWastedHandshakes (Austen 2026-07-20): a booked,
+  // not-yet-due next touch means the relationship is NOT stalled/wasted, so
+  // Lola's "who needs attention" answers match what the dashboard shows.
+  const bookedAheadUids = new Set(
+    tasksSnap.docs
+      .map(d => d.data())
+      .filter(t => {
+        if (t.type !== 'scheduled_activity' || !t.contactId) return false;
+        const due = t.dueDate || (typeof t.startTime === 'string' ? t.startTime.slice(0, 10) : '');
+        return due && due >= todayKey;
+      })
+      .map(t => t.contactId)
+  );
 
   // Build playbook id → step-name lookup so we can label "currentStep"
   const playbooks = {};
@@ -4378,11 +4394,16 @@ async function loadLolaCrmContext(uid) {
     const daysSinceAdded = addedAt ? Math.floor((now - addedAt) / dayMs) : null;
     const clockStarted = !!c.clockStarted;
     const stepsCompleted = c.steps || 0;
+    // A booked, not-yet-due next touch clears both flags (matches the CRM
+    // client's detectWastedHandshakes — Austen 2026-07-20).
+    const hasBookedNextTouch = bookedAheadUids.has(d.id);
     // Stalled = clock started, not finished, and >14 days since last touch
-    const isStalled = clockStarted && stepsCompleted < 8 && (daysSinceTouch !== null && daysSinceTouch > 14);
+    const isStalled = !hasBookedNextTouch
+      && clockStarted && stepsCompleted < 8 && (daysSinceTouch !== null && daysSinceTouch > 14);
     // Wasted = clock never started AND >2 days since added; OR no touch >21d
-    const isWasted = (!clockStarted && (daysSinceAdded || 0) > 2)
-      || (daysSinceTouch !== null && daysSinceTouch > 21);
+    const isWasted = !hasBookedNextTouch
+      && ((!clockStarted && (daysSinceAdded || 0) > 2)
+        || (daysSinceTouch !== null && daysSinceTouch > 21));
     const pbInfo = playbooks[c.playbookId] || playbooks[defaultPbId] || { name: 'Default', steps: [] };
     return {
       id: d.id,
@@ -6137,6 +6158,11 @@ exports.mintApptCustomToken = onCall({
       apptDb.doc(`users/${targetUid}/config/profile`).set({
         uid:       targetUid,
         slug,
+        // First-created-wins (PLATFORM_IDENTITY_DEDUP §13): pin the door that
+        // PROVISIONED this account. This seed runs only when the profile does not
+        // yet exist (guarded by profileSnap.exists above), so a later mint through
+        // any door never overwrites product. Retires last-door-wins.
+        product:   'swh',
         name:      name || (email ? email.split('@')[0] : 'User'),
         ...(email ? { email } : {}),
         updatedAt: now,
@@ -6472,7 +6498,7 @@ async function syncApptPlan(uid, billingRef) {
 // via admin SDK so Firestore rules are bypassed entirely.
 // ============================================================
 exports.getApptData = onCall({
-  secrets: [LOANIQ_SA_KEY],
+  secrets: [LOANIQ_SA_KEY, MYAPPOINTMENT_SA_KEY],
 }, async (request) => {
   // Was `throw new Error('unauthenticated')` → 500 INTERNAL. HttpsError
   // gets the v2 onCall harness to return a proper 401 UNAUTHENTICATED.
@@ -6483,6 +6509,86 @@ exports.getApptData = onCall({
   const lqDb   = admin.firestore(getLoaniqAdminApp());
   const swhDb  = admin.firestore();
   const result = { userSlug: '', bookingPages: [], meetings: [] };
+
+  // ── Phase-2 NATIVE host check (myappointment-ai-8756e) ───────────────────
+  // Standalone MyAppointment hosts (provisioned by mintApptCustomToken / the
+  // identity resolver) author pages + take bookings entirely on
+  // myappointment-ai. Every phase below reads loaniq-75a20 only, so native
+  // hosts got an empty Appointments screen (Tony@mortgagewiseconsulting.com,
+  // 2026-07-20). Native wins ONLY when it holds real data (pages or upcoming
+  // bookings): mintApptCustomToken seeds a bare config/profile for EVERY
+  // bridged SWH user, so profile existence alone must not short-circuit the
+  // legacy path or MyLola-linked hosts would regress to empty.
+  let nativeSlug = '';
+  try {
+    const apptDb   = admin.firestore(getApptAdminApp());
+    const apptAuth = admin.auth(getApptAdminApp());
+    // Mirror the mint's legacy resolution: email-matched account, else SWH uid.
+    let apptUid = swhUid;
+    if (email) {
+      try { apptUid = (await apptAuth.getUserByEmail(email)).uid; }
+      catch (e) { if (e.code !== 'auth/user-not-found') console.warn('[getApptData] appt email lookup:', e.message); }
+    }
+    const profSnap = await apptDb.doc(`users/${apptUid}/config/profile`).get();
+    if (profSnap.exists) {
+      nativeSlug = (profSnap.data().slug || '').trim();
+      const nativePages = [];
+      const nativeMeetings = [];
+      try {
+        // Pages come from the CANONICAL MIRROR (_publicBookingPages/{slug}/pages),
+        // not users/{uid}/booking-pages: dashboard quick-create writes the mirror
+        // first, so a host's only page can exist there alone (Tony's did). The
+        // mirror is also what the public booker reads — same source of truth.
+        const pagesSnap = nativeSlug
+          ? await apptDb.collection(`_publicBookingPages/${nativeSlug}/pages`).get()
+          : await apptDb.collection(`users/${apptUid}/booking-pages`).get();
+        pagesSnap.docs.forEach(d => {
+          const p = d.data();
+          nativePages.push({ id: d.id, displayName: p.displayName || p.name || '',
+                             slug: p.slug || d.id, isPublic: p.isPublic !== false,
+                             isPublishable: p.isPublishable !== false });
+        });
+      } catch (e) { console.warn('[getApptData] native pages:', e.message); }
+      try {
+        const nowIso = new Date().toISOString();
+        const bSnap = await apptDb.collection('bookings')
+          .where('hostUid', '==', apptUid).where('startAt', '>=', nowIso)
+          .orderBy('startAt', 'asc').limit(20).get();
+        bSnap.docs.forEach(d => {
+          const b = d.data();
+          if (b.status !== 'confirmed') return;
+          nativeMeetings.push({
+            id: b.id || d.id,
+            bookingPageId: b.pageId || null,
+            start: b.startAt,           // ISO string — same wire shape as legacy
+            status: 'scheduled',        // CRM vocabulary (native says 'confirmed')
+            location: (b.location && (b.location.detail || b.location.value || b.location.type)) || null,
+            guestName: b.bookerName || '',
+          });
+        });
+      } catch (e) {
+        // Most likely a missing (hostUid, startAt) composite index — the error
+        // message carries the create-index URL. Pages/slug still serve.
+        console.warn('[getApptData] native bookings query:', e.message);
+      }
+      if (nativePages.length > 0 || nativeMeetings.length > 0) {
+        result.userSlug     = nativeSlug;
+        result.bookingPages = nativePages;
+        result.meetings     = nativeMeetings;
+        // Cache the NATIVE uid (separate field from the legacy apptUid, which
+        // points at loaniq-75a20) so apptMeetingSweep can enumerate native
+        // hosts and ingest their bookings into CRM tasks.
+        swhDb.collection('users').doc(swhUid).set(
+          { apptNativeUid: apptUid }, { merge: true }
+        ).catch(err => console.warn('[getApptData] native uid cache failed:', err?.message));
+        console.log(`[getApptData] NATIVE host apptUid=${apptUid} slug=${nativeSlug} pages=${nativePages.length} meetings=${nativeMeetings.length}`);
+        return result;
+      }
+      console.log(`[getApptData] native profile bare (slug=${nativeSlug}) — trying legacy loaniq path`);
+    }
+  } catch (e) {
+    console.warn('[getApptData] native phase failed (falling through to loaniq):', e.message);
+  }
 
   // ── Phase 0: SWH cache ────────────────────────────────────────────────────
   let resolvedUid = null;
@@ -6535,6 +6641,9 @@ exports.getApptData = onCall({
 
   if (!resolvedUid) {
     console.log(`[getApptData] no mylola account found for swhUid=${swhUid} email=${email}`);
+    // Fresh native host (seeded profile, nothing booked yet): surface the
+    // native slug so the CRM shows their booking link instead of "set up".
+    result.userSlug = nativeSlug;
     return result;
   }
 
@@ -6633,22 +6742,177 @@ exports.getApptData = onCall({
 // ============================================================
 const APPT_MEETING_ACTIVITY = 'Attend 1:1, Coffee, Lunch, etc.';
 
+/**
+ * Native-host sweep: myappointment-ai `bookings` → SWH CRM tasks + timeline.
+ * Mirrors the legacy loaniq meetings flow exactly (deterministic ids →
+ * idempotent; auto-log stays CLIENT-side so points flow through the same
+ * path as manual logging). Native booking docs use ISO strings for
+ * startAt/endAt and status 'confirmed'/'cancelled' (vs the legacy
+ * Timestamp + 'scheduled' vocabulary) — mapped here.
+ */
+async function sweepNativeBookingsForUser(swhDb, apptDb, swhUid, nativeUid, sinceTs) {
+  // Reconcile FIRST — cancels/reschedules must land even with no new bookings.
+  const openTasks = await swhDb.collection(`users/${swhUid}/tasks`)
+    .where('type', '==', 'scheduled_activity')
+    .where('source', '==', 'myappointment')
+    .where('status', '==', 'open')
+    .limit(100).get();
+  for (const tDoc of openTasks.docs) {
+    const t = tDoc.data();
+    if (!t.apptBookingId) continue; // legacy task (apptMeetingId) — other pass owns it
+    const bSnap = await apptDb.doc(`bookings/${t.apptBookingId}`).get();
+    const b = bSnap.exists ? bSnap.data() : null;
+    if (!b || b.status === 'cancelled' || b.status === 'canceled') {
+      await tDoc.ref.set({ status: 'canceled', canceledAt: new Date().toISOString() }, { merge: true });
+      console.log(`[apptMeetingSweep] native reconcile: canceled task ${tDoc.id} (${swhUid})`);
+      continue;
+    }
+    if (b.status === 'confirmed' && b.startAt) {
+      const sd = new Date(b.startAt);
+      const dk = sd.toLocaleDateString('en-CA', { timeZone: 'America/Chicago' });
+      const hm = sd.toLocaleTimeString('en-GB', { timeZone: 'America/Chicago', hour: '2-digit', minute: '2-digit' });
+      if (t.dueDate !== dk || (t.startTime || '').slice(11, 16) !== hm) {
+        await tDoc.ref.set({ dueDate: dk, startTime: `${dk}T${hm}:00` }, { merge: true });
+        console.log(`[apptMeetingSweep] native reconcile: moved task ${tDoc.id} → ${dk} ${hm} (${swhUid})`);
+      }
+    }
+  }
+
+  // Fresh bookings (26h lookback; createdAt is a Firestore Timestamp).
+  const bSnap = await apptDb.collection('bookings')
+    .where('hostUid', '==', nativeUid)
+    .where('createdAt', '>=', sinceTs).get();
+  if (bSnap.empty) return;
+
+  let contacts = null;
+  const loadContacts = async () => {
+    if (contacts) return contacts;
+    const cSnap = await swhDb.collection(`users/${swhUid}/contacts`).get();
+    contacts = cSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+    return contacts;
+  };
+  let oneOnOnePts = 10;
+  try {
+    const actCfg = await swhDb.doc(`users/${swhUid}/config/activities`).get();
+    const def = actCfg.exists ? (actCfg.data().list || []).find(a => a.name === APPT_MEETING_ACTIVITY) : null;
+    if (def && typeof def.pts === 'number') oneOnOnePts = def.pts;
+  } catch (_) { /* default stands */ }
+
+  for (const bDoc of bSnap.docs) {
+    const b = bDoc.data();
+    const bookingId = b.id || bDoc.id;
+    const taskRef  = swhDb.doc(`users/${swhUid}/tasks/appt_${bookingId}`);
+    const taskSnap = await taskRef.get();
+
+    if (b.status === 'cancelled' || b.status === 'canceled') {
+      if (taskSnap.exists && taskSnap.data().status === 'open') {
+        await taskRef.set({ status: 'canceled', canceledAt: new Date().toISOString() }, { merge: true });
+        console.log(`[apptMeetingSweep] native: canceled task appt_${bookingId} (${swhUid})`);
+      }
+      continue;
+    }
+    if (b.status !== 'confirmed' || !b.startAt) continue;
+
+    const startDate = new Date(b.startAt);
+    const endDate   = b.endAt ? new Date(b.endAt) : null;
+    const dateKey   = startDate.toLocaleDateString('en-CA', { timeZone: 'America/Chicago' });
+    const hhmm      = startDate.toLocaleTimeString('en-GB', { timeZone: 'America/Chicago', hour: '2-digit', minute: '2-digit' });
+
+    if (taskSnap.exists) {
+      const t = taskSnap.data();
+      if (t.status === 'open' && t.dueDate !== dateKey) {
+        await taskRef.set({ dueDate: dateKey, startTime: `${dateKey}T${hhmm}:00` }, { merge: true });
+        console.log(`[apptMeetingSweep] native: moved task appt_${bookingId} → ${dateKey} (${swhUid})`);
+      }
+      continue;
+    }
+
+    const bookerEmail = String(b.bookerEmail || '').trim().toLowerCase();
+    if (!bookerEmail) continue;
+    const all = await loadContacts();
+    const contact = all.find(c => String(c.email || '').trim().toLowerCase() === bookerEmail);
+    if (!contact) { console.log(`[apptMeetingSweep] native: no contact match for booker (${swhUid})`); continue; }
+
+    const durationMins = endDate ? Math.max(15, Math.round((endDate - startDate) / 60000)) : 30;
+    const bookedIso = (b.createdAt && b.createdAt.toDate ? b.createdAt.toDate() : new Date()).toISOString();
+    const bookedKey = new Date(bookedIso).toLocaleDateString('en-CA', { timeZone: 'America/Chicago' });
+    const whenLabel = startDate.toLocaleString('en-US', {
+      timeZone: 'America/Chicago', weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
+    });
+
+    const batch = swhDb.batch();
+    batch.set(taskRef, {
+      type: 'scheduled_activity',
+      contactId: contact.id,
+      contactName: contact.name || bookerEmail,
+      activityName: APPT_MEETING_ACTIVITY,
+      potentialPts: oneOnOnePts,
+      dueDate: dateKey,
+      startTime: `${dateKey}T${hhmm}:00`,
+      durationMins,
+      note: 'Booked via myappointment.ai',
+      label: `${APPT_MEETING_ACTIVITY} with ${contact.name || bookerEmail}`,
+      status: 'open',
+      createdAt: bookedIso,
+      source: 'myappointment',
+      apptBookingId: bookingId,
+      autoLog: true,
+    });
+    batch.set(swhDb.doc(`users/${swhUid}/contacts/${contact.id}/activities/appt_sched_${bookingId}`), {
+      type: '1-on-1 Booked',
+      source: 'myappointment',
+      note: `Booked via myappointment.ai for ${whenLabel}`,
+      points: 0,
+      timestamp: bookedIso,
+      dateKey: bookedKey,
+      contactId: contact.id,
+      contactName: contact.name || '',
+    });
+    await batch.commit();
+    console.log(`[apptMeetingSweep] native: linked booking ${bookingId} → contact ${contact.id} (${swhUid})`);
+  }
+}
+
 exports.apptMeetingSweep = onSchedule({
   schedule: 'every 15 minutes',
   timeZone: 'America/Chicago',
-  secrets: [LOANIQ_SA_KEY],
+  secrets: [LOANIQ_SA_KEY, MYAPPOINTMENT_SA_KEY],
 }, async () => {
-  const lqDb  = admin.firestore(getLoaniqAdminApp());
-  const swhDb = admin.firestore();
+  const lqDb   = admin.firestore(getLoaniqAdminApp());
+  const swhDb  = admin.firestore();
+  const apptDb = admin.firestore(getApptAdminApp());
   // 26h lookback with overlap — deterministic doc ids make re-processing a no-op
   const sinceTs = admin.firestore.Timestamp.fromMillis(Date.now() - 26 * 3600 * 1000);
 
-  const usersSnap = await swhDb.collection('users').where('apptUid', '>', '').limit(300).get();
-  console.log(`[apptMeetingSweep] ${usersSnap.size} linked users`);
+  // Enumerate BOTH linkage generations: legacy MyLola-linked hosts (apptUid →
+  // loaniq-75a20 meetings) and Phase-2 native hosts (apptNativeUid →
+  // myappointment-ai bookings; cached by getApptData's native phase). A user
+  // can carry both; each source is swept independently below.
+  const [legacySnap, nativeSnap] = await Promise.all([
+    swhDb.collection('users').where('apptUid', '>', '').limit(300).get(),
+    swhDb.collection('users').where('apptNativeUid', '>', '').limit(300).get(),
+  ]);
+  const linked = new Map();
+  legacySnap.docs.forEach(d => linked.set(d.id, { legacyUid: d.data().apptUid, nativeUid: d.data().apptNativeUid || null }));
+  nativeSnap.docs.forEach(d => {
+    const cur = linked.get(d.id) || { legacyUid: null, nativeUid: null };
+    cur.nativeUid = d.data().apptNativeUid;
+    linked.set(d.id, cur);
+  });
+  console.log(`[apptMeetingSweep] ${linked.size} linked users (${legacySnap.size} legacy, ${nativeSnap.size} native)`);
 
-  for (const u of usersSnap.docs) {
-    const swhUid  = u.id;
-    const apptUid = u.data().apptUid;
+  for (const [swhUid, link] of linked) {
+    const apptUid = link.legacyUid;
+
+    // ── NATIVE host sweep (myappointment-ai bookings) ─────────────────────
+    if (link.nativeUid) {
+      try {
+        await sweepNativeBookingsForUser(swhDb, apptDb, swhUid, link.nativeUid, sinceTs);
+      } catch (e) {
+        console.error(`[apptMeetingSweep] native ${swhUid}:`, e.message);
+      }
+    }
+    if (!apptUid) continue; // native-only host — legacy blocks below don't apply
 
     // Reconcile pass FIRST — it must run even when there are no new
     // bookings (that's exactly when late cancels/reschedules happen).
