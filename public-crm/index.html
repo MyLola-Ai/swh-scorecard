@@ -7511,6 +7511,16 @@ function renderDashEventROI() {
 }
 
 // ── TASKS ──
+// Expand/collapse the overflow of the "Coming Up This Week" list so no
+// this-week step is ever hidden behind a static "+N more" line.
+window.toggleThisWeekMore = function(){
+  const more=document.getElementById('tw-more'), tog=document.getElementById('tw-more-toggle');
+  if(!more||!tog) return;
+  const showing = more.style.display !== 'none';
+  more.style.display = showing ? 'none' : 'block';
+  tog.textContent = showing ? ('+ ' + more.children.length + ' more this week') : '− Show fewer';
+};
+
 function renderTasks() {
   const el=document.getElementById('tasks-list'); if(!el) return;
   const wasted=CONTACTS.filter(c=>c.wasted);
@@ -7726,14 +7736,20 @@ function renderTasks() {
     });
   }
 
-  // Due this week (next 7 days, excludes overdue & today)
+  // Due this week (next 7 days, excludes overdue & today).
+  // Every item renders; those past the first 8 sit in a collapsed block the
+  // "+N more" line expands, so nothing due this week is ever silently hidden.
   if(dueThisWeekList.length>0) {
     html+=`<div class="task-grp-lbl">📅 Coming Up This Week <span class="cnt-badge">${dueThisWeekList.length}</span></div>`;
-    dueThisWeekList.slice(0,8).forEach(({contact,step,dueDate})=>{
+    const twRow = ({contact,step,dueDate}) => {
       const s = stepFor(contact, step);
-      html+=`<div class="task-row" style="${rowAccent(contact)}" onclick="toggleTaskExpand('${contact.id}', this)"><div class="task-dot" style="background:var(--navy);"></div><div style="flex:1;"><div class="task-name">${contact.name}${sPill(contact)}</div><div class="task-meta">${s.name} · ${formatDateShort(dueDate)}</div></div><div class="task-chip" style="background:var(--bg);color:var(--muted);">Step ${step+1}</div></div>`;
-    });
-    if(dueThisWeekList.length>8) html+=`<div style="text-align:center;padding:8px;font-size:11px;color:var(--muted);">+ ${dueThisWeekList.length-8} more this week</div>`;
+      return `<div class="task-row" style="${rowAccent(contact)}" onclick="toggleTaskExpand('${contact.id}', this)"><div class="task-dot" style="background:var(--navy);"></div><div style="flex:1;"><div class="task-name">${contact.name}${sPill(contact)}</div><div class="task-meta">${s.name} · ${formatDateShort(dueDate)}</div></div><div class="task-chip" style="background:var(--bg);color:var(--muted);">Step ${step+1}</div></div>`;
+    };
+    dueThisWeekList.slice(0,8).forEach(t=>{ html+=twRow(t); });
+    if(dueThisWeekList.length>8) {
+      html+=`<div id="tw-more" style="display:none;">${dueThisWeekList.slice(8).map(twRow).join('')}</div>`;
+      html+=`<div id="tw-more-toggle" onclick="toggleThisWeekMore()" style="text-align:center;padding:9px;font-size:11px;font-weight:700;color:#5B5BD6;cursor:pointer;">+ ${dueThisWeekList.length-8} more this week</div>`;
+    }
   }
 
   // Needs a clock started
