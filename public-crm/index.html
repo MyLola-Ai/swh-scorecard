@@ -5462,6 +5462,8 @@ async function loadAllData() {
     const qSnap = await getDocs(query(collection(db,'users',uid,'followThroughQueue'), where('status','==','pending')));
     FOLLOW_THROUGH_QUEUE = qSnap.docs.map(d => ({ id: d.id, ...d.data() }));
   } catch(e) { console.warn('[tasks load]', e); }
+  // Keep the Morning Queue current on its own (background, admin-gated, throttled).
+  autoRefreshMorningQueue();
   // Auto-detect wasted handshakes
   detectWastedHandshakes();
   // Opportunities
@@ -7221,7 +7223,7 @@ window.showScreen = function(name, btn) {
   if(name==='network') { expandedContactId=null; renderNetwork(); }
   if(name==='log') { renderActs(); updateTotals(); }
   if(name==='dashboard') renderDashboard();
-  if(name==='tasks') renderTasks();
+  if(name==='tasks'){ renderTasks(); autoRefreshMorningQueue(); }
   if(name==='pipeline') renderPipeline();
   if(name==='history') { renderHistory(); _refreshHistoryFromFirestore(); }
   if(name==='appointments') { renderAppointments(); }
@@ -7520,6 +7522,33 @@ window.toggleThisWeekMore = function(){
   more.style.display = showing ? 'none' : 'block';
   tog.textContent = showing ? ('+ ' + more.children.length + ' more this week') : '− Show fewer';
 };
+
+// Keep the Morning Queue current without waiting for the 8am cron: after each
+// data load / tab refocus, rebuild it in the background. Admin-gated (the queue
+// is built for ADMIN_EMAILS only) and throttled. The server build is idempotent
+// (unforced skips items already built today), so this only drafts steps that
+// have newly come due, then reloads the queue and re-renders in place.
+let _lastQueueBuild = 0;
+async function autoRefreshMorningQueue(){
+  try{
+    if(!currentUser || (currentUser.email||'').toLowerCase() !== 'austen@austensmith.com') return;
+    const now = Date.now();
+    if(now - _lastQueueBuild < 5*60*1000) return; // at most once / 5 min
+    _lastQueueBuild = now;
+    const tok = await lolaIdToken(); if(!tok) return;
+    const r = await fetch(`${CRM_FUNCTIONS_BASE}/buildFollowThroughQueueNow`, {
+      method:'POST', headers:{'Content-Type':'application/json','Authorization':`Bearer ${tok}`}, body:'{}'
+    });
+    if(!r.ok) return;
+    const data = await r.json().catch(()=>({}));
+    if(data && data.queued > 0){
+      const uid = currentUser.uid;
+      const qSnap = await getDocs(query(collection(db,'users',uid,'followThroughQueue'), where('status','==','pending')));
+      FOLLOW_THROUGH_QUEUE = qSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+      if(typeof renderTasks==='function') renderTasks();
+    }
+  }catch(e){ /* silent: the queue just won't rebuild this cycle */ }
+}
 
 function renderTasks() {
   const el=document.getElementById('tasks-list'); if(!el) return;

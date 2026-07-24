@@ -7676,8 +7676,8 @@ async function runFollowThroughQueueBuild(opts) {
       if (!c.clockStarted) continue;
       const clockKey = toDateKey(c.clockStarted);
       if (!clockKey) { console.warn('[buildFollowThroughQueue] skip', contactId, '- unparseable clockStarted:', c.clockStarted); continue; }
-      if (c.wasted) continue;
-      if (c.cadencePaused) continue;
+      if (c.wasted) { console.log('[bftq skip]', c.name, 'wasted'); continue; }
+      if (c.cadencePaused) { console.log('[bftq skip]', c.name, 'cadencePaused'); continue; }
       const stepsDone = c.steps || 0;
       if (stepsDone >= 8) continue;
 
@@ -7690,7 +7690,7 @@ async function runFollowThroughQueueBuild(opts) {
       if (N >= stepOffsets.length) continue;
 
       const dueDate = addDaysServer(clockKey, stepOffsets[N]);
-      if (dueDate > todayKey) continue;
+      if (dueDate > todayKey) { console.log('[bftq skip]', c.name, 'step', N + 1, 'not due until', dueDate, '(today is', todayKey + ')'); continue; }
 
       const docId = `${contactId}_${N}`;
       const existingSnap = await admin.firestore().doc(`users/${uid}/followThroughQueue/${docId}`).get();
@@ -7702,8 +7702,8 @@ async function runFollowThroughQueueBuild(opts) {
         // queue itself. Without it in this list the build fell through and
         // rewrote the doc back to status:'pending', resurrecting a step the
         // user had already finished (Austen / Ryan Weber, 2026-07-20).
-        if (ex.status === 'sent' || ex.status === 'skipped' || ex.status === 'done') continue;
-        if (!force && ex.builtAt && ex.builtAt.slice(0, 10) === todayKey) continue;
+        if (ex.status === 'sent' || ex.status === 'skipped' || ex.status === 'done') { console.log('[bftq skip]', c.name, 'step', N + 1, 'existing status:', ex.status); continue; }
+        if (!force && ex.builtAt && ex.builtAt.slice(0, 10) === todayKey) { console.log('[bftq skip]', c.name, 'step', N + 1, 'already built today'); continue; }
         hadDraft = !!ex.draftBody;
       }
 
