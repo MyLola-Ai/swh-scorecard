@@ -5057,6 +5057,7 @@ window.doMicrosoftLogin = async (loginHint) => {
   const originalLabel = btn ? btn.innerHTML : '';
   try {
     if (btn) btn.textContent = 'Signing in…';
+    const { getAuth, OAuthProvider, signInWithPopup } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js");
     const msProvider = new OAuthProvider('microsoft.com');
     const params = { tenant: 'common' };
     // Pass login_hint if we know the email — skips account picker for corporate tenants.
@@ -5066,7 +5067,7 @@ window.doMicrosoftLogin = async (loginHint) => {
     msProvider.addScope('email');
     msProvider.addScope('profile');
     msProvider.addScope('openid');
-    await signInWithPopup(auth, msProvider);
+    await signInWithPopup(getAuth(firebaseApp), msProvider);
   } catch (e) {
     console.error('[doMicrosoftLogin] failed:', e);
     if (btn) btn.innerHTML = originalLabel;
