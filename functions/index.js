@@ -4616,7 +4616,9 @@ When listing contacts, use this format (no bullet markers, just lines):
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': ANTHROPIC_API_KEY.value(),
+        // trim: a secret re-set with `echo` gains a trailing newline that
+        // Node fetch rejects as an invalid header (the resolver outage class).
+        'x-api-key': ANTHROPIC_API_KEY.value().trim(),
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
@@ -6034,7 +6036,12 @@ async function resolveApptIdentity({ door, doorUid, email, emailVerified }) {
   try {
     const res = await fetch(APPT_IDENTITY_RESOLVER_URL, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', authorization: `Bearer ${APPT_IDENTITY_SERVICE_TOKEN.value()}` },
+      // .trim() is load-bearing, same as every other secret-into-header site
+      // in this file: a secret set with `echo` carries a trailing newline,
+      // which Node's fetch rejects ("Invalid character in header content") —
+      // that silently killed EVERY resolver call from 2026-07-23 until this
+      // fix, with sign-ins surviving only on the fail-open fallback below.
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${APPT_IDENTITY_SERVICE_TOKEN.value().trim()}` },
       body: JSON.stringify(body),
       signal: ctrl.signal,
     });
