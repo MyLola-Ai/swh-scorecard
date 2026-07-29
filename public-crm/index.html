@@ -9059,7 +9059,12 @@ window.saveScheduleActivity = async function() {
     // 1) Calendar event first (its id feeds the MyAppointment record) —
     //    optionally inviting the contact
     let inviteSent = false, nylasEventId = null;
-    if (crmNylasConnected) {
+    {
+      // No client-side connected-gate here (2026-07-29): crmNylasConnected
+      // reflects Nylas only, and the server no longer falls back to Nylas —
+      // gating the fetch on it silently skipped the calendar write for any
+      // LC-only user, the same "looks scheduled, isn't" bug Austen hit
+      // before. Always attempt; the server routes LC-or-409 correctly.
       try {
         const token = await currentUser.getIdToken();
         const startUnix = Math.floor(new Date(startTime).getTime() / 1000);
@@ -9084,9 +9089,17 @@ window.saveScheduleActivity = async function() {
           const ev = await resp.json();
           nylasEventId = ev.eventId || null;
           inviteSent = invite && (ev.invited || 0) > 0;
+        } else {
+          const j = await resp.json().catch(() => ({}));
+          if (j.code === 'lola_connect_required') {
+            promptLolaConnectRequired('Connect your calendar to add this to your calendar.');
+          } else {
+            showToast('⚠️ Could not add to calendar: ' + (j.error || `HTTP ${resp.status}`));
+          }
         }
       } catch (calErr) {
         console.warn('[scheduleActivity] calendar event failed:', calErr.message);
+        showToast('⚠️ Could not add to calendar — the activity was still saved.');
       }
     }
 
@@ -9691,7 +9704,14 @@ window.neStepDraftSend = async function() {
       }),
     });
     const j = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(j.needsReconnect ? 'Email connection expired. Reconnect in Settings.' : (j.error || `HTTP ${r.status}`));
+    if (!r.ok) {
+      if (j.code === 'lola_connect_required') {
+        btn.disabled = false; btn.textContent = 'Send';
+        promptLolaConnectRequired('Connect your email to send this.');
+        return;
+      }
+      throw new Error(j.needsReconnect ? 'Email connection expired. Reconnect in Settings.' : (j.error || `HTTP ${r.status}`));
+    }
     btn.textContent = 'Sent ✓';
     // Points + timeline: a sent Lola email is an 8-step touch. Points come
     // from the user's own catalog value for this activity.
@@ -11933,8 +11953,9 @@ async function addStepsToCalendar(contact) {
   showToast('📅 Adding 8 steps to Google Calendar…');
   let token;
   try { token = await currentUser?.getIdToken(); } catch(e) { showToast('⚠️ Sign-in required'); return; }
-  let added = 0;
+  let added = 0, needsConnect = false;
   for(let i = 0; i < STEP_NAMES.length; i++) {
+    if (needsConnect) break; // one 409 means all 8 will 409 — don't hammer it
     const dueDate = addDays(clockStart, STEP_SCHEDULE[i]);
     const startTime = dateHourToUnix(dueDate, calendarHour);
     const title = `SWH Step ${i+1}: ${STEP_NAMES[i]} (${contact.name})`;
@@ -11945,9 +11966,14 @@ async function addStepsToCalendar(contact) {
         body: JSON.stringify({ title, startTime, endTime: startTime + 1800 }),
       });
       if(res.ok) added++;
+      else {
+        const j = await res.json().catch(() => ({}));
+        if (j.code === 'lola_connect_required') needsConnect = true;
+      }
     } catch(e) { console.error('[addStepsToCalendar]', e); }
   }
-  if(added > 0) showToast(`✅ ${added} steps added to Google Calendar`);
+  if (needsConnect && added === 0) promptLolaConnectRequired('Connect your calendar to add these steps.');
+  else if(added > 0) showToast(`✅ ${added} steps added to Google Calendar`);
   else showToast('⚠️ Could not sync to calendar. Try again');
 }
 
@@ -12266,8 +12292,9 @@ window.toggleCalendarSync = async function(contactId) {
     if(!c.clockStarted) { showToast('⚠️ Start the clock first'); return; }
     if(btn) { btn.textContent = '⏳ Syncing…'; btn.disabled = true; }
     const eventIds = [];
-    let added = 0;
+    let added = 0, needsConnect = false;
     for(let i = 0; i < STEP_NAMES.length; i++) {
+      if (needsConnect) break; // one 409 means the rest will 409 — don't hammer it
       const {done} = getStepStatus(c, i);
       if(done) continue;
       const dueDate = addDays(c.clockStarted, STEP_SCHEDULE[i]);
@@ -12280,6 +12307,10 @@ window.toggleCalendarSync = async function(contactId) {
           body: JSON.stringify({ title, startTime, endTime: startTime + 1800 }),
         });
         if(res.ok) { const data = await res.json(); eventIds.push(data.eventId); added++; }
+        else {
+          const j = await res.json().catch(() => ({}));
+          if (j.code === 'lola_connect_required') needsConnect = true;
+        }
       } catch(e) {}
     }
     if(added > 0) {
@@ -12288,9 +12319,12 @@ window.toggleCalendarSync = async function(contactId) {
       await updateDoc(doc(db,'users',currentUser.uid,'contacts',contactId), { calendarSynced: true, calendarEventIds: eventIds });
       if(btn) { btn.textContent = '🔄 Stop Sync'; btn.style.background = '#e8f5ec'; btn.style.color = '#2e7d32'; btn.disabled = false; }
       showToast(`✅ ${added} steps added to Google Calendar`);
+    } else if (needsConnect) {
+      if(btn) { btn.textContent = '📅 Run'; btn.disabled = false; }
+      promptLolaConnectRequired('Connect your calendar to sync these steps.');
     } else {
       if(btn) { btn.textContent = '📅 Run'; btn.disabled = false; }
-      showToast('⚠️ Could not sync. Connect Google Calendar in Settings');
+      showToast('⚠️ Could not sync. Try again');
     }
   }
 };
@@ -12682,6 +12716,38 @@ window.resetActivitiesToDefault = async function() {
 };
 
 window.showToast=function(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'),2800);};
+
+// Actionable variant of showToast — same #toast element, adds a clickable
+// button. Used for graceful-degradation prompts (Nylas EOL, 2026-07-29):
+// email send / calendar create now hard-require a Lola Connect connection
+// (no Nylas fallback). This turns that dead-end into "reconnect your email
+// to restore this" with a working path, instead of a bare error or silence.
+window.showActionableToast = function(msg, actionLabel, onClick) {
+  const t = document.getElementById('toast');
+  t.textContent = '';
+  const span = document.createElement('span');
+  span.textContent = msg + ' ';
+  const btn = document.createElement('button');
+  btn.textContent = actionLabel;
+  btn.style.cssText = 'margin-left:8px;background:#fff;color:#111;border:none;border-radius:6px;padding:3px 10px;font-weight:700;font-size:11px;cursor:pointer;';
+  btn.onclick = (e) => { e.stopPropagation(); t.classList.remove('show'); onClick(); };
+  t.appendChild(span);
+  t.appendChild(btn);
+  t.classList.add('show');
+  clearTimeout(t._t);
+  t._t = setTimeout(() => t.classList.remove('show'), 8000); // longer — there's an action to take
+};
+
+// Shared response for the LC-required 409 (sendContactEmail, createNylasEvent
+// as of 2026-07-29). Jumps to Settings and scrolls to the Lola Connect card.
+window.promptLolaConnectRequired = function(msg) {
+  showActionableToast(msg || 'Connect your email to restore this.', 'Connect', () => {
+    if (window.showScreen) showScreen('settings');
+    setTimeout(() => {
+      document.getElementById('settings-lolaconnect-card')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 300);
+  });
+};
 
 // ============================================================
 // PLAYBOOK UI CONTROLLERS
