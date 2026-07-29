@@ -10184,7 +10184,11 @@ window.deleteContactActivity = async function(contactId, actId, actType, pts, da
   const ptsTxt = pts > 0 ? ` This will deduct ${pts} pts from your Scorecard.` : '';
   if (!confirm(`Delete this "${actType}" entry?${ptsTxt}`)) return;
   try {
-    await deleteDoc(doc(db, 'users', currentUser.uid, 'contacts', contactId, 'activities', actId));
+    // Delete can transiently fail on a token-refresh race; retry once before
+    // surfacing an error, since re-clicking is otherwise the only recourse.
+    const activityRef = doc(db, 'users', currentUser.uid, 'contacts', contactId, 'activities', actId);
+    try { await deleteDoc(activityRef); }
+    catch(_) { await new Promise(r => setTimeout(r, 700)); await deleteDoc(activityRef); }
     // Adjust day totals if the activity was logged today and carried points
     if (dateKey === getTodayKey() && pts > 0) {
       const dayRef = doc(db, 'users', currentUser.uid, 'days', dateKey);
@@ -10228,7 +10232,7 @@ window.deleteContactActivity = async function(contactId, actId, actType, pts, da
     showToast('🗑 Activity deleted');
   } catch(e) {
     console.error('[deleteContactActivity]', e);
-    showToast('⚠️ Could not delete. Try again');
+    showToast('⚠️ Could not delete: ' + (e.message || 'unknown error'));
   }
 };
 
