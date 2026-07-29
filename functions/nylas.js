@@ -746,48 +746,27 @@ exports.createNylasEvent = onRequest(
             .map(p => ({ email: p.email.trim(), name: String(p.name || '').slice(0, 80) }))
         : [];
 
-      // Feature wiring leg 3 (2026-07-23): create via the user's Lola Connect
-      // connection when they have one. MUST run before loadActiveGrant, which
-      // ends the response when no Nylas grant exists — the exact state where
-      // an LC-connected user needs this path. Dual-run until R2.
-      try {
-        const lc = await lolaConnectModule.lcTryCreateEvent(decoded.uid, {
-          title: String(title),
-          startISO: new Date(Math.floor(Number(startTime)) * 1000).toISOString(),
-          endISO: new Date(Math.floor(Number(endTime)) * 1000).toISOString(),
-          description: description ? String(description).slice(0, 2000) : undefined,
-          location: location ? String(location).slice(0, 200) : undefined,
-          attendees,
-          notify: attendees.length > 0,
-        });
-        if (lc) {
-          return res.json({ ok: true, eventId: lc.eventId, invited: attendees.length, via: 'lola-connect' });
-        }
-      } catch (lcErr) {
-        console.warn('[createNylasEvent] Lola Connect create failed, falling back to Nylas:', lcErr.message);
-      }
-
-      const integration = await loadActiveGrant(decoded.uid, res);
-      if (!integration) return;
-
-      const requestBody = {
+      // Lola Connect only (Nylas fallback removed 2026-07-28, Austen's
+      // direct instruction ahead of the Aug 2 EOL — code no longer touches
+      // Nylas here, even for a user with no LC connection).
+      const lc = await lolaConnectModule.lcTryCreateEvent(decoded.uid, {
         title: String(title),
-        when: { startTime: Math.floor(Number(startTime)), endTime: Math.floor(Number(endTime)) },
-      };
-      if (description) requestBody.description = String(description).slice(0, 2000);
-      if (location) requestBody.location = String(location).slice(0, 200);
-      if (attendees.length) requestBody.participants = attendees;
-
-      const nylas = nylasClient();
-      const r = await nylas.events.create({
-        identifier: integration.grantId,
-        queryParams: { calendarId: 'primary', notifyParticipants: attendees.length > 0 },
-        requestBody,
+        startISO: new Date(Math.floor(Number(startTime)) * 1000).toISOString(),
+        endISO: new Date(Math.floor(Number(endTime)) * 1000).toISOString(),
+        description: description ? String(description).slice(0, 2000) : undefined,
+        location: location ? String(location).slice(0, 200) : undefined,
+        attendees,
+        notify: attendees.length > 0,
       });
-      res.json({ ok: true, eventId: (r.data || r).id, invited: attendees.length });
+      if (!lc) {
+        return res.status(409).json({
+          error: 'Connect your calendar in Settings before scheduling.',
+          code: 'lola_connect_required',
+        });
+      }
+      return res.json({ ok: true, eventId: lc.eventId, invited: attendees.length, via: 'lola-connect' });
     } catch (e) {
       console.error('[createNylasEvent]', e);
-      await maybeFlagExpired(req, e);
       sendErr(res, e);
     }
   }
@@ -906,62 +885,33 @@ exports.sendContactEmail = onRequest(
 
       const html = textBodyToHtml(body);
 
-      // Feature wiring leg 1 (2026-07-23): send via the user's Lola Connect
-      // connection when they have one; fall back to the Nylas grant otherwise.
-      // Dual-run until R2 — Nylas users see zero change.
-      try {
-        const lc = await lolaConnectModule.lcTrySendEmail(uid, {
-          to: contact.email,
-          name: contact.name || contact.email,
-          subject: subject || 'Hello',
-          html,
-        });
-        if (lc) {
-          const lcMsgId = lc.providerEmailId || `lc_${Date.now()}`;
-          await db().doc(`users/${uid}/contacts/${contactId}/emails/${lcMsgId}`).set({
-            direction: 'sent',
-            subject: subject || '',
-            snippet: String(body).slice(0, 200),
-            sentAt: new Date().toISOString(),
-            source: 'lola-draft',
-            via: 'lola-connect',
-            syncedAt: admin.firestore.FieldValue.serverTimestamp(),
-          });
-          return res.json({ ok: true, id: lcMsgId, via: 'lola-connect' });
-        }
-      } catch (lcErr) {
-        // LC connection exists but the send failed — fall through to Nylas
-        // rather than failing the user while both stacks are live.
-        console.warn('[sendContactEmail] Lola Connect send failed, falling back to Nylas:', lcErr.message);
-      }
-
-      const integration = await loadActiveGrant(uid, res);
-      if (!integration) return;
-
-      const nylas = nylasClient();
-      const sendResp = await nylas.messages.send({
-        identifier: integration.grantId,
-        requestBody: {
-          to: [{ email: contact.email, name: contact.name || contact.email }],
-          subject: subject || 'Hello',
-          body: html,
-        },
+      // Lola Connect only (Nylas fallback removed 2026-07-28, Austen's
+      // direct instruction ahead of the Aug 2 EOL — code no longer touches
+      // Nylas here, even for a user with no LC connection).
+      const lc = await lolaConnectModule.lcTrySendEmail(uid, {
+        to: contact.email,
+        name: contact.name || contact.email,
+        subject: subject || 'Hello',
+        html,
       });
-
-      const msgData = sendResp.data || sendResp;
-      const nylasMsgId = msgData.id || `ld_${Date.now()}`;
-      await db().doc(`users/${uid}/contacts/${contactId}/emails/${nylasMsgId}`).set({
+      if (!lc) {
+        return res.status(409).json({
+          error: 'Connect your email in Settings before sending.',
+          code: 'lola_connect_required',
+        });
+      }
+      const lcMsgId = lc.providerEmailId || `lc_${Date.now()}`;
+      await db().doc(`users/${uid}/contacts/${contactId}/emails/${lcMsgId}`).set({
         direction: 'sent',
         subject: subject || '',
         snippet: String(body).slice(0, 200),
         sentAt: new Date().toISOString(),
         source: 'lola-draft',
+        via: 'lola-connect',
         syncedAt: admin.firestore.FieldValue.serverTimestamp(),
       });
-
-      return res.json({ ok: true, id: nylasMsgId });
+      return res.json({ ok: true, id: lcMsgId, via: 'lola-connect' });
     } catch (e) {
-      await maybeFlagExpired(req, e);
       console.error('[sendContactEmail]', e.message);
       return sendErr(res, e);
     }
