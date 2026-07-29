@@ -6585,7 +6585,18 @@ exports.getApptData = onCall({
         // Cache the NATIVE uid (separate field from the legacy apptUid, which
         // points at loaniq-75a20) so apptMeetingSweep can enumerate native
         // hosts and ingest their bookings into CRM tasks.
-        swhDb.collection('users').doc(swhUid).set(
+        //
+        // AWAITED (CTO finding, 2026-07-29): this was fire-and-forget, which
+        // is the same v2-freeze exposure caught in mintApptCustomToken this
+        // morning — Cloud Functions v2 can suspend un-awaited work the
+        // instant the HTTP response is sent, and this write is what
+        // apptMeetingSweep depends on to ever discover a native host. A
+        // dropped write here isn't a crash, it's a host whose bookings
+        // silently never become CRM tasks. Still non-fatal on failure (the
+        // .catch keeps a cache-write error from clobbering the already-
+        // computed native result below) — just no longer racing the
+        // response.
+        await swhDb.collection('users').doc(swhUid).set(
           { apptNativeUid: apptUid }, { merge: true }
         ).catch(err => console.warn('[getApptData] native uid cache failed:', err?.message));
         console.log(`[getApptData] NATIVE host apptUid=${apptUid} slug=${nativeSlug} pages=${nativePages.length} meetings=${nativeMeetings.length}`);
