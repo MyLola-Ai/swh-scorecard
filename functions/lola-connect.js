@@ -309,7 +309,12 @@ async function lcSyncUserEmails(uid, connection, gwCall) {
     const toEmails = (m.to || []).map((p) => normEmail(p.email)).filter(Boolean);
     const ccEmails = (m.cc || []).map((p) => normEmail(p.email)).filter(Boolean);
     const direction = fromEmail && fromEmail === selfEmail ? 'sent' : 'received';
-    const targets = direction === 'sent' ? [...toEmails, ...ccEmails] : fromEmail ? [fromEmail] : [];
+    // Received: match sender + any other to/cc party (mirrors nylas.js's
+    // handleThreadReplied participant loop — a contact CC'd on their own
+    // reply still counts). Sent: match recipients, as before.
+    const targets = direction === 'sent'
+      ? [...toEmails, ...ccEmails]
+      : [fromEmail, ...toEmails, ...ccEmails].filter((em) => em && em !== selfEmail);
     const matched = new Set();
     targets.forEach((em) => (index[em] || []).forEach((cid) => matched.add(cid)));
     if (!matched.size) continue;
@@ -327,6 +332,15 @@ async function lcSyncUserEmails(uid, connection, gwCall) {
       source: 'lola-connect',
       syncedAt: new Date().toISOString(),
     };
+    // Reply detection (2026-07-29): nylas.js's handleThreadReplied clears
+    // follow-through on an inbound reply — this cron was logging mail but
+    // never clearing it, which would have silently broken wasted-handshake
+    // detection the moment Nylas is cut. Direction-gated so an LO's own
+    // OUTBOUND mail never clears follow-through (that would invert the
+    // feature — a "reply" must come FROM the contact, not to them).
+    const contactUpdate = direction === 'received'
+      ? { lastActivityAt: sentAt, lastReplyAt: sentAt, followThroughNeeded: false, cadencePaused: true, cadencePausedAt: sentAt }
+      : { lastActivityAt: sentAt };
     for (const contactId of matched) {
       const emailsCol = db().collection(`users/${uid}/contacts/${contactId}/emails`);
       // Double-log guard vs the Nylas webhook's differently-keyed doc.
@@ -334,7 +348,7 @@ async function lcSyncUserEmails(uid, connection, gwCall) {
       if (!dup.empty) continue;
       const batch = db().batch();
       batch.set(emailsCol.doc(`lc_${m.id}`), emailDoc, { merge: true });
-      batch.update(db().doc(`users/${uid}/contacts/${contactId}`), { lastActivityAt: sentAt });
+      batch.update(db().doc(`users/${uid}/contacts/${contactId}`), contactUpdate);
       await batch.commit();
       logged++;
     }
@@ -383,6 +397,70 @@ exports.lolaConnectEmailSyncCron = onSchedule(
       }
     }
     console.log(`[lcEmailSync] connections=${connected.length} logged=${totalLogged}`);
+  },
+);
+
+// ── Follow-through OPENER sweep (2026-07-29) ────────────────────────────────
+// nylas.js's nylasFollowThroughSweep opens a "Follow Through needed" task
+// after 7 days of silence — but its eligibility gate reads ONLY
+// users/{uid}/integrations/nylas docs (collectionGroup('integrations'),
+// product in ['swh-crm','mylola'], status:'active'). That doc is Nylas-only;
+// nothing LC-based ever satisfies it. So cutting Nylas wouldn't just break
+// reply-clearing (the gap that stopped the cut) — it would silently sweep
+// ZERO users and disable the OPENING half of follow-through detection for
+// EVERYONE, LC-connected users included, since lastActivityAt keeps updating
+// (via lcEmailSync above) but nothing ever checks it again. Same exact logic
+// as the Nylas version; eligibility gate swapped to "has a connected LC
+// account for product swh" instead of "has an active Nylas grant" — the
+// intent (only sweep users with SOME working mail sync) is unchanged.
+exports.lolaConnectFollowThroughSweep = onSchedule(
+  { schedule: 'every day 13:00', timeZone: 'America/Chicago', secrets: [LOLA_CONNECT_SERVICE_TOKEN] },
+  async () => {
+    const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    const call = async (body) => {
+      const r = await fetch(GATEWAY_URL, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${LOLA_CONNECT_SERVICE_TOKEN.value()}`,
+        },
+        body: JSON.stringify({ subject: { pool: SWH_POOL, uid: 'service' }, product: SWH_PRODUCT, ...body }),
+      });
+      return { status: r.status, json: await r.json().catch(() => ({})) };
+    };
+    const listing = await call({ op: 'connections.listByPool' });
+    const conns = (listing.json.result && listing.json.result.connections) || [];
+    const uids = new Set();
+    conns
+      .filter((c) => c.status === 'connected' && c.products && c.products.swh)
+      .forEach((c) => (c.uids || []).forEach((uid) => uids.add(uid)));
+
+    let opened = 0;
+    for (const uid of uids) {
+      try {
+        const contacts = await db().collection(`users/${uid}/contacts`).get();
+        for (const c of contacts.docs) {
+          const data = c.data();
+          const lastTouch = data.lastMeaningfulInteractionAt || data.lastActivityAt;
+          if (!lastTouch) continue;
+          if (Date.parse(lastTouch) >= cutoff) continue;
+          if (data.followThroughNeeded) continue;
+          await db().doc(`users/${uid}/tasks/${c.id}`).set({
+            type: 'follow_through',
+            label: 'Follow Through needed',
+            contactId: c.id,
+            contactName: data.name || '',
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            status: 'open',
+          }, { merge: true });
+          await c.ref.set({ followThroughNeeded: true }, { merge: true });
+          opened++;
+        }
+      } catch (e) {
+        console.warn(`[lcFollowThroughSweep] uid=${uid} failed:`, e.message);
+      }
+    }
+    console.log(`[lcFollowThroughSweep] users=${uids.size} opened=${opened}`);
   },
 );
 
