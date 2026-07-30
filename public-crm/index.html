@@ -1498,7 +1498,7 @@ html.dark-theme .lola-review .lr-text{color:#C4B5FD;}
       </div>
       <div class="tb-right">
         <div class="beta-pill">🟡 Beta</div>
-        <button class="tb-btn" onclick="showToast('📤 Export coming soon')">📤 Export</button>
+        <button class="tb-btn" onclick="exportContactsCSV()">📤 Export</button>
         <button class="tb-btn primary" onclick="showScreen('log',document.querySelectorAll('.nav-btn')[2])">+ Log Today</button>
       </div>
     </div>
@@ -3898,7 +3898,17 @@ const NativeAPI = {
     }
     if (!this.refreshToken) throw new Error('Not signed in');
     const res = await fetch(`https://securetoken.googleapis.com/v1/token?key=${FIREBASE_WEB_API_KEY}`, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'grant_type=refresh_token&refresh_token=' + encodeURIComponent(this.refreshToken) });
-    if (!res.ok) { await this.signOut(); throw new Error('Session expired. Please sign in again'); }
+    if (!res.ok) {
+      // Only destroy the session when the refresh token itself is dead. A
+      // transient 5xx / proxy hiccup here used to signOut() permanently, after
+      // which every background save failed silently for the rest of the day
+      // while the UI kept rendering from memory (Bridget D. data-loss report).
+      const ej = await res.json().catch(() => ({}));
+      const code = (ej.error && ej.error.message) || '';
+      const fatal = res.status === 400 && /TOKEN_EXPIRED|INVALID_REFRESH_TOKEN|INVALID_GRANT|USER_DISABLED|USER_NOT_FOUND/.test(code);
+      if (fatal) { await this.signOut(); throw new Error('Session expired. Please sign in again'); }
+      throw new Error('Could not refresh session (' + (code || ('HTTP ' + res.status)) + ') — will retry on the next save');
+    }
     const d = await res.json(); this.idToken = d.id_token; this.refreshToken = d.refresh_token; this.expiresAt = Date.now() + (parseInt(d.expires_in) || 3600) * 1000; this.uid = d.user_id || this.uid;
     await this._save();
   },
@@ -3990,6 +4000,21 @@ function onSnapshot(ref, callback) {
   (async () => { try { if (ref._type === 'doc') callback(await getDoc(ref)); else callback(await getDocs(ref)); } catch(e) { console.warn('[onSnapshot]', e); } })();
   return () => {};
 }
+// Failed background saves must never look like successes. Many write paths
+// (FORM auto-save, status, steps) update the UI first and await the write with
+// no catch — when the write rejects, the value stays on screen and vanishes on
+// the next load (Bridget D. data-loss report). Surface every such rejection.
+let _saveFailToastAt = 0;
+window.addEventListener('unhandledrejection', (ev) => {
+  const msg = (ev.reason && ev.reason.message) || String(ev.reason || '');
+  if (!/Firestore|refresh session|Not signed in|Session expired|Failed to fetch|Load failed|timed out|NetworkError/i.test(msg)) return;
+  ev.preventDefault();
+  console.error('[save-failed]', msg);
+  if (Date.now() - _saveFailToastAt < 4000 || !window.showToast) return;
+  _saveFailToastAt = Date.now();
+  if (/Not signed in|Session expired/i.test(msg)) showToast('⚠️ Signed out — your last change was NOT saved. Refresh and sign in again.');
+  else showToast('⚠️ Could not save your last change — check your connection and redo it.');
+});
 async function _fsRunQuery(qRef) {
   const parts = qRef._collPath.split('/'); const collId = parts.pop(); const parentPath = parts.join('/');
   const sq = { from: [{ collectionId: collId }] };
@@ -10840,6 +10865,22 @@ async function confirmImport() {
     _importInProgress = false;
   }
 }
+// Export all contacts as a Mailchimp-importable CSV (headers match Mailchimp's
+// standard import fields; extras land as custom columns on import).
+window.exportContactsCSV=function(){
+  if(!CONTACTS.length){showToast('No contacts to export yet');return;}
+  const esc=v=>{const s=String(v==null?'':v);return /[",\n\r]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;};
+  const rows=[['Email Address','First Name','Last Name','Phone','Company','Where Met','Status','Notes','Added'].join(',')];
+  for(const c of CONTACTS){
+    const name=(c.name||'').trim();const sp=name.indexOf(' ');
+    const first=sp>0?name.slice(0,sp):name;const last=sp>0?name.slice(sp+1):'';
+    rows.push([esc(c.email),esc(first),esc(last),esc(c.phone),esc(c.company),esc(c.event),esc(c.status),esc(c.notes),esc((c.addedAt||'').slice(0,10))].join(','));
+  }
+  const blob=new Blob([rows.join('\n')],{type:'text/csv'});const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');a.href=url;a.download='SWH-Contacts-'+new Date().toISOString().slice(0,10)+'.csv';
+  document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);
+  showToast('📤 Exported '+CONTACTS.length+' contact'+(CONTACTS.length===1?'':'s')+' — ready for Mailchimp');
+};
 window.downloadTemplate=function(){const csv=['First Name,Last Name,Phone,Email,Company,Where Met,Notes,Status','Marcus,Webb,(512) 555-0142,marcus@lakeway.com,Lakeway Properties,BNI Chapter,Met at weekly meeting,new','Sarah,Johnson,(512) 555-0283,sarah@westlake.com,Westlake Realty,Chamber Mixer,,progress'].join('\n');const blob=new Blob([csv],{type:'text/csv'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='SWH-Contact-Import-Template.csv';document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);showToast('📋 Template downloaded!');};
 
 // ── MANUAL ACTIVITY ──
