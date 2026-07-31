@@ -258,6 +258,11 @@ const STRIPE_PRICE_TO_PLAN = {
   [STRIPE_PRICES.team]:          'team',
   [STRIPE_PRICES.team_crm]:      'team',
 };
+// test-only export (see the block near isPaidState) -- placed here, not
+// there, because STRIPE_PRICE_TO_PLAN is a const, not hoisted like the
+// function declarations in that block, so exporting it before this line
+// would throw a ReferenceError at module load.
+exports.STRIPE_PRICE_TO_PLAN = STRIPE_PRICE_TO_PLAN;
 
 function getStripe() {
   const Stripe = require('stripe');
