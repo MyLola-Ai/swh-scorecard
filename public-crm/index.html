@@ -8192,11 +8192,15 @@ window.saveLog = async function() {
   const _weekDays = history.filter(d=>inWeek(d, currentWs));
   weekPts    = _weekDays.reduce((s,d)=>s+(d.leadPts||0),0);
   weekLagPts = _weekDays.reduce((s,d)=>s+(d.lagPts||0),0);
-  todayCounts={}; ctxEntries={};
   // If we just saved a back-filled day, return the user to the History view
   // so they can see their card update with the new totals. Clear editingDate
-  // first so the next save lands on today.
+  // first so the next save lands on today — and restore TODAY's tallies from
+  // history so the log screen goes back to today's real state, not the
+  // edited day's.
   if (editingDate) {
+    const _t = history.find(d => d.dateKey === getTodayKey());
+    todayCounts = _t && _t.counts ? { ..._t.counts } : {};
+    ctxEntries = {};
     const editedDate = editingDate;
     editingDate = null;
     renderActs(); updateTotals();
@@ -8204,6 +8208,12 @@ window.saveLog = async function() {
     try { showScreen('history'); renderHistory(); } catch(_){}
     return;
   }
+  // Today's save: KEEP the tallies. They mirror the doc we just wrote —
+  // the old `todayCounts={}` clear here broke that invariant, so the NEXT
+  // save rebuilt the day from emptied tallies and full-overwrote the doc,
+  // erasing everything saved earlier (Bridget D.: 60 morning pts erased
+  // by a 10-pt afternoon save, daily). A page reload hydrates todayCounts
+  // from the saved doc anyway, so keeping it live is the same state.
   renderActs(); updateTotals();
   showCoaching(pts);
 };
