@@ -7978,14 +7978,19 @@ window.chg = function(i, d) {
 // undefined; the CRM history loader's `.filter(d=>d.totalPts>0)` then
 // silently dropped these days and the History view diverged from
 // Scoreboard home (which computes from counts in real time).
-function _computeDayTotals() {
+function _computeDayTotals(countsOverride) {
+  // countsOverride lets a caller compute totals against a MERGED counts
+  // object (server + local) rather than the raw local todayCounts global —
+  // saveTodayCounts() uses this so its auto-save can't clobber a stale
+  // session's view the same way saveLog() used to (see its own comment).
+  const _counts = countsOverride || todayCounts;
   let totalPts = 0, totalActs = 0, leadPts = 0, lagPts = 0;
   const breakdown = {};
   const categoryPts = {};
   (ACTIVITIES || []).forEach((a, i) => {
     let count = 0, ptsAdded = 0;
     if (a.ctx === null) {
-      count = todayCounts[i] || 0;
+      count = _counts[i] || 0;
       if (count > 0) {
         ptsAdded = count * a.pts;
         breakdown[a.name] = { count, pts: ptsAdded, icon: a.icon, category: a.cat };
@@ -7993,10 +7998,10 @@ function _computeDayTotals() {
     } else {
       const entries = ctxEntries[i] || [];
       // Use whichever is higher — ctxEntries from CRM context popup OR
-      // todayCounts from Scorecard taps. Without this fallback, activities
+      // _counts from Scorecard taps. Without this fallback, activities
       // logged via the Scorecard (which writes only to todayCounts) are
       // silently dropped when the CRM recomputes totalPts.
-      count = Math.max(entries.length, todayCounts[i] || 0);
+      count = Math.max(entries.length, _counts[i] || 0);
       if (count > 0) {
         ptsAdded = count * a.pts;
         const unlabeled = count - entries.length;
@@ -8032,6 +8037,20 @@ async function saveTodayCounts() {
     return;
   }
   const k = editingDate || getTodayKey();
+  // Merge against whatever is CURRENTLY saved on the server first — same
+  // cross-device/stale-session protection as saveLog() (see its comment).
+  // This auto-save fires on every "Tag contact" confirm, so without this it
+  // was an even more frequent way for a stale session's local todayCounts to
+  // silently overwrite points a different device or tab had already saved:
+  // {merge:true} below only protects fields THIS write omits entirely —
+  // `counts` is very much included, so it still fully replaces the map
+  // unless the value going in is already reconciled with the server.
+  let existingCounts = {};
+  try {
+    const existingSnap = await getDoc(doc(db,'users',currentUser.uid,'days',k));
+    if (existingSnap.exists()) existingCounts = existingSnap.data().counts || {};
+  } catch (e) { console.warn('[saveTodayCounts] could not read existing day doc, proceeding local-only:', e.message); }
+  const mergedCounts = { ...existingCounts, ...todayCounts };
   // Sanitize ctxEntries: Firestore rejects undefined values and functions.
   const cleanCtxEntries = {};
   try {
@@ -8049,11 +8068,11 @@ async function saveTodayCounts() {
   // and dashboards filter / reduce on these fields, so a per-tap save with
   // only `counts` would otherwise show up as 0 in History until the user
   // hits the bottom Save Log button.
-  const totals = _computeDayTotals();
+  const totals = _computeDayTotals(mergedCounts);
   const ws = getWeekStart(k);
-  console.log('[saveTodayCounts] writing to', k, 'counts:', todayCounts, 'totals:', totals);
+  console.log('[saveTodayCounts] writing to', k, 'counts:', mergedCounts, 'totals:', totals);
   const writePromise = setDoc(doc(db,'users',currentUser.uid,'days',k),{
-    counts: todayCounts,
+    counts: mergedCounts,
     ctxEntries: cleanCtxEntries,
     dateKey: k,
     weekKey: ws,
@@ -8070,6 +8089,9 @@ async function saveTodayCounts() {
   const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('write-timeout-6s')), 6000));
   try {
     await Promise.race([writePromise, timeoutPromise]);
+    // Keep local state in sync with what was actually saved (the merged,
+    // server-reconciled counts), not just this session's own raw tallies.
+    todayCounts = mergedCounts;
     // Sync in-memory history so the dashboard / history view reflect the
     // new totals immediately without waiting for next loadAllData.
     const existingIdx = history.findIndex(h => h.dateKey === k);
@@ -8079,7 +8101,7 @@ async function saveTodayCounts() {
       totalPts: totals.totalPts, totalActs: totals.totalActs,
       leadPts: totals.leadPts, lagPts: totals.lagPts,
       breakdown: totals.breakdown, categoryPts: totals.categoryPts,
-      counts: {...todayCounts}, ctxEntries: cleanCtxEntries,
+      counts: {...mergedCounts}, ctxEntries: cleanCtxEntries,
     };
     if (existingIdx >= 0) history[existingIdx] = merged;
     else if (totals.totalPts > 0) history.unshift(merged);
@@ -8162,18 +8184,50 @@ function updateTotals() {
 }
 
 window.saveLog = async function() {
-  let pts=0,acts=0; const breakdown={};
-  ACTIVITIES.forEach((a,i)=>{
-    if(a.ctx===null){if((todayCounts[i]||0)>0){pts+=todayCounts[i]*a.pts;acts+=todayCounts[i];breakdown[a.name]={count:todayCounts[i],pts:todayCounts[i]*a.pts,icon:a.icon,category:a.cat};}}
-    else{const entries=ctxEntries[i]||[];const n=Math.max(entries.length,todayCounts[i]||0);if(n>0){const unlabeled=n-entries.length;const details=[...entries.map(e=>e.label),...(unlabeled>0?Array(unlabeled).fill('logged via Scorecard'):[])];pts+=n*a.pts;acts+=n;breakdown[a.name]={count:n,pts:n*a.pts,icon:a.icon,category:a.cat,details};}}
-  });
-  (ctxEntries['manual']||[]).forEach(e=>{pts+=e.pts;acts+=1;breakdown[e.label]={count:1,pts:e.pts,icon:'✏️',category:'Manual'};});
-  if(!pts){showToast('⚠️ Log at least one activity first');return;}
   // Write to the day being edited if editingDate is set, otherwise today.
   // The dateLabel / weekKey / monthKey all derive from this key so a
   // back-filled day lands in the correct week and month bucket in history.
   const k = editingDate || getTodayKey();
   const ws = getWeekStart(k);
+
+  // Merge against whatever is CURRENTLY saved on the server before writing.
+  // e4cf28b closed the same-device half of the points-loss bug (a repeated
+  // Save Log on one open tab no longer wipes its own tallies). This closes
+  // the other half: a session whose local tallies fell behind — a stale
+  // desktop tab left open since this morning, a different device that
+  // logged since this one last loaded — must never overwrite points it
+  // simply doesn't know about. Same pattern already proven correct in
+  // Scorecard's own submitToday (public-scorecard/index.html); saveLog
+  // never had it. Fails safe: a read error just falls back to local-only
+  // (today's prior behavior), never blocks the save.
+  let existingCounts = {}, existingBreakdown = {};
+  try {
+    const existingSnap = await getDoc(doc(db,'users',currentUser.uid,'days',k));
+    if (existingSnap.exists()) {
+      const ex = existingSnap.data();
+      existingCounts = ex.counts || {};
+      existingBreakdown = ex.breakdown || {};
+    }
+  } catch(e) { console.warn('[saveLog] could not read existing day doc, proceeding local-only:', e.message); }
+  const mergedCounts = { ...existingCounts, ...todayCounts };
+
+  let pts=0,acts=0; const breakdown={};
+  ACTIVITIES.forEach((a,i)=>{
+    if(a.ctx===null){if((mergedCounts[i]||0)>0){pts+=mergedCounts[i]*a.pts;acts+=mergedCounts[i];breakdown[a.name]={count:mergedCounts[i],pts:mergedCounts[i]*a.pts,icon:a.icon,category:a.cat};}}
+    else{const entries=ctxEntries[i]||[];const n=Math.max(entries.length,mergedCounts[i]||0);if(n>0){const unlabeled=n-entries.length;const details=[...entries.map(e=>e.label),...(unlabeled>0?Array(unlabeled).fill('logged via Scorecard'):[])];pts+=n*a.pts;acts+=n;breakdown[a.name]={count:n,pts:n*a.pts,icon:a.icon,category:a.cat,details};}}
+  });
+  (ctxEntries['manual']||[]).forEach(e=>{pts+=e.pts;acts+=1;breakdown[e.label]={count:1,pts:e.pts,icon:'✏️',category:'Manual'};});
+  // Anything in the server's existing breakdown that the rebuild above
+  // didn't reproduce (e.g. a manual entry logged from another session,
+  // which mergedCounts[i] can't represent) still counts toward the total.
+  Object.entries(existingBreakdown).forEach(([name, bd]) => {
+    if (!breakdown[name] && bd && bd.count > 0) {
+      breakdown[name] = bd;
+      pts += bd.pts || 0;
+      acts += bd.count || 0;
+    }
+  });
+  if(!pts){showToast('⚠️ Log at least one activity first');return;}
   // Build category pts and lead/lag split
   const catPts={};let leadPts=0,lagPts=0;
   Object.entries(breakdown).forEach(([name,bd])=>{
@@ -8181,8 +8235,12 @@ window.saveLog = async function() {
     const act=ACTIVITIES.find(a=>a.name===name);
     if(act&&act.lead===false) lagPts+=bd.pts; else leadPts+=bd.pts;
   });
-  const entry={dateKey:k,weekKey:ws,monthKey:k.slice(0,7),dateLabel:formatDate(k),totalPts:pts,totalActs:acts,breakdown,categoryPts:catPts,leadPts,lagPts,counts:todayCounts,submitted:true,submittedAt:new Date().toISOString()};
+  const entry={dateKey:k,weekKey:ws,monthKey:k.slice(0,7),dateLabel:formatDate(k),totalPts:pts,totalActs:acts,breakdown,categoryPts:catPts,leadPts,lagPts,counts:mergedCounts,submitted:true,submittedAt:new Date().toISOString()};
   await setDoc(doc(db,'users',currentUser.uid,'days',k),entry);
+  // Keep local state in sync with what was actually saved -- the editingDate
+  // branch below overrides this for the backfill case (it restores TODAY's
+  // own tallies, not the edited day's), so this only sticks for a normal save.
+  todayCounts = mergedCounts;
   const idx=history.findIndex(h=>h.dateKey===k);
   if(idx>=0) history[idx]=entry; else history.unshift(entry);
   history.sort((a,b)=>b.dateKey.localeCompare(a.dateKey));
