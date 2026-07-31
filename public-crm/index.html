@@ -4779,6 +4779,9 @@ const addDays = (dateStr, days) => { const d=new Date(dateStr+'T12:00:00'); d.se
 // ── AUTH ──
 async function _onCrmSignedIn(user) {
   currentUser = user;
+  if (isNativeEarly && window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.FirebaseCrashlytics) {
+    try { await window.Capacitor.Plugins.FirebaseCrashlytics.setUserId({ userId: user.uid }); } catch(_) {}
+  }
   showLoader(true);
   bridgeToMyAppointment();
   await initUser();
