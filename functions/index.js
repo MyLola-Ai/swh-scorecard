@@ -206,6 +206,7 @@ exports.ENTITLEMENT_ACTIVE = ENTITLEMENT_ACTIVE;
 exports.PAID_STATUS = PAID_STATUS;
 exports.applySourceUpdate = applySourceUpdate;
 exports.db = db;
+exports.admin = admin;
 exports.resolvePlanFromRcEvent = resolvePlanFromRcEvent;
 exports.REVENUECAT_ENTITLEMENTS = REVENUECAT_ENTITLEMENTS;
 exports.REVENUECAT_PRODUCTS = REVENUECAT_PRODUCTS;
@@ -2950,9 +2951,19 @@ async function mirrorSubscriptionToUser(sub) {
   // because of a cross-project side effect.
   const stripeTier = STRIPE_PRICE_TO_PLAN[priceId] || 'scorecard';
   if (stripeTier === 'pro' && (sub.status === 'active' || sub.status === 'trialing')) {
-    syncApptPlan(uid, sub.id).catch(err =>
-      console.warn('[mirrorSubscriptionToUser] appt sync failed (non-fatal):', err?.message ?? err)
-    );
+    // TRAP FOR TEST/CI CODE: syncApptPlan calls admin.auth().getUser(uid) then
+    // fetches a REAL cross-project endpoint (loaniq-75a20) with whatever
+    // ambient credentials are on the machine running this code. A test or CI
+    // runner that lands a webhook event on stripeTier:'pro' + active/trialing
+    // MUST NOT reach it. Found 2026-07-31 when a test's own PRODUCT_CHANGE
+    // fixture upgraded to 'pro' and silently attempted this exact live call,
+    // only failing harmlessly by luck (a credential hiccup), not isolation.
+    const isTestEnv = process.env.FUNCTIONS_EMULATOR === 'true' || process.env.NODE_ENV === 'test';
+    if (!isTestEnv) {
+      syncApptPlan(uid, sub.id).catch(err =>
+        console.warn('[mirrorSubscriptionToUser] appt sync failed (non-fatal):', err?.message ?? err)
+      );
+    }
     // Enroll in onboarding drip — idempotent, so safe to call on every renewal.
     // Resolves email from the user doc rather than Stripe to avoid coupling.
     db.collection('users').doc(uid).get().then(uSnap => {

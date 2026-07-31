@@ -7,12 +7,18 @@
 // rail. Mobile owns resolvePlanFromRcEvent mapping + INITIAL_PURCHASE
 // redelivery (test/rcMapping.test.js) — not duplicated here.
 'use strict';
+// Set BEFORE requiring index.js's handlers run any code path: this is the
+// real CI-safety signal mirrorSubscriptionToUser checks before firing
+// syncApptPlan's live cross-project call. A real CI runner invokes this
+// suite the same way (NODE_ENV=test), so this line is what that guard is
+// actually for, not just a convenience for one test below.
+process.env.NODE_ENV = 'test';
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { EventEmitter } = require('node:events');
 const Stripe = require('stripe');
 const mod = require('../index.js');
-const { stripeWebhook, revenueCatWebhook, db } = mod;
+const { stripeWebhook, revenueCatWebhook, db, admin } = mod;
 
 const STRIPE_SECRET = 'whsec_test_secret_for_suite';
 const RC_SECRET = 'rc-shared-secret-for-suite';
@@ -242,13 +248,13 @@ test('Stripe customer.subscription.updated with cancel_at_period_end (CANCELLATI
 
 test('Stripe customer.subscription.updated with a new price (PRODUCT_CHANGE-equivalent): tier follows the price map', async () => {
   // Deliberately asserts a DOWNGRADE (pro -> scorecard), not an upgrade to
-  // pro: mirrorSubscriptionToUser fire-and-forgets a REAL cross-project call
-  // (syncApptPlan -> admin.auth().getUser + a live fetch to loaniq-75a20)
-  // whenever the resulting tier is 'pro' and status is active/trialing --
-  // landing on 'pro' here would reach real infrastructure using whatever
-  // ADC credentials happen to be on this machine. Downgrading proves the
-  // exact same price->tier mapping mechanism without ever producing 'pro'
-  // as the output, so the side-effect branch is never entered.
+  // pro, as defense-in-depth alongside the production NODE_ENV guard added
+  // below: mirrorSubscriptionToUser fire-and-forgets a REAL cross-project
+  // call (syncApptPlan -> admin.auth().getUser + a live fetch to
+  // loaniq-75a20) whenever the resulting tier is 'pro' and status is
+  // active/trialing. Downgrading proves the exact same price->tier mapping
+  // mechanism without ever producing 'pro' as the output, so the
+  // side-effect branch is never entered even if the guard below regressed.
   const swPriceToPlan = mod.STRIPE_PRICE_TO_PLAN;
   const scorecardPriceId = Object.keys(swPriceToPlan).find((k) => swPriceToPlan[k] === 'scorecard');
   await withFakeDb({ 'users/sw3': { plan: 'pro', stripe: { status: 'active', tier: 'pro' } } }, async (fake) => {
@@ -262,6 +268,56 @@ test('Stripe customer.subscription.updated with a new price (PRODUCT_CHANGE-equi
     const u = fake._dump('users/sw3');
     assert.equal(u.stripe.tier, 'scorecard');
     assert.equal(u.plan, 'scorecard');
+  });
+});
+
+test('Stripe upgrade to pro+active under a test env: the live-infra guard actually prevents syncApptPlan, not just avoided by test design', async () => {
+  // This deliberately lands on the exact stripeTier:'pro' + status:'active'
+  // combination the PRODUCT_CHANGE test above avoids -- proving the
+  // production NODE_ENV guard itself works, not merely that this suite is
+  // careful not to trigger it. syncApptPlan's first operation is
+  // admin.auth().getUser(uid); if the guard failed, that call would fire
+  // for real. Spying on admin.auth (a property lookup on a shared object,
+  // interceptable the same way db.collection is) proves it never does --
+  // syncApptPlan itself is a bare-identifier call inside the module and
+  // can't be spied on directly from outside.
+  assert.equal(process.env.NODE_ENV, 'test', 'sanity check: the guard this test proves depends on this exact signal');
+  const swPriceToPlan = mod.STRIPE_PRICE_TO_PLAN;
+  const proPriceId = Object.keys(swPriceToPlan).find((k) => swPriceToPlan[k] === 'pro');
+  await withFakeDb({ 'users/sw9': { plan: 'scorecard', stripe: { status: 'active', tier: 'scorecard' } } }, async (fake) => {
+    // admin.auth is inherited from FirebaseNamespace's prototype as a
+    // getter-only accessor, not a plain own/writable property -- a direct
+    // assignment throws in strict mode, and there is no OWN descriptor to
+    // capture (getOwnPropertyDescriptor on the instance returns undefined).
+    // Object.defineProperty here adds an own property that shadows the
+    // inherited getter; deleting it afterward correctly reveals the
+    // original inherited behavior again.
+    let authWasCalled = false;
+    Object.defineProperty(admin, 'auth', {
+      configurable: true,
+      value: () => {
+        authWasCalled = true;
+        // If the guard regressed and this actually gets reached, fail loud
+        // and immediately rather than let a stray promise dangle unobserved.
+        throw new Error('admin.auth() was called -- the NODE_ENV test guard failed to prevent syncApptPlan');
+      },
+    });
+    try {
+      const res = await callStripe({
+        id: 'evt_9', type: 'customer.subscription.updated',
+        data: { object: {
+          id: 'sub_9', customer: 'cus_9', status: 'active', cancel_at_period_end: false,
+          metadata: { firebaseUid: 'sw9' }, items: { data: [{ price: { id: proPriceId } }] },
+        } },
+      });
+      assert.equal(res.statusCode, 200, 'the webhook itself must still succeed -- only the side effect is skipped');
+      assert.equal(authWasCalled, false, 'syncApptPlan (and its admin.auth() call) must never fire under a test env');
+      const u = fake._dump('users/sw9');
+      assert.equal(u.stripe.tier, 'pro', 'the guard must skip ONLY the fire-and-forget side effect, not the actual entitlement write');
+      assert.equal(u.plan, 'pro');
+    } finally {
+      delete admin.auth;
+    }
   });
 });
 
