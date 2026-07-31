@@ -194,6 +194,20 @@ function isPaidState(u) {
   return !!((u.apple && PAID_STATUS[u.apple.status]) || (u.stripe && PAID_STATUS[u.stripe.status]));
 }
 
+// Internal exports for unit tests only (test/entitlement.test.js) — these are
+// plain helpers, not Cloud Functions; exporting them adds no endpoint and
+// changes no runtime behavior. Extend this block as more pure logic gets covered.
+exports.computeEntitlement = computeEntitlement;
+exports.resolveEffectivePlan = resolveEffectivePlan;
+exports.isPaidState = isPaidState;
+exports.TIER_RANK = TIER_RANK;
+exports.TRIAL_TIER = TRIAL_TIER;
+exports.ENTITLEMENT_ACTIVE = ENTITLEMENT_ACTIVE;
+exports.PAID_STATUS = PAID_STATUS;
+exports.resolvePlanFromRcEvent = resolvePlanFromRcEvent;
+exports.REVENUECAT_ENTITLEMENTS = REVENUECAT_ENTITLEMENTS;
+exports.REVENUECAT_PRODUCTS = REVENUECAT_PRODUCTS;
+
 // Accounts that must NEVER receive lifecycle mail. @example.com covers e2e/test
 // identities. The appreview fixtures are Apple's review accounts, and appreview@
 // deliberately sits in a LIVE trial (docs/MOBILE_APPS_CHARTER.md) so it matches
