@@ -1,0 +1,30 @@
+# Runs the functions/ test suite (docs/STABILIZATION.md row F6/F8) on every
+# push and pull request. Test-running ONLY -- no deploy step, and none should
+# ever be added here; the deploy gate stays human. Needs zero repository
+# secrets: every test mocks Firestore/Firebase Auth/network calls itself
+# (see functions/test/*.test.js), and this was verified locally with a fully
+# stripped environment before this workflow was written.
+name: functions tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: functions
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - run: npm ci
+
+      - run: npm test
