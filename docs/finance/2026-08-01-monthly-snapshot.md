@@ -1,5 +1,5 @@
 # SWH Revenue Snapshot — MONTHLY — 2026-08-01
-Generated 2026-08-01T04:32:13.736Z · users scanned: 52 (+2 App-Review demo accounts excluded) · teams: 4
+Generated 2026-08-01T14:09:46.187Z · users scanned: 52 (+2 App-Review demo accounts excluded) · teams: 4
 
 ## 1. Subscribers (plan | status | rail)
 - pro | active | stripe: 2
