@@ -19,18 +19,41 @@ const tokRes = await fetch('https://oauth2.googleapis.com/token', {
     client_secret: 'j9iVZfS8kkCEFUPaAeJV0sAi',
   }),
 });
+// A failed token exchange must be FATAL, not silently become an empty scan
+// (2026-07-27 incident: an auth failure here previously produced a clean
+// "0 users" report instead of a crash — nothing downstream checked status).
+if (!tokRes.ok) {
+  const body = await tokRes.text().catch(() => '(unreadable body)');
+  throw new Error(`token exchange failed: HTTP ${tokRes.status} — ${body}`);
+}
 const AT = (await tokRes.json()).access_token;
+if (!AT) throw new Error('token exchange succeeded but returned no access_token');
 const FS = 'https://firestore.googleapis.com/v1/projects/swh-scoreboard/databases/(default)/documents';
+
+// Every Firestore call funnels through here so a bad status always throws —
+// the historical bug was each call site parsing .json() directly and never
+// checking res.ok, so an auth/quota error silently became "zero rows."
+async function firestoreRunQuery(body) {
+  const res = await fetch(`${FS.replace(/\/documents$/, '')}/documents:runQuery`, {
+    method: 'POST', headers: { Authorization: `Bearer ${AT}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const errBody = await res.text().catch(() => '(unreadable body)');
+    throw new Error(`Firestore runQuery failed: HTTP ${res.status} — ${errBody}`);
+  }
+  const parsed = await res.json();
+  if (!Array.isArray(parsed)) {
+    throw new Error(`Firestore runQuery returned a non-array body (likely an error payload): ${JSON.stringify(parsed).slice(0, 300)}`);
+  }
+  return parsed;
+}
 
 async function runQuery(collection, pageToken) {
   // Paginated structuredQuery scan of a whole collection.
   const body = { structuredQuery: { from: [{ collectionId: collection }], limit: 300 } };
   if (pageToken) body.structuredQuery.startAt = pageToken;
-  const res = await fetch(`${FS.replace(/\/documents$/, '')}/documents:runQuery`, {
-    method: 'POST', headers: { Authorization: `Bearer ${AT}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  return res.json();
+  return firestoreRunQuery(body);
 }
 
 const val = (f, k) => {
@@ -46,11 +69,8 @@ async function scanAll(collection) {
   for (;;) {
     const body = { structuredQuery: { from: [{ collectionId: collection }], orderBy: [{ field: { fieldPath: '__name__' } }], limit: 300 } };
     if (last) body.structuredQuery.startAfter = { values: [{ referenceValue: last }] };
-    const res = await fetch(`${FS.replace(/\/documents$/, '')}/documents:runQuery`, {
-      method: 'POST', headers: { Authorization: `Bearer ${AT}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-    const rows = (await res.json()).filter(r => r.document);
+    const parsed = await firestoreRunQuery(body);
+    const rows = parsed.filter(r => r.document);
     if (!rows.length) break;
     rows.forEach(r => docs.push(r.document));
     last = rows[rows.length - 1].document.name;
