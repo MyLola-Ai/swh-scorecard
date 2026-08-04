@@ -3078,16 +3078,10 @@
     const streak=calcStreak();
     const weeklyStreak=calcWeeklyStreak();
 
-    // Consistent weeks (100+ pts in a week)
-    const weekMap={};
-    filtered.forEach(d=>{ weekMap[d.weekKey]=(weekMap[d.weekKey]||0)+d.totalPts; });
-    const consistentWeeks=Object.values(weekMap).filter(v=>v>=100).length;
-
     document.getElementById('stats-grid').innerHTML=`
       <div class="stat-tile gold"><div class="stat-tile-val">${grand}</div><div class="stat-tile-label">Total Points</div></div>
       <div class="stat-tile"><div class="stat-tile-val">${filtered.length}</div><div class="stat-tile-label">Days Logged</div></div>
       <div class="stat-tile"><div class="stat-tile-val">${avg}</div><div class="stat-tile-label">Avg pts/day</div></div>
-      <div class="stat-tile"><div class="stat-tile-val">${consistentWeeks}🗓</div><div class="stat-tile-label">Consistent Wks</div></div>
       <div class="stat-tile${weeklyStreak>0?' gold':''}"><div class="stat-tile-val">${weeklyStreak}🔥</div><div class="stat-tile-label">Weekly Streak</div></div>`;
 
     // Weekly goal + tier — driven by LEAD points (Danny's coaching: lead = future business)

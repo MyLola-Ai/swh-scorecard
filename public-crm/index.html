@@ -3585,6 +3585,31 @@ html.dark-theme .lola-review .lr-text{color:#C4B5FD;}
   </div>
 </div>
 
+<!-- ════ MORNING QUEUE SNOOZE OVERLAY ════ -->
+<div class="ctx-overlay" id="ftq-snooze-overlay" onclick="if(event.target===this)closeFtqSnooze()">
+  <div class="ctx-modal">
+    <div class="ctx-header">
+      <div class="ctx-title">⏰ Snooze this touch</div>
+      <button class="ctx-close" onclick="closeFtqSnooze()">×</button>
+    </div>
+    <div class="ctx-body">
+      <div style="font-size:13px;color:var(--muted);line-height:1.5;margin-bottom:14px;">The step won't advance. A fresh draft comes back to your queue on the date you pick.</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+        <button onclick="ftqSnoozeDays(1)" style="padding:12px;border:1.5px solid var(--border);border-radius:10px;background:var(--card);color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;font-weight:700;cursor:pointer;">1 day</button>
+        <button onclick="ftqSnoozeDays(3)" style="padding:12px;border:1.5px solid var(--border);border-radius:10px;background:var(--card);color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;font-weight:700;cursor:pointer;">3 days</button>
+        <button onclick="ftqSnoozeDays(5)" style="padding:12px;border:1.5px solid var(--border);border-radius:10px;background:var(--card);color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;font-weight:700;cursor:pointer;">5 days</button>
+        <button onclick="ftqSnoozeDays(10)" style="padding:12px;border:1.5px solid var(--border);border-radius:10px;background:var(--card);color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;font-weight:700;cursor:pointer;">10 days</button>
+      </div>
+      <button onclick="ftqSnoozeShowCustom()" style="width:100%;margin-top:8px;padding:12px;border:1.5px dashed var(--border);border-radius:10px;background:transparent;color:var(--muted);font-family:'DM Sans',sans-serif;font-size:13px;font-weight:700;cursor:pointer;">Custom date…</button>
+      <input type="date" id="ftq-snooze-custom" style="display:none;width:100%;margin-top:10px;padding:10px 12px;border:1.5px solid var(--border);border-radius:10px;font-family:'DM Sans',sans-serif;font-size:14px;color:var(--text);background:var(--bg);box-sizing:border-box;">
+    </div>
+    <div class="ctx-footer">
+      <button class="ctx-cancel" onclick="closeFtqSnooze()">Cancel</button>
+      <button class="ctx-confirm" onclick="ftqSnoozeCustomConfirm()">Snooze to date →</button>
+    </div>
+  </div>
+</div>
+
 <!-- ════ ADD REFERRAL OVERLAY ════ -->
 <div class="ctx-overlay" id="crm-add-referral-overlay" onclick="if(event.target===this)closeCrmAddReferral()">
   <div class="ctx-modal">
@@ -7780,7 +7805,7 @@ function renderTasks() {
     pendingQueue.forEach(q => {
       const contactObj = CONTACTS.find(c => c.id === q.contactId);
       const accent = contactObj ? rowAccent(contactObj) : '';
-      html += `<div class="task-row" id="ftq-row-${q.id}" style="${accent}"><div class="task-dot" style="background:#5B5BD6;"></div><div style="flex:1;min-width:0;"><div class="task-name task-name-link" onclick="event.stopPropagation();toggleTaskExpand('${q.contactId}', this)" title="Open profile">${escapeHtmlCRM(q.contactName)}${contactObj ? sPill(contactObj) : ''}</div><div class="task-meta">${escapeHtmlCRM(q.stepName)}${q.kind === 'thankyou' ? ' · after your 1:1' : ' · Step ' + ((q.stepIndex||0)+1)}${q.contactEmail ? '' : ' · <span style="color:var(--red);">no email on file</span>'}</div><div id="ftq-body-${q.id}" style="margin-top:6px;font-size:12px;color:var(--text);background:var(--bg);border-radius:8px;padding:8px 10px;border:1px solid var(--border);white-space:pre-wrap;line-height:1.5;">${escapeHtmlCRM(q.draftBody||'')}</div><div id="ftq-edit-${q.id}" style="display:none;margin-top:6px;"><input id="ftq-subj-${q.id}" type="text" value="${escapeHtmlCRM(q.draftSubject||'')}" placeholder="Subject" style="width:100%;padding:6px 9px;border:1.5px solid var(--border);border-radius:7px;font-size:12px;font-family:'DM Sans',sans-serif;margin-bottom:6px;box-sizing:border-box;background:var(--bg);color:var(--navy);"><textarea id="ftq-ta-${q.id}" rows="5" style="width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:7px;font-size:12px;font-family:'DM Sans',sans-serif;resize:vertical;box-sizing:border-box;background:var(--bg);color:var(--navy);">${escapeHtmlCRM(q.draftBody||'')}</textarea></div></div><div style="display:flex;flex-direction:column;gap:5px;flex-shrink:0;align-items:flex-end;padding-left:8px;"><button onclick="event.stopPropagation();ftqSend('${q.id}')" style="padding:5px 11px;border-radius:7px;border:none;background:linear-gradient(135deg,#5B5BD6,#A78BFA);color:#fff;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;">Send</button><button onclick="event.stopPropagation();ftqToggleEdit('${q.id}')" id="ftq-edit-btn-${q.id}" style="padding:5px 11px;border-radius:7px;border:1px solid var(--border);background:var(--card);color:var(--navy);font-size:11px;font-weight:700;cursor:pointer;">Edit</button><button onclick="event.stopPropagation();ftqRegenerate('${q.id}')" style="padding:5px 11px;border-radius:7px;border:1px solid #5B5BD6;background:var(--card);color:#5B5BD6;font-size:11px;font-weight:700;cursor:pointer;">Regenerate</button><button onclick="event.stopPropagation();ftqSkip('${q.id}')" style="padding:5px 11px;border-radius:7px;border:1px solid var(--border);background:var(--card);color:var(--muted);font-size:11px;font-weight:700;cursor:pointer;">Skip</button></div></div>`;
+      html += `<div class="task-row" id="ftq-row-${q.id}" style="${accent}"><div class="task-dot" style="background:#5B5BD6;"></div><div style="flex:1;min-width:0;"><div class="task-name task-name-link" onclick="event.stopPropagation();toggleTaskExpand('${q.contactId}', this)" title="Open profile">${escapeHtmlCRM(q.contactName)}${contactObj ? sPill(contactObj) : ''}</div><div class="task-meta">${escapeHtmlCRM(q.stepName)}${q.kind === 'thankyou' ? ' · after your 1:1' : ' · Step ' + ((q.stepIndex||0)+1)}${q.contactEmail ? '' : ' · <span style="color:var(--red);">no email on file</span>'}</div><div id="ftq-body-${q.id}" style="margin-top:6px;font-size:12px;color:var(--text);background:var(--bg);border-radius:8px;padding:8px 10px;border:1px solid var(--border);white-space:pre-wrap;line-height:1.5;">${escapeHtmlCRM(q.draftBody||'')}</div><div id="ftq-edit-${q.id}" style="display:none;margin-top:6px;"><input id="ftq-subj-${q.id}" type="text" value="${escapeHtmlCRM(q.draftSubject||'')}" placeholder="Subject" style="width:100%;padding:6px 9px;border:1.5px solid var(--border);border-radius:7px;font-size:12px;font-family:'DM Sans',sans-serif;margin-bottom:6px;box-sizing:border-box;background:var(--bg);color:var(--navy);"><textarea id="ftq-ta-${q.id}" rows="5" style="width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:7px;font-size:12px;font-family:'DM Sans',sans-serif;resize:vertical;box-sizing:border-box;background:var(--bg);color:var(--navy);">${escapeHtmlCRM(q.draftBody||'')}</textarea></div></div><div style="display:flex;flex-direction:column;gap:5px;flex-shrink:0;align-items:flex-end;padding-left:8px;"><button onclick="event.stopPropagation();ftqSend('${q.id}')" style="padding:5px 11px;border-radius:7px;border:none;background:linear-gradient(135deg,#5B5BD6,#A78BFA);color:#fff;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;">Send</button><button onclick="event.stopPropagation();ftqToggleEdit('${q.id}')" id="ftq-edit-btn-${q.id}" style="padding:5px 11px;border-radius:7px;border:1px solid var(--border);background:var(--card);color:var(--navy);font-size:11px;font-weight:700;cursor:pointer;">Edit</button><button onclick="event.stopPropagation();ftqRegenerate('${q.id}')" style="padding:5px 11px;border-radius:7px;border:1px solid #5B5BD6;background:var(--card);color:#5B5BD6;font-size:11px;font-weight:700;cursor:pointer;">Regenerate</button><button onclick="event.stopPropagation();openFtqSnooze('${q.id}')" style="padding:5px 11px;border-radius:7px;border:1px solid var(--border);background:var(--card);color:var(--muted);font-size:11px;font-weight:700;cursor:pointer;">Snooze</button><button onclick="event.stopPropagation();ftqDismiss('${q.id}')" style="padding:5px 11px;border-radius:7px;border:1px solid var(--border);background:var(--card);color:var(--muted);font-size:11px;font-weight:700;cursor:pointer;">Dismiss</button></div></div>`;
     });
   }
 
@@ -11913,13 +11938,18 @@ async function closeQueueDocsUpTo(contactId, stepsDone) {
   return stale.length;
 }
 
-window.ftqSkip = async function(docId) {
+// Dismiss = permanently remove this suggestion; the step is handled/not
+// needed, so it advances (no points) and never comes back. This is the old
+// "Skip" button, renamed because "skip" was ambiguous between "not needed"
+// and "later" -- Snooze (below) is the real answer for "later" now, so this
+// one no longer has to cover both meanings.
+window.ftqDismiss = async function(docId) {
   if (!currentUser) return;
   const q = FOLLOW_THROUGH_QUEUE.find(x => x.id === docId);
   if (!q) return;
   q.status = 'skipped';
   await updateDoc(doc(db, 'users', currentUser.uid, 'followThroughQueue', docId), { status: 'skipped' });
-  // Skipping means this touch is handled or not needed — advance the step
+  // Dismissing means this touch is handled or not needed — advance the step
   // (no points) so it doesn't come back as an overdue reminder tomorrow.
   const c = CONTACTS.find(x => x.id === q.contactId);
   if (c && q.kind !== 'thankyou' && (c.steps||0) <= (q.stepIndex||0)) {
@@ -11931,8 +11961,58 @@ window.ftqSkip = async function(docId) {
     detectWastedHandshakes();
   }
   renderTasks();
-  showToast('Skipped. Step marked handled');
+  showToast('Dismissed. Step marked handled');
 };
+
+// Snooze = defer this exact card, unlike Dismiss, the step does NOT advance
+// and a fresh draft comes back once the snooze date arrives. Reuses the
+// SAME "hold future-dated cards" mechanism the 1:1 thank-you's 48h delay
+// already relies on (pendingQueue's dueDate>today check) -- overwriting
+// dueDate to a future date is enough on the client. The one piece that
+// mechanism didn't already cover: the server's morning build must also
+// leave a future-dated pending doc alone, or tomorrow's cron would
+// silently regenerate the card and cancel the snooze (see buildFollowThroughQueue).
+let _ftqSnoozeDocId = null;
+window.openFtqSnooze = function(docId) {
+  _ftqSnoozeDocId = docId;
+  const custom = document.getElementById('ftq-snooze-custom');
+  if (custom) { custom.style.display = 'none'; custom.value = ''; }
+  const ov = document.getElementById('ftq-snooze-overlay');
+  if (ov) ov.classList.add('open');
+};
+window.closeFtqSnooze = function() {
+  _ftqSnoozeDocId = null;
+  const ov = document.getElementById('ftq-snooze-overlay');
+  if (ov) ov.classList.remove('open');
+};
+window.ftqSnoozeDays = async function(days) {
+  if (!_ftqSnoozeDocId) return;
+  await ftqApplySnooze(_ftqSnoozeDocId, addDays(getTodayKey(), days));
+};
+window.ftqSnoozeShowCustom = function() {
+  const custom = document.getElementById('ftq-snooze-custom');
+  if (!custom) return;
+  custom.style.display = 'block';
+  custom.min = addDays(getTodayKey(), 1);
+  custom.focus();
+};
+window.ftqSnoozeCustomConfirm = async function() {
+  const custom = document.getElementById('ftq-snooze-custom');
+  const val = custom && custom.value;
+  if (!val) { showToast('Pick a date first'); return; }
+  if (!_ftqSnoozeDocId) return;
+  await ftqApplySnooze(_ftqSnoozeDocId, val);
+};
+async function ftqApplySnooze(docId, dueDateKey) {
+  if (!currentUser) return;
+  const q = FOLLOW_THROUGH_QUEUE.find(x => x.id === docId);
+  if (!q) return;
+  q.dueDate = dueDateKey;
+  await updateDoc(doc(db, 'users', currentUser.uid, 'followThroughQueue', docId), { dueDate: dueDateKey, snoozedAt: new Date().toISOString() });
+  closeFtqSnooze();
+  renderTasks();
+  showToast(`⏰ Snoozed until ${formatDateShort(dueDateKey)}`);
+}
 
 // Regenerate a queue draft with revision notes. Opens a modal asking what to
 // change, calls regenerateFollowThroughDraft, then updates the card in place.

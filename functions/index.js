@@ -7753,6 +7753,13 @@ async function runFollowThroughQueueBuild(opts) {
         // rewrote the doc back to status:'pending', resurrecting a step the
         // user had already finished (Austen / Ryan Weber, 2026-07-20).
         if (ex.status === 'sent' || ex.status === 'skipped' || ex.status === 'done') { console.log('[bftq skip]', c.name, 'step', N + 1, 'existing status:', ex.status); continue; }
+        // Snoozed: the client pushes dueDate into the future on an otherwise-
+        // pending doc (see ftqApplySnooze in public-crm/index.html) and relies
+        // on the SAME "hold future-dated cards" read pendingQueue already does
+        // for the 1:1 thank-you delay. Without this check the build would
+        // silently regenerate + overwrite that future dueDate every morning,
+        // canceling the snooze the very next day.
+        if (ex.dueDate && ex.dueDate > todayKey) { console.log('[bftq skip]', c.name, 'step', N + 1, 'snoozed until', ex.dueDate); continue; }
         if (!force && ex.builtAt && ex.builtAt.slice(0, 10) === todayKey) { console.log('[bftq skip]', c.name, 'step', N + 1, 'already built today'); continue; }
         hadDraft = !!ex.draftBody;
       }
