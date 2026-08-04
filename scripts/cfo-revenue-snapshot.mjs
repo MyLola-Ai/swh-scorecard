@@ -195,3 +195,18 @@ if (!WEEKLY) {
   L.push('', '_Methodology: conversion timing approximated from webhook updatedAt until subscribedAt stamping lands; deletion-reset trial leak noted as bounded/monitor._');
 }
 console.log(L.join('\n'));
+
+// Heartbeat for Help Desk's cloud freshness watch (observability/cfoSnapshotHeartbeat).
+// Success path ONLY -- a failed run is owned by the wrapper's *-FAILED.md marker, not
+// this. Reuses the same access token as the data reads above so a dead-credential
+// failure kills the heartbeat and the snapshot together (never a false alarm from a
+// creds split). Best-effort: never let a heartbeat write failure fail a good snapshot.
+const hbField = WEEKLY ? 'lastWeeklyAt' : 'lastMonthlyAt';
+await fetch(
+  'https://firestore.googleapis.com/v1/projects/swh-scoreboard/databases/(default)/documents/observability/cfoSnapshotHeartbeat?updateMask.fieldPaths=' + hbField,
+  {
+    method: 'PATCH',
+    headers: { Authorization: `Bearer ${AT}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ fields: { [hbField]: { timestampValue: new Date().toISOString() } } }),
+  }
+).catch(() => {});
