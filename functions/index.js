@@ -205,8 +205,18 @@ exports.TRIAL_TIER = TRIAL_TIER;
 exports.ENTITLEMENT_ACTIVE = ENTITLEMENT_ACTIVE;
 exports.PAID_STATUS = PAID_STATUS;
 exports.applySourceUpdate = applySourceUpdate;
-exports.db = db;
-exports.admin = admin;
+// Non-enumerable: firebase-functions' deploy-time codebase analyzer
+// (extractStack in the SDK's loader.js) walks every ENUMERABLE exported
+// object's own properties looking for Cloud Function endpoints. The real
+// admin.firestore() client and the admin namespace both contain genuine
+// internal circular references (client pool tracking, tracer/provider),
+// which sends that walker into infinite recursion and fails the deploy
+// with "Maximum call stack size exceeded". Hiding these two from
+// enumeration keeps them fully usable via direct/destructured access
+// (`const { db, admin } = require('./index.js')`, which test/*.test.js
+// relies on) while making them invisible to Object.entries()-based walks.
+Object.defineProperty(exports, 'db', { value: db, enumerable: false, writable: true, configurable: true });
+Object.defineProperty(exports, 'admin', { value: admin, enumerable: false, writable: true, configurable: true });
 exports.resolvePlanFromRcEvent = resolvePlanFromRcEvent;
 exports.REVENUECAT_ENTITLEMENTS = REVENUECAT_ENTITLEMENTS;
 exports.REVENUECAT_PRODUCTS = REVENUECAT_PRODUCTS;
