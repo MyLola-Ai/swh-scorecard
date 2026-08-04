@@ -68,7 +68,7 @@ async function scanAll(collection) {
   let last = null;
   for (;;) {
     const body = { structuredQuery: { from: [{ collectionId: collection }], orderBy: [{ field: { fieldPath: '__name__' } }], limit: 300 } };
-    if (last) body.structuredQuery.startAfter = { values: [{ referenceValue: last }] };
+    if (last) body.structuredQuery.startAt = { values: [{ referenceValue: last }], before: false };
     const parsed = await firestoreRunQuery(body);
     const rows = parsed.filter(r => r.document);
     if (!rows.length) break;
