@@ -83,23 +83,15 @@
       return;
     }
 
-    var badge = status.needsReconnect ? '<div style="color:#b45309;font-size:12px;font-weight:700;margin-bottom:8px;">Reconnect needed</div>' : '';
-    el.innerHTML = shell(null, badge +
-      '<p style="' + S.muted + 'margin:0 0 14px;">Connect once to auto-log emails on contacts, sync your calendar, and push your network to Contacts.</p>' +
-      '<div style="display:flex;gap:8px;flex-wrap:wrap;">' +
-        '<button data-connect="google" style="' + S.btn + '">Connect Gmail</button>' +
-        '<button data-connect="microsoft" style="' + S.ghost + '">Connect Outlook</button>' +
-      '</div>' +
-      '<div data-msg style="color:#dc2626;font-size:12px;margin-top:8px;"></div>');
-    el.querySelectorAll('[data-connect]').forEach(function (btn) {
-      btn.addEventListener('click', async function () {
-        var provider = btn.getAttribute('data-connect');
-        var label = btn.textContent;
-        btn.disabled = true; btn.textContent = 'Opening…';
-        try { var r = await call('getNylasAuthUrl', { method: 'POST', body: { product: 'crm', provider: provider } }); window.location.href = r.authUrl; }
-        catch (e) { btn.disabled = false; btn.textContent = label; el.querySelector('[data-msg]').textContent = e.message; }
-      });
-    });
+    // Honest interim state (2026-08-05, Nylas EOL): the old Connect buttons
+    // called getNylasAuthUrl, which started a Nylas OAuth flow that can no
+    // longer complete. Rather than leave a dead-end button live or hide the
+    // card outright (both tried before -- hiding it stranded new users on
+    // 2026-07-19), show plainly that this is mid-upgrade. No action a user
+    // could take here would currently succeed, so none is offered.
+    el.innerHTML = shell(null,
+      '<p style="' + S.muted + 'margin:0 0 6px;">Email connection is being upgraded. Check back soon.</p>' +
+      '<p style="' + S.muted + 'margin:0;">Nothing about your contacts or follow-through changes while we finish it.</p>');
   }
 
   // ── ContactEmailPanel: thread history inside a contact record ──
