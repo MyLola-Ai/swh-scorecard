@@ -4639,10 +4639,26 @@ window.refreshLolaConnectStatus = async function () {
     _lcLegacy(true);
     const conns = (json.result && json.result.connections) || [];
     const active = conns.find(c => c.status === 'connected');
+    // credentials_expired is a REAL, RECOVERABLE connection — not "no
+    // connection." Found 2026-08-05: this branch used to fall through to the
+    // generic first-time-connect buttons below, which call connections.start
+    // with no reconnectConnectionId, so the vendor minted a BRAND NEW account
+    // every single time instead of reconnecting the existing one. Austen's
+    // mailbox accumulated 7 Unipile accounts (4 billed simultaneously) this
+    // way. Expired connections now get their own Reconnect path that reuses
+    // the existing account (server already supports this — see
+    // reconnectConnectionId in core/operations.ts's startConnect; it was
+    // just never being told to use it).
+    const expired = !active && conns.find(c => c.status === 'credentials_expired');
     if (active) {
       _lolaConnectConnId = active.id;
       if (sub) sub.textContent = 'Connected: ' + (active.email || 'account');
       if (actions) actions.innerHTML = '<button onclick="lolaConnectDisconnect()" style="' + _LC_PILL + '">Disconnect</button>';
+    } else if (expired) {
+      _lolaConnectConnId = expired.id;
+      if (sub) sub.textContent = 'Reconnect needed: ' + (expired.email || 'account');
+      if (actions) actions.innerHTML =
+        '<button onclick="lolaConnectConnect(\'' + (expired.provider === 'microsoft' ? 'microsoft' : 'google') + '\', \'' + expired.id + '\')" style="' + _LC_PILL + '">Reconnect</button>';
     } else {
       _lolaConnectConnId = null;
       if (sub) sub.textContent = 'Connect Google, Outlook, or IMAP (beta)';
@@ -4653,12 +4669,14 @@ window.refreshLolaConnectStatus = async function () {
     }
   } catch (e) { console.warn('[lolaConnect] status failed:', e.message); _lcLegacy(true); }
 };
-window.lolaConnectConnect = async function (provider) {
+window.lolaConnectConnect = async function (provider, reconnectConnectionId) {
   const actions = document.getElementById('settings-lolaconnect-actions');
   const prev = actions ? actions.innerHTML : '';
   if (actions) actions.innerHTML = '<span style="font-size:12px;color:var(--muted);">Opening…</span>';
   try {
-    const { json } = await _lolaConnectCall('connections.start', { providers: [provider || 'google'], returnOrigin: location.origin });
+    const body = { providers: [provider || 'google'], returnOrigin: location.origin };
+    if (reconnectConnectionId) body.reconnectConnectionId = reconnectConnectionId;
+    const { json } = await _lolaConnectCall('connections.start', body);
     const url = json.result && json.result.url;
     if (url) { window.location.href = url; return; }
     if (window.showToast) showToast('Could not start connection');
