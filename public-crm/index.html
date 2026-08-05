@@ -1155,7 +1155,17 @@ html.dark-theme .lola-review .lr-text{color:#C4B5FD;}
   </div>
   <div style="color:rgba(255,255,255,0.55);font-size:13px;font-family:-apple-system,sans-serif;letter-spacing:0.04em;">Loading…</div>
 </div>
+
+<!-- ════ PULL-TO-REFRESH ════ Native-only; JS drives top/opacity/rotation during
+     the drag, then hands off to .ptr-spinning for the loading state. -->
+<div id="ptr-indicator" style="position:fixed;left:50%;top:0;z-index:250;width:34px;height:34px;margin-left:-17px;opacity:0;pointer-events:none;transform:translateY(-40px) scale(0.6);">
+  <div style="width:100%;height:100%;border-radius:50%;background:var(--card,#fff);box-shadow:0 4px 16px rgba(0,0,0,0.22);display:flex;align-items:center;justify-content:center;">
+    <div id="ptr-spinner" style="width:18px;height:18px;border:2.5px solid rgba(230,57,70,0.18);border-top-color:var(--gold);border-radius:50%;"></div>
+  </div>
+</div>
 <style>
+  @keyframes ptr-spin{to{transform:rotate(360deg);}}
+  #ptr-spinner.ptr-spinning{animation:ptr-spin 0.7s linear infinite;}
   .swh-spin-wrap{position:relative;width:120px;height:120px;flex-shrink:0;}
   .swh-monogram,.swh-arrows{position:absolute;top:0;left:0;width:120px;height:120px;display:block;}
   .swh-arrows{-webkit-animation:swh-spin 1.8s linear infinite;animation:swh-spin 1.8s linear infinite;transform-origin:center center;}
@@ -5609,6 +5619,94 @@ async function loadAllData() {
       })
       .catch((e) => console.warn('[focus-refetch] failed:', e && e.message));
   });
+})();
+
+// Native-iOS counterpart to installFocusRefetch above: native has no tab-focus
+// signal and (per the comment above) never re-pulls contact data after boot —
+// FORM notes entered on desktop don't appear until the app is force-quit and
+// relaunched. Pull-to-refresh gives native the same "go get fresh data"
+// affordance desktop already has via tab-focus.
+(function installPullToRefresh() {
+  if (!isNativeEarly) return;
+  const THRESHOLD = 62; // px of resisted pull before release triggers a refresh
+  const MAX_PULL = 78;
+  const indicator = document.getElementById('ptr-indicator');
+  const spinner = document.getElementById('ptr-spinner');
+  let container = null, startY = 0, pulling = false, busy = false, topAtStart = 0;
+
+  function findScrollContainer(target) {
+    const activeScreen = document.querySelector('.screen.active');
+    if (!activeScreen) return null;
+    const el = target.closest ? target.closest('.screen-body, .scroll-pane') : null;
+    return (el && activeScreen.contains(el)) ? el : null;
+  }
+
+  function setIndicator(pull, ready) {
+    const t = Math.min(pull, MAX_PULL);
+    const scale = 0.6 + Math.min(t / THRESHOLD, 1) * 0.4;
+    indicator.style.transition = 'none';
+    indicator.style.opacity = String(Math.min(t / (THRESHOLD * 0.6), 1));
+    indicator.style.transform = `translateY(${topAtStart + t - 6}px) scale(${scale})`;
+    spinner.style.transform = `rotate(${t * 3}deg)`;
+    spinner.style.borderTopColor = ready ? 'var(--gold)' : 'rgba(230,57,70,0.45)';
+  }
+
+  function settle(toPull, cb) {
+    indicator.style.transition = 'transform 0.28s cubic-bezier(0.34,1.56,0.64,1), opacity 0.22s ease';
+    if (container) container.style.transition = 'transform 0.28s cubic-bezier(0.34,1.56,0.64,1)';
+    if (toPull === 0) {
+      indicator.style.opacity = '0';
+      indicator.style.transform = 'translateY(-40px) scale(0.6)';
+    } else {
+      indicator.style.transform = `translateY(${topAtStart + toPull - 6}px) scale(1)`;
+    }
+    if (container) container.style.transform = toPull ? `translateY(${toPull}px)` : '';
+    setTimeout(() => { if (cb) cb(); }, 280);
+  }
+
+  document.addEventListener('touchstart', (e) => {
+    if (busy || e.touches.length !== 1) return;
+    const el = findScrollContainer(e.target);
+    if (!el || el.scrollTop > 0) return;
+    container = el;
+    startY = e.touches[0].clientY;
+    topAtStart = el.getBoundingClientRect().top;
+    pulling = true;
+  }, { passive: true });
+
+  document.addEventListener('touchmove', (e) => {
+    if (!pulling || !container) return;
+    if (container.scrollTop > 0) { pulling = false; return; } // scrolled away mid-gesture
+    const deltaY = e.touches[0].clientY - startY;
+    if (deltaY <= 0) return;
+    const pull = Math.min(deltaY * 0.5, MAX_PULL);
+    container.style.transition = 'none';
+    container.style.transform = `translateY(${pull}px)`;
+    setIndicator(pull, pull >= THRESHOLD);
+    if (e.cancelable) e.preventDefault(); // stop the native bounce fighting the drag
+  }, { passive: false });
+
+  document.addEventListener('touchend', () => {
+    if (!pulling || !container) { pulling = false; return; }
+    pulling = false;
+    const el = container;
+    const styledPull = parseFloat((el.style.transform.match(/translateY\(([\d.]+)px\)/) || [0, 0])[1]) || 0;
+    if (styledPull < THRESHOLD) { settle(0); container = null; return; }
+    busy = true;
+    settle(30); // hold in a small "loading" position while the fetch runs
+    spinner.classList.add('ptr-spinning');
+    loadAllData()
+      .then(() => {
+        const active = document.querySelector('.screen.active');
+        const name = active ? active.id.replace('screen-', '') : null;
+        if (name && window.showScreen) window.showScreen(name); // re-render current view
+      })
+      .catch((e) => console.warn('[pull-to-refresh] failed:', e && e.message))
+      .finally(() => {
+        spinner.classList.remove('ptr-spinning');
+        settle(0, () => { busy = false; container = null; });
+      });
+  }, { passive: true });
 })();
 
 async function applyGlobalCatalogOverrides() {
