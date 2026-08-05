@@ -98,11 +98,6 @@ function providerScopesFor(product, provider) {
   return logical.map((s) => map[s]).filter(Boolean);
 }
 
-// Nylas grantStatus ('valid'|'invalid') → our Firestore status field.
-function grantStatusToFirestore(grantStatus) {
-  return grantStatus === 'valid' ? 'active' : 'expired';
-}
-
 // ── Auth: verify Firebase ID token from Authorization: Bearer <token> ──
 async function requireAuth(req) {
   const header = req.headers.authorization || '';
@@ -531,7 +526,7 @@ exports.nylasFollowThroughSweep = onSchedule(
 // Refreshes grant status from Nylas; if expired, flips Firestore status so the
 // UI can surface a reconnect prompt. Returns connection summary (NO grant id).
 exports.nylasStatus = onRequest(
-  { cors: true, secrets: [NYLAS_API_KEY] },
+  { cors: true },
   async (req, res) => {
     try {
       const decoded = await requireAuth(req);
@@ -539,18 +534,12 @@ exports.nylasStatus = onRequest(
       if (!snap.exists) return res.json({ connected: false });
       const integration = snap.data();
 
-      let status = integration.status;
-      try {
-        const nylas = nylasClient();
-        const grant = await nylas.grants.find({ grantId: integration.grantId });
-        const live = grantStatusToFirestore((grant.data || grant).grantStatus);
-        if (live !== status) {
-          status = live;
-          await snap.ref.set({ status }, { merge: true });
-        }
-      } catch (probeErr) {
-        console.warn('[nylasStatus] grant probe failed', probeErr.message);
-      }
+      // No live grant probe (removed 2026-08-05): Nylas service ended 8/2, so
+      // a probe can never again resolve to anything but failure -- it was
+      // pure wasted API traffic against a dead vendor. Trust the last-known
+      // Firestore status; self-healing an expired flag now has to happen via
+      // reconnect (Lola Connect), not a Nylas round-trip that can't succeed.
+      const status = integration.status;
 
       res.json({
         connected: true,
@@ -788,27 +777,26 @@ exports.createNylasEvent = onRequest(
 );
 
 exports.deleteNylasEvent = onRequest(
-  { cors: true, secrets: [NYLAS_API_KEY], invoker: 'public' },
+  { cors: true, secrets: [lolaConnectModule.LOLA_CONNECT_SERVICE_TOKEN], invoker: 'public' },
   async (req, res) => {
     try {
       const decoded = await requireAuth(req);
       const { eventId, notify } = req.body || {};
       if (!eventId) throw new Error('Missing eventId');
 
-      const integration = await loadActiveGrant(decoded.uid, res);
-      if (!integration) return;
-
-      const nylas = nylasClient();
-      await nylas.events.destroy({
-        identifier: integration.grantId,
-        eventId: String(eventId),
-        // notify=true sends attendees the provider's standard cancellation
-        queryParams: { calendarId: 'primary', notifyParticipants: !!notify },
-      });
-      res.json({ ok: true });
+      // Lola Connect only (asymmetric miss fixed 2026-08-05: createNylasEvent
+      // migrated 2026-07-28 alongside sendContactEmail, this one didn't --
+      // Nylas has been dead since Aug 2, code no longer touches it here).
+      const lc = await lolaConnectModule.lcTryDeleteEvent(decoded.uid, { eventId, notify });
+      if (!lc) {
+        return res.status(409).json({
+          error: 'Connect your calendar in Settings before managing events.',
+          code: 'lola_connect_required',
+        });
+      }
+      return res.json({ ok: true, via: 'lola-connect' });
     } catch (e) {
       console.error('[deleteNylasEvent]', e);
-      await maybeFlagExpired(req, e);
       sendErr(res, e);
     }
   }
@@ -939,7 +927,7 @@ exports.sendContactEmail = onRequest(
 const ADMIN_EMAILS_FTQ = ['austen@austensmith.com'];
 
 exports.sendFollowThroughEmail = onRequest(
-  { cors: true, secrets: [NYLAS_API_KEY], invoker: 'public' },
+  { cors: true, secrets: [lolaConnectModule.LOLA_CONNECT_SERVICE_TOKEN], invoker: 'public' },
   async (req, res) => {
     try {
       const decoded = await requireAuth(req);
@@ -970,21 +958,23 @@ exports.sendFollowThroughEmail = onRequest(
       const contact = contactDoc.data();
       if (!contact.email) return res.status(400).json({ error: 'Contact has no email address.' });
 
-      const integration = await loadActiveGrant(uid, res);
-      if (!integration) return;
-
-      const nylas = nylasClient();
-      const sendResp = await nylas.messages.send({
-        identifier: integration.grantId,
-        requestBody: {
-          to: [{ email: contact.email, name: contact.name }],
-          subject: subject || queueDoc.data().draftSubject || 'Checking in',
-          body: textBodyToHtml(body),
-        },
+      // Lola Connect only (asymmetric miss fixed 2026-08-05: sendContactEmail
+      // migrated 2026-07-28 alongside createNylasEvent, this one -- the
+      // follow-through queue's one-tap send -- did not. Nylas has been dead
+      // since Aug 2; every send through this path was failing until now).
+      const lc = await lolaConnectModule.lcTrySendEmail(uid, {
+        to: contact.email,
+        name: contact.name || contact.email,
+        subject: subject || queueDoc.data().draftSubject || 'Checking in',
+        html: textBodyToHtml(body),
       });
-
-      const msgData = sendResp.data || sendResp;
-      const nylasMsgId = msgData.id || `ftq_${Date.now()}`;
+      if (!lc) {
+        return res.status(409).json({
+          error: 'Connect your email in Settings before sending.',
+          code: 'lola_connect_required',
+        });
+      }
+      const sentMsgId = lc.providerEmailId || `lc_${Date.now()}`;
       const nowIso = new Date().toISOString();
       const todayKey = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Chicago' });
 
@@ -992,7 +982,7 @@ exports.sendFollowThroughEmail = onRequest(
       const batch = db().batch();
 
       // (a) Email record with direction:'sent' so the Emails tab renders correctly
-      batch.set(db().doc(`users/${uid}/contacts/${contactId}/emails/${nylasMsgId}`), {
+      batch.set(db().doc(`users/${uid}/contacts/${contactId}/emails/${sentMsgId}`), {
         direction: 'sent',
         subject: subject || q.draftSubject || '',
         snippet: body.slice(0, 200),
@@ -1031,10 +1021,9 @@ exports.sendFollowThroughEmail = onRequest(
 
       await batch.commit();
 
-      res.json({ ok: true, newSteps, nylasMsgId });
+      res.json({ ok: true, newSteps, sentMsgId, via: 'lola-connect' });
     } catch (e) {
       console.error('[sendFollowThroughEmail]', e);
-      await maybeFlagExpired(req, e);
       sendErr(res, e);
     }
   }

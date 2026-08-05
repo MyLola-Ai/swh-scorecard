@@ -251,8 +251,45 @@ async function lcTryCreateEvent(uid, { title, startISO, endISO, description, loc
   return { eventId: ev.id || '', calendarId: cal.id };
 }
 
+// Mirrors lcTryCreateEvent: null when the user has no connected LC account,
+// throws on a genuine delete failure. NOTE the gateway's events.delete dispatch
+// (see buildGatewayBody above) does not thread a notify/notifyParticipants
+// field through -- unlike events.create, a cancellation notice to attendees
+// isn't currently wired end-to-end. Accepted here for call-signature parity
+// with the old Nylas path, but it's a no-op until the gateway supports it.
+async function lcTryDeleteEvent(uid, { eventId, notify }) {
+  if (!(await featureAllowed(uid))) return null;
+  const call = async (body) => {
+    const r = await fetch(GATEWAY_URL, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${LOLA_CONNECT_SERVICE_TOKEN.value()}`,
+      },
+      body: JSON.stringify({ subject: { pool: SWH_POOL, uid }, product: SWH_PRODUCT, ...body }),
+    });
+    return { status: r.status, json: await r.json().catch(() => ({})) };
+  };
+  const list = await call({ op: 'connections.list' });
+  const conns = (list.json.result && list.json.result.connections) || [];
+  const active = conns.find((c) => c.status === 'connected');
+  if (!active) return null;
+
+  const cals = await call({ op: 'calendars.list', connectionId: active.id });
+  const arr = (cals.json.result && cals.json.result.calendars) || [];
+  const cal = arr.find((c) => c.isDefault) || arr[0];
+  if (!cal) throw new Error('Lola Connect: no calendar available on the connected account');
+
+  const deleted = await call({ op: 'events.delete', connectionId: active.id, calendarId: cal.id, eventId: String(eventId) });
+  if (!deleted.json.ok) {
+    throw new Error(`Lola Connect event delete failed (${deleted.status}): ${deleted.json.error || 'unknown'}`);
+  }
+  return { ok: true };
+}
+
 exports.lcTrySendEmail = lcTrySendEmail;
 exports.lcTryCreateEvent = lcTryCreateEvent;
+exports.lcTryDeleteEvent = lcTryDeleteEvent;
 exports.LOLA_CONNECT_SERVICE_TOKEN = LOLA_CONNECT_SERVICE_TOKEN;
 
 // ── Leg 2: email auto-log via LC pull-sync ──────────────────────────────────
