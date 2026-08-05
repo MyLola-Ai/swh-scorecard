@@ -380,14 +380,23 @@ async function lcSyncUserEmails(uid, connection, gwCall) {
       : { lastActivityAt: sentAt };
     for (const contactId of matched) {
       const emailsCol = db().collection(`users/${uid}/contacts/${contactId}/emails`);
-      // Double-log guard vs the Nylas webhook's differently-keyed doc.
+      // Double-log guard vs the Nylas webhook's differently-keyed doc — this
+      // dedupes the LOG WRITE ONLY. Bug found 2026-08 (real contacts hit:
+      // Mario Lazo received two more "good meeting you" templates after he'd
+      // already replied, prompting him to warn Austen it read as obviously
+      // automated): a bare `continue` here used to skip contactUpdate too —
+      // any message the legacy Nylas webhook logged first (routine during
+      // the Nylas dual-run) silently skipped cadencePaused/followThroughNeeded
+      // on this path. The reply is real regardless of which system logged the
+      // message first, so the contact-side-effect must apply unconditionally.
       const dup = await emailsCol.where('sentAt', '==', sentAt).where('direction', '==', direction).limit(1).get();
-      if (!dup.empty) continue;
       const batch = db().batch();
-      batch.set(emailsCol.doc(`lc_${m.id}`), emailDoc, { merge: true });
+      if (dup.empty) {
+        batch.set(emailsCol.doc(`lc_${m.id}`), emailDoc, { merge: true });
+      }
       batch.update(db().doc(`users/${uid}/contacts/${contactId}`), contactUpdate);
       await batch.commit();
-      logged++;
+      if (dup.empty) logged++;
     }
   }
 
