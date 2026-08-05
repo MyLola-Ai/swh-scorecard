@@ -49,107 +49,43 @@
   }
 
   // ── ConnectAccounts: single "Connect Google Account" (all 3 scopes) ──
+  //
+  // NEUTRALIZED (2026-08-05, Nylas EOL): this whole legacy widget -- Connect,
+  // Disconnect, Push-network-to-Contacts, calendar, thread history -- called
+  // Nylas, which ended service 8/2 and can never succeed again. Rather than
+  // leave some buttons dead-ending into a broken OAuth flow, some silently
+  // failing on click, and some hiding the card outright (tried before --
+  // hiding it stranded new users on 2026-07-19), every mount function here
+  // now shows one honest "being upgraded" state. Nothing a user could click
+  // in this widget would currently work regardless of connection status, so
+  // nothing is offered. The permanent replacement (a working connect flow
+  // through Lola Connect) rides that rollout's global-enable decision, not
+  // this file.
   async function mountConnect(el) {
     if (!el) return;
     el.innerHTML = shell(null, '<div style="' + S.muted + '">Checking…</div>');
+    // Still checked (not rendered on) so window.__nylasConnected -- read
+    // elsewhere (public-crm/index.html's hasGmail) -- keeps working exactly
+    // as before. nylasStatus itself no longer calls Nylas (probe removed).
     var status; try { status = await call('nylasStatus'); } catch (e) { status = { connected: false }; }
     window.__nylasConnected = !!(status && status.connected && status.status === 'active');
 
-    if (status.connected && status.status === 'active') {
-      el.innerHTML = '<div style="' + S.card + '">' +
-        '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">' +
-          '<div style="min-width:0;">' +
-            '<div style="display:flex;align-items:center;gap:7px;">' +
-              '<span style="width:8px;height:8px;border-radius:50%;background:#22c55e;flex-shrink:0;"></span>' +
-              '<span style="font-weight:700;font-size:14px;' + S.text + 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + esc(status.email) + '</span></div>' +
-            '<div style="' + S.muted + 'font-size:12px;margin-top:3px;">Auto-logs email, syncs your calendar, and powers contact sync.</div>' +
-          '</div>' +
-          '<button data-dc style="' + S.ghost + '">Disconnect</button></div>' +
-        '<div style="margin-top:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">' +
-          '<button data-sync style="' + S.btn + '">Push my network to Contacts</button>' +
-          '<span data-sync-msg style="' + S.muted + 'font-size:12px;"></span></div></div>';
-      var dc = el.querySelector('[data-dc]');
-      dc.addEventListener('click', async function () { dc.disabled = true; dc.textContent = '…'; try { await call('nylasDisconnect', { method: 'POST' }); mountConnect(el); } catch (_) { dc.disabled = false; dc.textContent = 'Disconnect'; } });
-      var sync = el.querySelector('[data-sync]');
-      var syncMsg = el.querySelector('[data-sync-msg]');
-      sync.addEventListener('click', async function () {
-        sync.disabled = true; sync.textContent = 'Pushing…'; syncMsg.textContent = '';
-        try {
-          var r = await call('nylasSyncContacts', { method: 'POST' });
-          syncMsg.textContent = 'Pushed ' + (r.pushed || 0) + (r.bypassed ? ', ' + r.bypassed + ' already in Contacts' : '') + (r.failed ? ', ' + r.failed + ' failed' : '') + '.';
-        } catch (e) { syncMsg.textContent = e.message || 'Sync failed.'; }
-        sync.disabled = false; sync.textContent = 'Push my network to Contacts';
-      });
-      return;
-    }
-
-    var badge = status.needsReconnect ? '<div style="color:#b45309;font-size:12px;font-weight:700;margin-bottom:8px;">Reconnect needed</div>' : '';
-    el.innerHTML = shell(null, badge +
-      '<p style="' + S.muted + 'margin:0 0 14px;">Connect once to auto-log emails on contacts, sync your calendar, and push your network to Contacts.</p>' +
-      '<div style="display:flex;gap:8px;flex-wrap:wrap;">' +
-        '<button data-connect="google" style="' + S.btn + '">Connect Gmail</button>' +
-        '<button data-connect="microsoft" style="' + S.ghost + '">Connect Outlook</button>' +
-      '</div>' +
-      '<div data-msg style="color:#dc2626;font-size:12px;margin-top:8px;"></div>');
-    el.querySelectorAll('[data-connect]').forEach(function (btn) {
-      btn.addEventListener('click', async function () {
-        var provider = btn.getAttribute('data-connect');
-        var label = btn.textContent;
-        btn.disabled = true; btn.textContent = 'Opening…';
-        try { var r = await call('getNylasAuthUrl', { method: 'POST', body: { product: 'crm', provider: provider } }); window.location.href = r.authUrl; }
-        catch (e) { btn.disabled = false; btn.textContent = label; el.querySelector('[data-msg]').textContent = e.message; }
-      });
-    });
+    el.innerHTML = shell(null,
+      '<p style="' + S.muted + 'margin:0 0 6px;">Email connection is being upgraded. Check back soon.</p>' +
+      '<p style="' + S.muted + 'margin:0;">Nothing about your contacts or follow-through changes while we finish it.</p>');
   }
 
   // ── ContactEmailPanel: thread history inside a contact record ──
   async function mountContactPanel(el, contactEmail) {
     if (!el) return;
     if (!contactEmail) { el.innerHTML = ''; return; }
-    el.innerHTML = '<div style="' + S.muted + 'padding:8px 0;">Loading email history…</div>';
-    try {
-      var r = await call('getContactThreads', { query: 'email=' + encodeURIComponent(contactEmail) });
-      var threads = r.threads || [];
-      if (!threads.length) { el.innerHTML = '<div style="' + S.muted + 'padding:8px 0;">No emails with this contact yet.</div>'; return; }
-      el.innerHTML = threads.map(function (t) {
-        var when = t.lastMessageAt ? new Date(t.lastMessageAt * 1000).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }) : '';
-        return '<div style="padding:10px 0;border-top:1px solid rgba(255,255,255,0.06);">' +
-          '<div style="display:flex;justify-content:space-between;gap:10px;">' +
-            '<div style="font-weight:700;font-size:14px;color:#fff;' + (t.unread ? '' : 'opacity:.85;') + 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' +
-              (t.unread ? '<span style="color:#A78BFA;">● </span>' : '') + esc(t.subject) + '</div>' +
-            '<div style="' + S.muted + 'font-size:12px;white-space:nowrap;">' + esc(when) + '</div></div>' +
-          '<div style="' + S.muted + 'font-size:12px;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + esc(t.snippet) + '</div></div>';
-      }).join('');
-    } catch (e) {
-      el.innerHTML = e.needsReconnect
-        ? '<div style="' + S.muted + 'padding:8px 0;">Email connection expired. Reconnect in Settings.</div>'
-        : '<div style="' + S.muted + 'padding:8px 0;">Could not load email history.</div>';
-    }
+    el.innerHTML = '<div style="' + S.muted + 'padding:8px 0;">Email history is being upgraded. Check back soon.</div>';
   }
 
   // ── CalendarPanel: upcoming events on the dashboard ──
   async function mountCalendar(el) {
     if (!el) return;
-    el.innerHTML = shell('Next 7 days', '<div style="' + S.muted + '">Loading…</div>');
-    try {
-      var r = await call('getUpcomingEvents');
-      var events = (r.events || []).slice().sort(function (a, b) { return ms(a) - ms(b); });
-      var body = events.length ? events.map(evtRow).join('') : '<div style="' + S.muted + '">Nothing scheduled this week.</div>';
-      el.innerHTML = shell('Next 7 days', body);
-    } catch (e) {
-      el.innerHTML = shell('Calendar', '<div style="' + S.muted + '">' + (e.needsReconnect ? 'Connection expired. Reconnect in Settings.' : 'Could not load calendar.') + '</div>');
-    }
-  }
-  function ms(ev) { var w = ev.when || {}; return w.startTime ? w.startTime * 1000 : (w.date ? Date.parse(w.date) : 0); }
-  function evtRow(ev) {
-    var w = ev.when || {}, when;
-    if (w.startTime) { var d = new Date(w.startTime * 1000); when = d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' }) + ' · ' + d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }); }
-    else if (w.date) { when = new Date(w.date).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' }) + ' · All day'; }
-    else { when = ''; }
-    return '<div style="display:flex;gap:10px;padding:9px 0;border-top:1px solid rgba(255,255,255,0.06);">' +
-      '<div style="width:3px;border-radius:3px;background:#A78BFA;"></div>' +
-      '<div style="flex:1;min-width:0;"><div style="font-weight:700;font-size:14px;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(ev.title) + '</div>' +
-      '<div style="' + S.muted + 'font-size:12px;">' + esc(when) + (ev.location ? ' · ' + esc(ev.location) : '') + '</div></div></div>';
+    el.innerHTML = shell('Calendar', '<div style="' + S.muted + '">Calendar is being upgraded. Check back soon.</div>');
   }
 
   // ── presentation (light theme — matches the CRM settings cards) ──

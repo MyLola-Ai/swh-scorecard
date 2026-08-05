@@ -467,15 +467,22 @@ async function findExistingContactId(nylas, grantId, requestBody) {
   return null;
 }
 
-// ⚠️ PARKED, NOT DEAD-BY-DESIGN (2026-07-29): pushOneContact + the two
-// exports below (nylasPushContact, nylasSyncContacts) have ZERO callers in
-// public-crm/index.html or public-scorecard/index.html — confirmed by grep
-// across both files. The live "Save to Contacts" UI never used them: it
-// pushes to Google People API directly (syncToGoogleContacts, client-side
-// OAuth) and to Microsoft Graph directly (pushContactToOutlook, index.js —
-// native Outlook OAuth). So contact sync was ALREADY native before the Aug 2
-// Nylas EOL; nothing user-facing breaks when Nylas dies, and there is no
-// "native rebuild" to build for the feature users actually see.
+// ⚠️ PARKED, NOT DEAD-BY-DESIGN (2026-07-29, corrected 2026-08-05):
+// pushOneContact was originally claimed to have zero callers via
+// nylasPushContact/nylasSyncContacts, "confirmed by grep across" only
+// public-crm/index.html and public-scorecard/index.html. That grep missed
+// nylas-email.js (a separately-loaded <script src>, not inline) -- which DID
+// call nylasSyncContacts, from the legacy Settings widget's live "Push my
+// network to Contacts" button. nylasPushContact genuinely had zero callers
+// anywhere (removed above). nylasSyncContacts's client call site has now
+// been removed too, as part of neutralizing that entire legacy widget
+// (Nylas fully EOL'd 8/2, every button in it was calling a dead API) --
+// so the "zero callers" claim is accurate again, just not for the reason
+// originally given. The real "Save to Contacts" UI genuinely never used
+// either: it pushes to Google People API directly (syncToGoogleContacts,
+// client-side OAuth) and to Microsoft Graph directly (pushContactToOutlook,
+// index.js — native Outlook OAuth). Contact sync was already native before
+// the EOL; this file's contact-push path was always a parallel, unused one.
 // Kept (not deleted) as field-mapping reference — buildNylasContactBody /
 // pushOneContact show how a Contact doc maps to provider fields, useful if
 // this dead code is ever revived as a real bulk-sync feature. Do not wire
