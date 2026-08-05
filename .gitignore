@@ -14,6 +14,11 @@ firebase-debug.*.log*
 .firebaserc.local
 .dataconnect
 
+# Stamped fresh by scripts/stamp-build-id.sh on every deploy (predeploy hook,
+# firebase.json) — do not commit, would just be diff noise every deploy
+public-crm/version.json
+public-scorecard/version.json
+
 # ── Secrets & credentials ─────────────────────────────────────────────────────
 .env
 .env.*

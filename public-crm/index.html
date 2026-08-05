@@ -13094,6 +13094,46 @@ window.resetActivitiesToDefault = async function() {
 
 window.showToast=function(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'),2800);};
 
+// ── Stale-tab guard (2026-08-05) ──────────────────────────────────────────
+// A tab left open across a deploy keeps running the JS it loaded with,
+// indefinitely -- nothing ever tells it a newer build exists. This is how a
+// user silently lost a day of logged points: an old build's write path had
+// already died quietly, the tab just kept rendering stale in-memory numbers
+// with no error shown, for days, across several unrelated fixes that never
+// reached it. version.json is stamped with a fresh build id on every deploy
+// (scripts/stamp-build-id.sh, wired as firebase.json's predeploy hook so it
+// can't be skipped). Reload automatically when it's safe (nothing being
+// typed); otherwise nudge via toast and re-check later rather than risk
+// losing someone's in-progress input.
+let _myBuildId = null;
+fetch('version.json', { cache: 'no-store' }).then(r => r.json()).then(d => { _myBuildId = d.buildId; }).catch(() => {});
+
+function _safeToReload() {
+  const el = document.activeElement;
+  if (!el) return true;
+  const tag = (el.tagName || '').toLowerCase();
+  if ((tag === 'input' || tag === 'textarea' || tag === 'select') && (el.value || '').trim()) return false;
+  return true;
+}
+
+async function _checkForNewBuild() {
+  if (!_myBuildId) return; // haven't loaded our own version yet -- nothing to compare against
+  try {
+    const r = await fetch('version.json', { cache: 'no-store' });
+    const d = await r.json();
+    if (d.buildId && d.buildId !== _myBuildId) {
+      if (_safeToReload()) {
+        if (typeof showToast === 'function') showToast('Updating to the latest version…');
+        setTimeout(() => window.location.reload(), 1200);
+      } else if (typeof showToast === 'function') {
+        showToast('A new version is ready. Refresh when you have a moment.');
+      }
+    }
+  } catch (_) { /* offline or a blip -- next check will catch it */ }
+}
+document.addEventListener('visibilitychange', () => { if (!document.hidden) _checkForNewBuild(); });
+setInterval(_checkForNewBuild, 30 * 60 * 1000);
+
 // Actionable variant of showToast — same #toast element, adds a clickable
 // button. Used for graceful-degradation prompts (Nylas EOL, 2026-07-29):
 // email send / calendar create now hard-require a Lola Connect connection
