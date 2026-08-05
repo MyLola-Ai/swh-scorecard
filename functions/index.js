@@ -6708,7 +6708,7 @@ exports.getApptData = onCall({
   }
 
   // ── Cache the resolved uid so future calls skip discovery ─────────────────
-  swhDb.collection('users').doc(swhUid).set(
+  await swhDb.collection('users').doc(swhUid).set(
     { apptUid: resolvedUid }, { merge: true }
   ).catch(err => console.warn('[getApptData] cache write failed:', err?.message));
 
