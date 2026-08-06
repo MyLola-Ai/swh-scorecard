@@ -6267,6 +6267,115 @@ const MYLOLA_FIND_MATCHES_URL =
 const MYLOLA_VERIFY_ACCOUNT_URL =
   'https://us-central1-loaniq-75a20.cloudfunctions.net/verifyMyLolaAccount';
 
+// ============================================================
+// Scorecard read for MyClosings (2026-08-06) — loaniq-75a20 calls IN to
+// display a user's real SWH Scorecard inside MyClosings/Lola CRM's Books
+// area. Single-user read only, never a broad export.
+//
+// Auth: the shared bearer secret already used for the opposite direction
+// (MYLOLA_INTEGRATION_SECRET / loaniq's "SWH_INTEGRATION_SECRET" — same
+// value, different local names on each side; CTO-approved reuse, no new
+// Secret Manager entry for this).
+//
+// Identity: subjectEmail must be the CALLER's own verified loaniq auth
+// email, extracted server-side on loaniq's end (email_verified) BEFORE
+// this is ever hit — never client-supplied. This endpoint trusts whatever
+// email it's given and returns only that email's own data; the security
+// boundary is entirely "loaniq never lets a user supply someone else's
+// email," not anything this endpoint itself can enforce. found:false on
+// no SWH account for that email — the "link your SWH account" path.
+const SCORECARD_READ_MAX_DAYS = 90;
+
+// Minimal server-side mirror of public-crm/index.html's DEFAULT_ACTS —
+// intentionally NOT the full catalog (drops the ctx field-definitions,
+// which are CRM logging-form UI only, irrelevant to a read-only display).
+// Used only as the fallback when a user has no users/{uid}/config/activities
+// doc yet, which is the common case: that doc is only written once someone
+// edits their playbook/activities in Settings, so most users are still
+// running on the client-side default. Keep this in lockstep with
+// DEFAULT_ACTS by hand if that list ever changes — same trade-off as the
+// mapSwhContactToMyLolaPayload mirror below.
+const SCORECARD_DEFAULT_ACTIVITIES = [
+  { cat: 'Networking', name: 'Attend Networking Meeting', pts: 5, icon: '🏢' },
+  { cat: 'Conversations', name: 'Have a FORMing Conversation', pts: 5, icon: '💬' },
+  { cat: 'Follow Through', name: 'Good to Meet You Follow Through', pts: 5, icon: '✉️' },
+  { cat: 'Follow Through', name: 'Call Someone from CRM', pts: 5, icon: '📞' },
+  { cat: 'High-Value Meetings', name: 'Attend 1:1, Coffee, Lunch', pts: 10, icon: '☕' },
+  { cat: 'High-Value Meetings', name: 'Mail Note or Card', pts: 10, icon: '💌' },
+  { cat: 'Referrals & Results', name: 'Give a Referral', pts: 10, icon: '📤' },
+  { cat: 'Referrals & Results', name: 'Make Introduction', pts: 10, icon: '🔗' },
+  { cat: 'Referrals & Results', name: 'Receive a Referral', pts: 8, icon: '📥', lead: false },
+  { cat: 'Referrals & Results', name: 'Opportunity Won', pts: 15, icon: '🏆', lead: false },
+  { cat: 'Events', name: 'Host Event', pts: 25, icon: '🌟' },
+  { cat: 'Networking', name: 'Add New Contact', pts: 2, icon: '👤' },
+];
+
+exports.getScorecardForUser = onRequest(
+  { cors: true, secrets: [MYLOLA_INTEGRATION_SECRET] },
+  async (req, res) => {
+    try {
+      const header = req.headers.authorization || '';
+      const token = header.startsWith('Bearer ') ? header.slice(7).trim() : '';
+      if (!token || token !== MYLOLA_INTEGRATION_SECRET.value().trim()) {
+        return res.status(401).json({ error: 'unauthorized' });
+      }
+
+      const { subjectEmail, fromDateKey, toDateKey } = req.body || {};
+      if (!subjectEmail || typeof subjectEmail !== 'string') {
+        return res.status(400).json({ error: 'subjectEmail is required' });
+      }
+
+      let uid;
+      try {
+        uid = (await admin.auth().getUserByEmail(subjectEmail.trim().toLowerCase())).uid;
+      } catch (e) {
+        return res.json({ found: false });
+      }
+
+      // Clamp the range server-side regardless of what's requested — a
+      // defensive bound so this can never become an unbounded export,
+      // even by an honest mistake on the caller's end.
+      const today = chicagoTodayKey();
+      const oldestAllowed = new Date(today + 'T12:00:00Z');
+      oldestAllowed.setUTCDate(oldestAllowed.getUTCDate() - SCORECARD_READ_MAX_DAYS);
+      const oldestAllowedKey = oldestAllowed.toISOString().slice(0, 10);
+      const requestedFrom = (typeof fromDateKey === 'string' && fromDateKey) ? fromDateKey : oldestAllowedKey;
+      const effectiveFrom = requestedFrom < oldestAllowedKey ? oldestAllowedKey : requestedFrom;
+      const requestedTo = (typeof toDateKey === 'string' && toDateKey) ? toDateKey : today;
+      const effectiveTo = requestedTo > today ? today : requestedTo;
+
+      const [actSnap, daysSnap] = await Promise.all([
+        admin.firestore().doc(`users/${uid}/config/activities`).get(),
+        admin.firestore().collection(`users/${uid}/days`)
+          .where('dateKey', '>=', effectiveFrom)
+          .where('dateKey', '<=', effectiveTo)
+          .get(),
+      ]);
+
+      const activities = (actSnap.exists && Array.isArray(actSnap.data().list) && actSnap.data().list.length)
+        ? actSnap.data().list
+        : SCORECARD_DEFAULT_ACTIVITIES;
+
+      const days = daysSnap.docs.map(d => {
+        const x = d.data();
+        return {
+          dateKey: x.dateKey,
+          counts: x.counts || {},
+          totalPts: x.totalPts || 0,
+          leadPts: x.leadPts || 0,
+          lagPts: x.lagPts || 0,
+          breakdown: x.breakdown || {},
+        };
+      }).sort((a, b) => a.dateKey.localeCompare(b.dateKey));
+
+      res.json({ found: true, activities, days });
+    } catch (e) {
+      console.error('[getScorecardForUser]', e);
+      res.status(500).json({ error: 'internal' });
+    }
+  }
+);
+
 /** Mirror of public-crm/index.html\'s mapSwhContactToMyLolaPayload —
  *  kept in lockstep so the payload shape matches what acceptSwhContact
  *  validates. The browser-side mapper exists so a fast "dry-run preview"
