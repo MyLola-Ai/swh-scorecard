@@ -6389,17 +6389,23 @@ exports.getScorecardForUser = onRequest(
 // separate decision if that's ever revisited).
 //
 // PROVISIONING (no existing SWH account for this email): creates the
-// Auth user only. Does NOT stamp a users/{uid} Firestore doc, because
-// there is no single canonical "default new-user doc" to copy --
-// checked both the real signup flow (createUserWithEmailAndPassword,
-// public-crm/index.html) and for a server-side auth-creation trigger;
-// neither initializes one. That doc is created lazily by the client on
-// its own first real write, same as config/activities. A provisioned
-// account's Firestore state, and what "free tier" actually needs to
-// contain server-side to make the scorecard load correctly, needs a
-// precise answer from Product/CTO before this can go further -- flagged
-// rather than guessed. provisioned:true tells the caller a bare account
-// now exists but may not be fully usable yet.
+// Auth user AND stamps a users/{uid} doc with full, comped access.
+// Traced first rather than assumed: neither the real signup flow
+// (createUserWithEmailAndPassword, public-crm/index.html) nor a
+// server-side auth-creation trigger initializes a Firestore doc --
+// confirmed no such trigger exists in this codebase. A doc-less user
+// isn't broken, though: public-crm/index.html reads
+// `userPlan = (r && (r.plan === 'pro' || r.plan === 'scorecard')) ?
+// r.plan : 'free'` -- a missing doc/plan resolves to 'free', and
+// requirePaid() paywalls anyone on 'free' (or 'demo'). So provisioning
+// with NO doc would silently land a MyClosings user in SWH's limited
+// free tier, not the full app + coaching Austen asked for.
+// plan:'pro' + subscriptionStatus:'comp' is not invented here --
+// 'pro' is the exact value the real Stripe-upgrade path stamps
+// (~line 7117 in public-crm/index.html), and 'comp' already exists as
+// SWH's granted-not-paid marker (adminCompTeam, used for teams).
+// Reused, not new, so nothing downstream has to learn a new value.
+const SWH_COMP_PLAN_FIELDS = { plan: 'pro', subscriptionStatus: 'comp' };
 exports.mintSwhSessionForUser = onRequest(
   { cors: true, secrets: [MYLOLA_INTEGRATION_SECRET] },
   async (req, res) => {
@@ -6420,11 +6426,18 @@ exports.mintSwhSessionForUser = onRequest(
       try {
         uid = (await admin.auth().getUserByEmail(email)).uid;
       } catch (e) {
-        // No SWH account for this email -- create the bare Auth user only.
-        // See the block comment above: no Firestore doc init happens here,
-        // by design, pending a Product/CTO answer on what one should contain.
+        // No SWH account for this email -- create it AND stamp full comped
+        // access. See the block comment above for why: a doc-less user
+        // silently resolves to SWH's free/paywalled tier, not what a
+        // MyClosings-provisioned user is supposed to get.
         const created = await admin.auth().createUser({ email, emailVerified: true });
         uid = created.uid;
+        await admin.firestore().doc(`users/${uid}`).set({
+          email,
+          ...SWH_COMP_PLAN_FIELDS,
+          provisionedVia: 'myclosings',
+          createdAt: new Date().toISOString(),
+        }, { merge: true });
         provisioned = true;
       }
 

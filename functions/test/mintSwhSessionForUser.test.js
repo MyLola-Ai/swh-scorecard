@@ -33,6 +33,7 @@ function withFakeAuth({ users = {} }, run) {
   return async () => {
     const created = [];
     const mintedFor = [];
+    const firestoreWrites = []; // { uid, data }
     const fakeAuth = {
       async getUserByEmail(email) {
         const uid = users[email];
@@ -50,11 +51,23 @@ function withFakeAuth({ users = {} }, run) {
         return `fake-custom-token-for-${uid}`;
       },
     };
+    const fakeFirestore = {
+      doc(path) {
+        const uid = path.split('/')[1];
+        return {
+          async set(data, opts) {
+            firestoreWrites.push({ uid, data, opts });
+          },
+        };
+      },
+    };
     Object.defineProperty(admin, 'auth', { configurable: true, value: () => fakeAuth });
+    Object.defineProperty(admin, 'firestore', { configurable: true, value: () => fakeFirestore });
     try {
-      await run({ created, mintedFor });
+      await run({ created, mintedFor, firestoreWrites });
     } finally {
       delete admin.auth;
+      delete admin.firestore;
     }
   };
 }
@@ -93,7 +106,7 @@ test('mints a token for an existing SWH account, provisioned:false', withFakeAut
 
 test('provisions a bare Auth user when none exists, provisioned:true, still mints a token', withFakeAuth(
   { users: {} },
-  async ({ created, mintedFor }) => {
+  async ({ created, mintedFor, firestoreWrites }) => {
     const { req, res } = fakeReqRes({ subjectEmail: 'brandnew@example.com' });
     await mintSwhSessionForUser(req, res);
     assert.equal(res.statusCode, 200);
@@ -103,5 +116,30 @@ test('provisions a bare Auth user when none exists, provisioned:true, still mint
     assert.equal(created.length, 1);
     assert.equal(created[0].email, 'brandnew@example.com');
     assert.deepEqual(mintedFor, [created[0].uid], 'must mint for the newly created uid');
+  }
+));
+
+test('provisioning stamps full comped access, not the free/paywalled default', withFakeAuth(
+  { users: {} },
+  async ({ created, firestoreWrites }) => {
+    const { req, res } = fakeReqRes({ subjectEmail: 'brandnew@example.com' });
+    await mintSwhSessionForUser(req, res);
+    assert.equal(firestoreWrites.length, 1, 'must write exactly one users/{uid} doc for a newly provisioned account');
+    const write = firestoreWrites[0];
+    assert.equal(write.uid, created[0].uid, 'must write to the newly created uid, not a stale one');
+    assert.equal(write.data.plan, 'pro', 'must be the same plan value the real Stripe-upgrade path uses, so requirePaid() passes');
+    assert.equal(write.data.subscriptionStatus, 'comp', 'must reuse the existing granted-not-paid marker (adminCompTeam), not invent a new one');
+    assert.equal(write.data.email, 'brandnew@example.com');
+    assert.equal(write.data.provisionedVia, 'myclosings');
+    assert.ok(write.opts && write.opts.merge, 'must merge, never blind-overwrite');
+  }
+));
+
+test('does NOT write a Firestore doc for an already-existing account -- provisioning is additive, never touches real users', withFakeAuth(
+  { users: { 'lo@example.com': 'uid_existing' } },
+  async ({ firestoreWrites }) => {
+    const { req, res } = fakeReqRes({ subjectEmail: 'lo@example.com' });
+    await mintSwhSessionForUser(req, res);
+    assert.equal(firestoreWrites.length, 0, 'an existing account\'s plan/entitlement must never be touched by this endpoint');
   }
 ));
