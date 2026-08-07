@@ -6376,6 +6376,67 @@ exports.getScorecardForUser = onRequest(
   }
 );
 
+// ============================================================
+// Scorecard SSO for MyClosings (2026-08-06) — sibling of
+// getScorecardForUser: same auth (shared bearer), same identity
+// resolution (verified email -> SWH uid, never client-supplied), same
+// "cross-tenant access is structurally impossible" property, swapping
+// the Firestore read for a single admin.auth().createCustomToken(uid)
+// call. loaniq exchanges the returned token for a real SWH session via
+// the client SDK's signInWithCustomToken -- launch-only for v1, no
+// embed, no frame-ancestors change (both blocked today by DENY +
+// frame-ancestors 'none' on this hosting target; a deliberate,
+// separate decision if that's ever revisited).
+//
+// PROVISIONING (no existing SWH account for this email): creates the
+// Auth user only. Does NOT stamp a users/{uid} Firestore doc, because
+// there is no single canonical "default new-user doc" to copy --
+// checked both the real signup flow (createUserWithEmailAndPassword,
+// public-crm/index.html) and for a server-side auth-creation trigger;
+// neither initializes one. That doc is created lazily by the client on
+// its own first real write, same as config/activities. A provisioned
+// account's Firestore state, and what "free tier" actually needs to
+// contain server-side to make the scorecard load correctly, needs a
+// precise answer from Product/CTO before this can go further -- flagged
+// rather than guessed. provisioned:true tells the caller a bare account
+// now exists but may not be fully usable yet.
+exports.mintSwhSessionForUser = onRequest(
+  { cors: true, secrets: [MYLOLA_INTEGRATION_SECRET] },
+  async (req, res) => {
+    try {
+      const header = req.headers.authorization || '';
+      const token = header.startsWith('Bearer ') ? header.slice(7).trim() : '';
+      if (!token || token !== MYLOLA_INTEGRATION_SECRET.value().trim()) {
+        return res.status(401).json({ error: 'unauthorized' });
+      }
+
+      const { subjectEmail } = req.body || {};
+      if (!subjectEmail || typeof subjectEmail !== 'string') {
+        return res.status(400).json({ error: 'subjectEmail is required' });
+      }
+      const email = subjectEmail.trim().toLowerCase();
+
+      let uid, provisioned = false;
+      try {
+        uid = (await admin.auth().getUserByEmail(email)).uid;
+      } catch (e) {
+        // No SWH account for this email -- create the bare Auth user only.
+        // See the block comment above: no Firestore doc init happens here,
+        // by design, pending a Product/CTO answer on what one should contain.
+        const created = await admin.auth().createUser({ email, emailVerified: true });
+        uid = created.uid;
+        provisioned = true;
+      }
+
+      const customToken = await admin.auth().createCustomToken(uid);
+      res.json({ found: true, provisioned, customToken });
+    } catch (e) {
+      console.error('[mintSwhSessionForUser]', e);
+      res.status(500).json({ error: 'internal' });
+    }
+  }
+);
+
 /** Mirror of public-crm/index.html\'s mapSwhContactToMyLolaPayload —
  *  kept in lockstep so the payload shape matches what acceptSwhContact
  *  validates. The browser-side mapper exists so a fast "dry-run preview"
