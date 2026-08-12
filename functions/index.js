@@ -7300,14 +7300,14 @@ exports.apptMeetingSweep = onSchedule({
 // the SWH task + timeline entry immediately with the same ids the
 // sweep uses, so the next sweep no-ops. confirmationSentAt is stamped
 // so MyAppointment sends no emails — the contact is notified by the
-// calendar invite the client creates via Nylas.
+// calendar invite the client creates via Lola Connect.
 // ============================================================
 exports.apptCreateMeeting = onRequest({ cors: true, secrets: [LOANIQ_SA_KEY] }, async (req, res) => {
   if (req.method === 'OPTIONS') { res.status(204).send(''); return; }
   try {
     const decoded = await requireAuth(req);
     const uid = decoded.uid;
-    const { contactId, startISO, durationMins, nylasEventId, timezone } = req.body || {};
+    const { contactId, startISO, durationMins, calendarEventId, timezone } = req.body || {};
     const locationTxt = String(req.body?.location || '').trim().slice(0, 200);
     if (!contactId || !startISO) { res.status(400).json({ error: 'contactId and startISO required' }); return; }
 
@@ -7343,8 +7343,8 @@ exports.apptCreateMeeting = onRequest({ cors: true, secrets: [LOANIQ_SA_KEY] }, 
       bookedAt: nowTs,
       source: 'swh_host_scheduled',
       calendarProvider: 'google',
-      externalCalendarEventId: nylasEventId ? String(nylasEventId) : `swh_${meetingId}`,
-      externalCalendarId: nylasEventId ? 'primary' : 'pending',
+      externalCalendarEventId: calendarEventId ? String(calendarEventId) : `swh_${meetingId}`,
+      externalCalendarId: calendarEventId ? 'primary' : 'pending',
       intakeAnswers: {},
       location: locationTxt ? { type: 'custom', label: locationTxt } : null,
       remindersSent: [],
@@ -7382,7 +7382,7 @@ exports.apptCreateMeeting = onRequest({ cors: true, secrets: [LOANIQ_SA_KEY] }, 
       createdAt: bookedIso,
       source: 'myappointment',
       apptMeetingId: meetingId,
-      calendarEventId: nylasEventId ? String(nylasEventId) : null,
+      calendarEventId: calendarEventId ? String(calendarEventId) : null,
       autoLog: true,
     };
     const batch = db.batch();
@@ -7463,17 +7463,17 @@ exports.apptCancelMeeting = onRequest({ cors: true, secrets: [LOANIQ_SA_KEY] }, 
 
 // migrateProUsersToAppt — completed 2026-05-28, removed.
 
-// ===== Nylas v3 unified integration (calendar / email / contacts) =====
-// Serves both SWH surfaces (Scorecard + CRM) from this one backend.
-// Functions: getNylasAuthUrl, nylasCallback, getUpcomingEvents,
-// getContactThreads, getContacts, nylasWebhook, nylasFollowThroughSweep,
-// nylasStatus, nylasDisconnect. See nylas.js + NYLAS_MIGRATION.md.
+// ===== Calendar / email send-and-delete, Lola-Connect-only =====
+// Nylas fully removed 2026-08-08 (EOL'd 8/2; everything here now goes
+// through Lola Connect, no fallback). See lola-connect.js for the actual
+// send/create/delete implementations this file's endpoints call into.
 Object.assign(exports, require('./nylas'));
 
 // ============================================================
-// Lola Connect proxy (P4). Additive + flag-gated (system/lolaConnect).
-// Function: lolaConnect — service-to-service proxy to the loaniq-75a20
-// gateway. Does NOT replace nylas.js; both run until R2 retires Nylas.
+// Lola Connect proxy. Function: lolaConnect — service-to-service proxy
+// to the loaniq-75a20 gateway. Enabled for everyone since 2026-07-23;
+// nylas.js's remaining endpoints now call into this module directly
+// (Nylas itself fully removed 2026-08-08).
 // ============================================================
 Object.assign(exports, require('./lola-connect'));
 
@@ -8827,21 +8827,25 @@ exports.sendFollowThroughDigest = onSchedule({
     timeZone: 'America/Chicago', weekday: 'long', month: 'long', day: 'numeric',
   });
 
-  const grants = await db.collectionGroup('integrations')
-    .where('product', '==', 'swh-crm')
-    .where('status', '==', 'active')
-    .get();
-
+  // V1 gate: iterate ADMIN_EMAILS directly, same as runFollowThroughQueueBuild.
+  // Used to enumerate active Nylas grants first and filter down to
+  // ADMIN_EMAILS -- pointless once Nylas is gone, and fragile: it only kept
+  // working because a stale pre-EOL grant doc happened to still read
+  // 'active'. Nothing revalidates that anymore, so this would have silently
+  // stopped sending the moment that flag was ever cleared.
   let sent = 0;
-  for (const g of grants.docs) {
-    const grantData = g.data();
-    if (!ADMIN_EMAILS.includes(grantData.email)) continue; // V1 gate — mirrors buildFollowThroughQueue
+  for (const adminEmail of ADMIN_EMAILS) {
+    let uid = null;
+    try {
+      uid = (await admin.auth().getUserByEmail(adminEmail)).uid;
+    } catch (_) {
+      console.warn('[sendFollowThroughDigest] no auth user for', adminEmail);
+      continue;
+    }
 
-    const uid = g.ref.parent.parent.id;
     const userSnap = await db.doc(`users/${uid}`).get();
     const ud = userSnap.data() || {};
-    const email = ud.email || grantData.email;
-    if (!email) continue;
+    const email = ud.email || adminEmail;
 
     const settingsSnap = await db.doc(`users/${uid}/config/settings`).get();
     if (settingsSnap.data()?.followThroughDigestDisabled) continue;

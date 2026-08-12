@@ -6025,6 +6025,17 @@
     return { status: res.status, json: await res.json().catch(() => ({})) };
   }
   const _LC_PILL = "padding:6px 10px;background:var(--bg);border:1px solid var(--border);border-radius:8px;font-family:'DM Sans',sans-serif;font-size:12px;font-weight:600;color:var(--text);cursor:pointer;";
+  // Small monospace, click-to-copy account_id chip appended to the
+  // connection subtext (Austen's direction 2026-08-06, mirrors what
+  // Unipile's own console shows). Escaped since sub is set via innerHTML.
+  function _lcAccountIdChip(accountId) {
+    if (!accountId) return '';
+    const safe = escapeHtmlSC(accountId);
+    return ' <span onclick="navigator.clipboard.writeText(\'' + safe.replace(/'/g, "\\'") + '\').then(()=>window.showToast&&showToast(\'Copied account_id\'))" ' +
+      'title="Copy account_id to clipboard" ' +
+      'style="font-family:monospace;font-size:11px;color:var(--text-muted);margin-left:8px;border:1px solid var(--line,rgba(0,0,0,0.12));border-radius:6px;padding:1px 6px;cursor:pointer;">' +
+      safe + '</span>';
+  }
   window.refreshLolaConnectStatus = async function () {
     const section = document.getElementById('settings-lolaconnect-section');
     if (!section) return;
@@ -6045,11 +6056,11 @@
       const expired = !active && conns.find(c => c.status === 'credentials_expired');
       if (active) {
         _lolaConnectConnId = active.id;
-        if (sub) sub.textContent = 'Connected: ' + (active.email || 'account');
+        if (sub) sub.innerHTML = 'Connected: ' + escapeHtmlSC(active.email || 'account') + _lcAccountIdChip(active.accountId);
         if (actions) actions.innerHTML = '<button onclick="lolaConnectDisconnect()" style="' + _LC_PILL + '">Disconnect</button>';
       } else if (expired) {
         _lolaConnectConnId = expired.id;
-        if (sub) sub.textContent = 'Reconnect needed: ' + (expired.email || 'account');
+        if (sub) sub.innerHTML = 'Reconnect needed: ' + escapeHtmlSC(expired.email || 'account') + _lcAccountIdChip(expired.accountId);
         if (actions) actions.innerHTML =
           '<button onclick="lolaConnectConnect(\'' + (expired.provider === 'microsoft' ? 'microsoft' : 'google') + '\', \'' + expired.id + '\')" style="' + _LC_PILL + '">Reconnect</button>';
       } else {

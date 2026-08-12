@@ -1,102 +1,22 @@
 // ============================================================
-// NYLAS v3 UNIFIED INTEGRATION — calendar / email / contacts
+// CALENDAR / EMAIL — Lola-Connect-only (Nylas fully removed 2026-08-08)
 // ============================================================
-// Replaces the legacy gmail*/outlook* direct-OAuth functions (see
-// index.js "EMAIL INTEGRATION — Gmail OAuth"). Those stay in place until
-// this layer is live-tested with real Nylas credentials, then get retired
-// per the cutover checklist (NYLAS_MIGRATION.md).
-//
-// One swh-scoreboard Cloud Functions backend serves BOTH SWH surfaces
-// (Scorecard + CRM are hosting targets on the same Firebase project), so
-// there is ONE getNylasAuthUrl / nylasCallback, parameterized by `product`:
-//
-//   product 'scorecard' → scopes [calendar.events]
-//   product 'crm'       → scopes [email.metadata, calendar.events, contacts]
-//
-// Grant is stored per the spec at users/{uid}/integrations/nylas.
-// Grant IDs are NEVER returned to the frontend — only server code reads them.
-// A reverse-lookup doc nylasGrants/{grantId} → {uid, product} lets webhooks
-// resolve which user a notification belongs to.
-//
-// Secrets (Firebase Secret Manager — set with `firebase functions:secrets:set`):
-//   NYLAS_API_KEY  NYLAS_CLIENT_ID
-//   OAUTH_STATE_SECRET (reused from the gmail integration — signs the `state`)
-// NYLAS_CLIENT_SECRET and NYLAS_WEBHOOK_SECRET removed 2026-08-05 (Nylas
-// bleed-stop): only used by nylasCallback / nylasWebhook, both removed.
+// Was the Nylas v3 unified integration. Nylas EOL'd 2026-08-02; every
+// endpoint here now proxies straight to Lola Connect (lola-connect.js),
+// no fallback. OAuth connect/callback, the grant store at
+// users/{uid}/integrations/nylas, and the old scope-mapping tables are
+// gone -- connecting is entirely Lola Connect's own flow now (see
+// public-crm/index.html's refreshLolaConnectStatus / lolaConnectConnect).
 // ============================================================
 
 const { onRequest } = require('firebase-functions/v2/https');
-const { onSchedule } = require('firebase-functions/v2/scheduler');
 const { defineSecret } = require('firebase-functions/params');
-const crypto = require('crypto');
 const admin = require('firebase-admin');
-// Feature wiring (leg 1): LC-first email send with Nylas fallback. The module
-// exports the helper + its secret ref (needed in this function's secrets list).
 const lolaConnectModule = require('./lola-connect');
 
 // Lazily resolve Firestore — admin.initializeApp() runs in index.js before
 // this module is required, so we never touch firestore() at import time.
 const db = () => admin.firestore();
-
-// ── Secrets ──
-const NYLAS_API_KEY = defineSecret('NYLAS_API_KEY');
-const NYLAS_CLIENT_ID = defineSecret('NYLAS_CLIENT_ID');
-const OAUTH_STATE_SECRET = defineSecret('OAUTH_STATE_SECRET');
-
-// ── Constants ──
-// US data region. EU apps use https://api.eu.nylas.com — change in one place.
-const NYLAS_API_URI = 'https://api.us.nylas.com';
-// Must be registered verbatim as a redirect URI in the Nylas dashboard.
-const NYLAS_REDIRECT = 'https://us-central1-swh-scoreboard.cloudfunctions.net/nylasCallback';
-const SWH_RETURN_BASE = 'https://swh-crm.web.app';
-
-// Logical scopes stored in Firestore (match the spec's schema verbatim).
-const PRODUCT_SCOPES = {
-  scorecard: ['calendar.events'],
-  // SWH CRM only reads email (auto-logging), so request gmail.readonly /
-  // Mail.Read (least privilege for a cleaner Google verification).
-  crm: ['email.read_only', 'email.send', 'calendar.events', 'contacts'],
-};
-// product request value → Firestore `product` field value
-const PRODUCT_FIELD = {
-  scorecard: 'swh-scorecard',
-  crm: 'swh-crm',
-};
-
-// Logical scope → real provider OAuth scope. Nylas hosted auth forwards
-// these to Google / Microsoft. Keep email.metadata read-only (headers only).
-const GOOGLE_SCOPE_MAP = {
-  'calendar.events': 'https://www.googleapis.com/auth/calendar.events',
-  'email.metadata': 'https://www.googleapis.com/auth/gmail.metadata',
-  'email.read_only': 'https://www.googleapis.com/auth/gmail.readonly',
-  'email.send': 'https://www.googleapis.com/auth/gmail.send',
-  'email.modify': 'https://www.googleapis.com/auth/gmail.modify',
-  contacts: 'https://www.googleapis.com/auth/contacts',
-};
-const MICROSOFT_SCOPE_MAP = {
-  'calendar.events': 'Calendars.ReadWrite',
-  'email.metadata': 'Mail.ReadBasic',
-  'email.read_only': 'Mail.Read',
-  'email.send': 'Mail.Send',
-  'email.modify': 'Mail.ReadWrite',
-  contacts: 'Contacts.ReadWrite', // ReadWrite so the contacts push works on Outlook too
-};
-
-// ── Nylas SDK client (built per-request so secret values are available) ──
-function nylasClient() {
-  const NylasPkg = require('nylas');
-  const Nylas = NylasPkg.default || NylasPkg;
-  return new Nylas({ apiKey: NYLAS_API_KEY.value(), apiUri: NYLAS_API_URI });
-}
-
-function providerScopesFor(product, provider) {
-  const map = provider === 'microsoft' ? MICROSOFT_SCOPE_MAP : GOOGLE_SCOPE_MAP;
-  const logical = PRODUCT_SCOPES[product] || PRODUCT_SCOPES.scorecard;
-  // Functional scopes only. The Nylas connector auto-includes the required
-  // identity scopes (openid + userinfo.email/profile) and manages refresh, so
-  // passing bare openid/email/profile here is rejected as "scope_not_allowed".
-  return logical.map((s) => map[s]).filter(Boolean);
-}
 
 // ── Auth: verify Firebase ID token from Authorization: Bearer <token> ──
 async function requireAuth(req) {
@@ -121,441 +41,14 @@ function escapeHtml(s) {
   ));
 }
 
-// ── HMAC-signed `state` carrying uid + product (CSRF + binding) ──
-function signState(obj) {
-  const payload = JSON.stringify({ ...obj, ts: Date.now(), nonce: crypto.randomBytes(8).toString('hex') });
-  const sig = crypto.createHmac('sha256', OAUTH_STATE_SECRET.value()).update(payload).digest('hex').slice(0, 32);
-  return Buffer.from(payload).toString('base64url') + '.' + sig;
-}
-function verifyState(state) {
-  if (!state || typeof state !== 'string') throw new Error('Missing state');
-  const [payloadB64, sig] = state.split('.');
-  if (!payloadB64 || !sig) throw new Error('Malformed state');
-  const payload = Buffer.from(payloadB64, 'base64url').toString('utf8');
-  const expected = crypto.createHmac('sha256', OAUTH_STATE_SECRET.value()).update(payload).digest('hex').slice(0, 32);
-  if (sig !== expected) throw new Error('State signature mismatch');
-  const parsed = JSON.parse(payload);
-  if (Date.now() - parsed.ts > 30 * 60 * 1000) throw new Error('State expired');
-  return parsed; // { uid, product, ts, nonce }
-}
-
-// ── Email normalization (mirrors the gmail integration for contact matching) ──
-function normalizeEmail(raw) {
-  if (!raw) return '';
-  const trimmed = String(raw).trim().toLowerCase();
-  const angle = trimmed.match(/<([^>]+)>/);
-  const addr = angle ? angle[1] : trimmed;
-  const [local, domain] = addr.split('@');
-  if (!local || !domain) return addr;
-  return `${local.split('+')[0]}@${domain}`;
-}
-
 // ============================================================
-// 1 + 2 (per product) — OAuth: auth URL + callback
-// ============================================================
-
-// GET/POST. Body/query: { product: 'scorecard'|'crm', provider?: 'google'|'microsoft' }
-// Returns { authUrl }. Frontend redirects the browser to authUrl.
-exports.getNylasAuthUrl = onRequest(
-  { cors: true, secrets: [NYLAS_API_KEY, NYLAS_CLIENT_ID, OAUTH_STATE_SECRET] },
-  async (req, res) => {
-    try {
-      const decoded = await requireAuth(req);
-      const src = req.method === 'GET' ? req.query : req.body || {};
-      const product = src.product === 'crm' ? 'crm' : 'scorecard';
-      const provider = src.provider === 'microsoft' ? 'microsoft' : 'google';
-
-      const nylas = nylasClient();
-      const authUrl = nylas.auth.urlForOAuth2({
-        clientId: NYLAS_CLIENT_ID.value(),
-        provider,
-        redirectUri: NYLAS_REDIRECT,
-        scope: providerScopesFor(product, provider),
-        accessType: 'offline', // Google: needed so Nylas receives a refresh token
-        state: signState({ uid: decoded.uid, product }),
-      });
-      res.json({ authUrl });
-    } catch (e) {
-      console.error('[getNylasAuthUrl]', e);
-      sendErr(res, e);
-    }
-  }
-);
-
-// Nylas redirects the browser here with ?code=...&state=...
-// nylasCallback removed 2026-08-05 (Nylas bleed-stop): its only reachable
-// caller was the legacy connect widget's OAuth flow via getNylasAuthUrl,
-// which no longer starts an OAuth round-trip (see the widget's honest
-// interim-state change) -- nothing can redirect here anymore.
-
-// ============================================================
-// 3 — Calendar: next 7 days of events
-// ============================================================
-exports.getUpcomingEvents = onRequest(
-  { cors: true, secrets: [NYLAS_API_KEY] },
-  async (req, res) => {
-    try {
-      const decoded = await requireAuth(req);
-      const integration = await loadActiveGrant(decoded.uid, res);
-      if (!integration) return; // response already sent (reconnect prompt)
-
-      const now = Math.floor(Date.now() / 1000);
-      const sevenDays = now + 7 * 24 * 60 * 60;
-      const nylas = nylasClient();
-      const { data } = await nylas.events.list({
-        identifier: integration.grantId,
-        queryParams: { calendarId: 'primary', start: String(now), end: String(sevenDays), limit: 50 },
-      });
-
-      const events = (data || []).map((ev) => ({
-        id: ev.id,
-        title: ev.title || '(no title)',
-        when: ev.when || null, // { startTime, endTime } (unix) or { date }
-        location: ev.location || '',
-        participants: (ev.participants || []).map((p) => ({ name: p.name || '', email: p.email })),
-        status: ev.status || null,
-      }));
-      res.json({ events });
-    } catch (e) {
-      console.error('[getUpcomingEvents]', e);
-      await maybeFlagExpired(req, e);
-      sendErr(res, e);
-    }
-  }
-);
-
-// ============================================================
-// 4 (CRM) — Email threads filtered by a contact's email address
-// ============================================================
-exports.getContactThreads = onRequest(
-  { cors: true, secrets: [NYLAS_API_KEY] },
-  async (req, res) => {
-    try {
-      const decoded = await requireAuth(req);
-      const src = req.method === 'GET' ? req.query : req.body || {};
-      const contactEmail = normalizeEmail(src.email || '');
-      if (!contactEmail) throw new Error('Missing contact email');
-
-      const integration = await loadActiveGrant(decoded.uid, res);
-      if (!integration) return;
-
-      const nylas = nylasClient();
-      const { data } = await nylas.threads.list({
-        identifier: integration.grantId,
-        queryParams: { anyEmail: [contactEmail], limit: 20 },
-      });
-
-      const threads = (data || []).map((t) => ({
-        id: t.id,
-        subject: t.subject || '(no subject)',
-        snippet: t.snippet || '',
-        unread: !!t.unread,
-        lastMessageAt: t.latestMessageReceivedDate || t.latestMessageSentDate || null,
-        participants: (t.participants || []).map((p) => ({ name: p.name || '', email: p.email })),
-        messageCount: (t.messageIds || []).length,
-      }));
-      res.json({ threads });
-    } catch (e) {
-      console.error('[getContactThreads]', e);
-      await maybeFlagExpired(req, e);
-      sendErr(res, e);
-    }
-  }
-);
-
-// ============================================================
-// 5 (CRM) — Sync Nylas contacts into Firestore
-// ============================================================
-exports.getContacts = onRequest(
-  { cors: true, secrets: [NYLAS_API_KEY] },
-  async (req, res) => {
-    try {
-      const decoded = await requireAuth(req);
-      const uid = decoded.uid;
-      const integration = await loadActiveGrant(uid, res);
-      if (!integration) return;
-
-      const nylas = nylasClient();
-      const { data } = await nylas.contacts.list({
-        identifier: integration.grantId,
-        queryParams: { limit: 100 },
-      });
-
-      let written = 0;
-      const batch = db().batch();
-      for (const c of data || []) {
-        const primaryEmail = normalizeEmail((c.emails && c.emails[0] && c.emails[0].email) || '');
-        if (!primaryEmail) continue;
-        const ref = db().doc(`users/${uid}/nylasContacts/${c.id}`);
-        batch.set(ref, {
-          nylasContactId: c.id,
-          name: [c.givenName, c.surname].filter(Boolean).join(' ') || c.displayName || '',
-          email: primaryEmail,
-          emails: (c.emails || []).map((e) => normalizeEmail(e.email)).filter(Boolean),
-          company: c.companyName || '',
-          syncedAt: admin.firestore.FieldValue.serverTimestamp(),
-        }, { merge: true });
-        written++;
-      }
-      if (written) await batch.commit();
-      res.json({ synced: written });
-    } catch (e) {
-      console.error('[getContacts]', e);
-      await maybeFlagExpired(req, e);
-      sendErr(res, e);
-    }
-  }
-);
-
-// ============================================================
-// 6 (CRM) — Webhook handler: message.created, thread.replied
-//           + 8-Step Follow Through mapping
-// ============================================================
-// nylasWebhook removed 2026-08-05 (Nylas bleed-stop): inbound-only from
-// Nylas's own servers, and Nylas has been fully EOL'd since 8/2 -- there is
-// no longer any upstream that could ever call this. Its two handlers
-// (handleInboundMessage, handleThreadReplied -- the cadencePaused-on-reply
-// auto-log path) had no other callers, removed alongside it. Lola Connect's
-// own pull-sync (lcSyncUserEmails in lola-connect.js) is the replacement
-// mechanism for logging inbound mail going forward.
-
-// ── 8-Step rule: no reply in 7 days → Task "Follow Through needed" ──
-// This is time-based (not a webhook event), so it runs on a daily schedule.
-exports.nylasFollowThroughSweep = onSchedule(
-  { schedule: 'every day 13:00', timeZone: 'America/Chicago' },
-  async () => {
-    const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
-    // Only sweep users who have an active Nylas grant.
-    const grants = await db().collectionGroup('integrations')
-      .where('product', 'in', ['swh-crm', 'mylola'])
-      .where('status', '==', 'active')
-      .get();
-    for (const g of grants.docs) {
-      const uid = g.ref.parent.parent.id;
-      const contacts = await db().collection(`users/${uid}/contacts`).get();
-      for (const c of contacts.docs) {
-        const data = c.data();
-        // Use lastMeaningfulInteractionAt if available, fall back to lastActivityAt
-        const lastTouch = data.lastMeaningfulInteractionAt || data.lastActivityAt;
-        if (!lastTouch) continue; // never touched — skip
-        if (Date.parse(lastTouch) >= cutoff) continue; // touched recently
-        if (data.followThroughNeeded) continue;    // task already open
-        await db().doc(`users/${uid}/tasks/${c.id}`).set({
-          type: 'follow_through',
-          label: 'Follow Through needed',
-          contactId: c.id,
-          contactName: data.name || '',
-          createdAt: admin.firestore.FieldValue.serverTimestamp(),
-          status: 'open',
-        }, { merge: true });
-        await c.ref.set({ followThroughNeeded: true }, { merge: true });
-      }
-    }
-  }
-);
-
-// ============================================================
-// Status / disconnect — reconnect-prompt support
-// ============================================================
-// Refreshes grant status from Nylas; if expired, flips Firestore status so the
-// UI can surface a reconnect prompt. Returns connection summary (NO grant id).
-exports.nylasStatus = onRequest(
-  { cors: true },
-  async (req, res) => {
-    try {
-      const decoded = await requireAuth(req);
-      const snap = await db().doc(`users/${decoded.uid}/integrations/nylas`).get();
-      if (!snap.exists) return res.json({ connected: false });
-      const integration = snap.data();
-
-      // No live grant probe (removed 2026-08-05): Nylas service ended 8/2, so
-      // a probe can never again resolve to anything but failure -- it was
-      // pure wasted API traffic against a dead vendor. Trust the last-known
-      // Firestore status; self-healing an expired flag now has to happen via
-      // reconnect (Lola Connect), not a Nylas round-trip that can't succeed.
-      const status = integration.status;
-
-      res.json({
-        connected: true,
-        status,                       // 'active' | 'expired'
-        email: integration.email,
-        provider: integration.provider,
-        product: integration.product,
-        scopes: integration.scopes,
-        needsReconnect: status === 'expired',
-      });
-    } catch (e) {
-      console.error('[nylasStatus]', e);
-      sendErr(res, e);
-    }
-  }
-);
-
-exports.nylasDisconnect = onRequest(
-  { cors: true, secrets: [NYLAS_API_KEY] },
-  async (req, res) => {
-    try {
-      const decoded = await requireAuth(req);
-      const ref = db().doc(`users/${decoded.uid}/integrations/nylas`);
-      const snap = await ref.get();
-      if (snap.exists) {
-        const integration = snap.data();
-        try {
-          const nylas = nylasClient();
-          await nylas.grants.destroy({ grantId: integration.grantId });
-        } catch (revokeErr) {
-          console.warn('[nylasDisconnect] revoke failed', revokeErr.message);
-        }
-        await db().doc(`nylasGrants/${integration.grantId}`).delete().catch(() => {});
-        await ref.delete();
-      }
-      res.json({ disconnected: true });
-    } catch (e) {
-      console.error('[nylasDisconnect]', e);
-      sendErr(res, e);
-    }
-  }
-);
-
-// ============================================================
-// Contacts PUSH — SWH contact → connected account (Google or Outlook)
-// ============================================================
-// Replaces the legacy gContactsToken (Google People API) + pushContactToOutlook
-// paths. One function, both providers — Nylas routes by the grant's provider.
-// Idempotent: stores the returned nylasContactId on the SWH contact so a second
-// push updates the same provider contact instead of duplicating it.
-
-function buildNylasContactBody(c) {
-  const name = (c.name || '').trim();
-  const parts = name.split(/\s+/).filter(Boolean);
-  const body = {
-    givenName: parts[0] || name || '(no name)',
-    sourceApp: 'SWH',
-  };
-  if (parts.length > 1) body.surname = parts.slice(1).join(' ');
-  const emails = [];
-  const add = (raw) => { const a = normalizeEmail(raw); if (a) emails.push({ email: a, type: 'work' }); };
-  if (c.email) add(c.email);
-  if (Array.isArray(c.emails)) c.emails.forEach((e) => add(typeof e === 'string' ? e : (e.address || e.email)));
-  const seen = new Set();
-  const deduped = emails.filter((e) => (seen.has(e.email) ? false : seen.add(e.email)));
-  if (deduped.length) body.emails = deduped;
-  const phone = c.phone || c.phoneNumber;
-  if (phone) body.phoneNumbers = [{ number: String(phone), type: 'mobile' }];
-  if (c.company) body.companyName = c.company;
-  return body;
-}
-
-// Cross-reference the account for an existing contact: first by email, then by
-// mobile phone (last 10 digits). Catches people already saved under a different
-// or blank email. Returns the existing contact id, or null.
-async function findExistingContactId(nylas, grantId, requestBody) {
-  for (const e of (requestBody.emails || [])) {
-    try {
-      const r = await nylas.contacts.list({ identifier: grantId, queryParams: { email: e.email, limit: 1 } });
-      if (r.data && r.data.length) return r.data[0].id;
-    } catch (_) { /* keep checking */ }
-  }
-  for (const p of (requestBody.phoneNumbers || [])) {
-    const digits = String(p.number).replace(/\D/g, '').slice(-10);
-    if (digits.length < 7) continue;
-    try {
-      const r = await nylas.contacts.list({ identifier: grantId, queryParams: { phoneNumber: digits, limit: 1 } });
-      if (r.data && r.data.length) return r.data[0].id;
-    } catch (_) { /* keep checking */ }
-  }
-  return null;
-}
-
-// ⚠️ PARKED, NOT DEAD-BY-DESIGN (2026-07-29, corrected 2026-08-05):
-// pushOneContact was originally claimed to have zero callers via
-// nylasPushContact/nylasSyncContacts, "confirmed by grep across" only
-// public-crm/index.html and public-scorecard/index.html. That grep missed
-// nylas-email.js (a separately-loaded <script src>, not inline) -- which DID
-// call nylasSyncContacts, from the legacy Settings widget's live "Push my
-// network to Contacts" button. nylasPushContact genuinely had zero callers
-// anywhere (removed above). nylasSyncContacts's client call site has now
-// been removed too, as part of neutralizing that entire legacy widget
-// (Nylas fully EOL'd 8/2, every button in it was calling a dead API) --
-// so the "zero callers" claim is accurate again, just not for the reason
-// originally given. The real "Save to Contacts" UI genuinely never used
-// either: it pushes to Google People API directly (syncToGoogleContacts,
-// client-side OAuth) and to Microsoft Graph directly (pushContactToOutlook,
-// index.js — native Outlook OAuth). Contact sync was already native before
-// the EOL; this file's contact-push path was always a parallel, unused one.
-// Kept (not deleted) as field-mapping reference — buildNylasContactBody /
-// pushOneContact show how a Contact doc maps to provider fields, useful if
-// this dead code is ever revived as a real bulk-sync feature. Do not wire
-// anything new to it; if reviving, treat as a fresh build against Unipile or
-// native APIs, not a resurrection of this Nylas-specific path.
-
-// Push one contact. Returns { action: 'created'|'updated'|'skipped', id }.
-// - already pushed by us (has nylasContactId) → update, keep it in sync
-// - matches an existing Contact by email or mobile → SKIP (bypass), leave the
-//   user's existing contact untouched
-// - otherwise → create
-async function pushOneContact(nylas, grantId, ref, c) {
-  const requestBody = buildNylasContactBody(c);
-  if (c.nylasContactId) {
-    const r = await nylas.contacts.update({ identifier: grantId, contactId: c.nylasContactId, requestBody });
-    const pushed = r.data || r;
-    await ref.set({ nylasContactId: pushed.id, pushedToProviderAt: new Date().toISOString() }, { merge: true });
-    return { action: 'updated', id: pushed.id };
-  }
-  const existingId = await findExistingContactId(nylas, grantId, requestBody);
-  if (existingId) {
-    await ref.set({ existsInProvider: true, matchedProviderContactId: existingId, pushBypassedAt: new Date().toISOString() }, { merge: true });
-    return { action: 'skipped', id: existingId };
-  }
-  const r = await nylas.contacts.create({ identifier: grantId, requestBody });
-  const pushed = r.data || r;
-  await ref.set({ nylasContactId: pushed.id, pushedToProviderAt: new Date().toISOString() }, { merge: true });
-  return { action: 'created', id: pushed.id };
-}
-
-// nylasPushContact removed 2026-08-05 (Nylas bleed-stop): zero callers
-// anywhere (confirmed across public-crm/index.html, public-scorecard/index.html,
-// and nylas-email.js -- see project_native_contact_sync memory for the 7-29
-// note this corrects). pushOneContact/buildNylasContactBody/
-// findExistingContactId stay: nylasSyncContacts below still uses them, and
-// is still reachable from the legacy connect widget.
-
-// Bulk push every contact in the user's network.
-exports.nylasSyncContacts = onRequest(
-  { cors: true, timeoutSeconds: 300, memory: '512MiB', secrets: [NYLAS_API_KEY] },
-  async (req, res) => {
-    try {
-      const decoded = await requireAuth(req);
-      const integration = await loadActiveGrant(decoded.uid, res);
-      if (!integration) return;
-      const nylas = nylasClient();
-      const contacts = await db().collection(`users/${decoded.uid}/contacts`).get();
-      let pushed = 0, bypassed = 0, skipped = 0, failed = 0;
-      for (const doc of contacts.docs) {
-        const c = doc.data();
-        if (!c.email && !(Array.isArray(c.emails) && c.emails.length) && !(c.phone || c.phoneNumber)) { skipped++; continue; }
-        try {
-          const r = await pushOneContact(nylas, integration.grantId, doc.ref, c);
-          if (r.action === 'skipped') bypassed++; else pushed++;
-        } catch (e) { console.warn('[nylasSyncContacts] failed', doc.id, e.message); failed++; }
-      }
-      res.json({ ok: true, pushed, bypassed, skipped, failed, total: contacts.size });
-    } catch (e) {
-      console.error('[nylasSyncContacts]', e);
-      await maybeFlagExpired(req, e);
-      sendErr(res, e);
-    }
-  }
-);
-
-// ============================================================
-// 9 — Calendar: create / delete events on the user's primary calendar
+// Calendar: create / delete events on the user's primary calendar
 // ============================================================
 // Used by the CRM's 8-step follow-through system to schedule step reminders
 // when starting a campaign, and to remove them when stopping sync.
 // Only the user's own calendar is written — no invites are sent.
-exports.createNylasEvent = onRequest(
-  { cors: true, secrets: [NYLAS_API_KEY, lolaConnectModule.LOLA_CONNECT_SERVICE_TOKEN], invoker: 'public' },
+exports.createCalendarEvent = onRequest(
+  { cors: true, secrets: [lolaConnectModule.LOLA_CONNECT_SERVICE_TOKEN], invoker: 'public' },
   async (req, res) => {
     try {
       const decoded = await requireAuth(req);
@@ -591,13 +84,13 @@ exports.createNylasEvent = onRequest(
       }
       return res.json({ ok: true, eventId: lc.eventId, invited: attendees.length, via: 'lola-connect' });
     } catch (e) {
-      console.error('[createNylasEvent]', e);
+      console.error('[createCalendarEvent]', e);
       sendErr(res, e);
     }
   }
 );
 
-exports.deleteNylasEvent = onRequest(
+exports.deleteCalendarEvent = onRequest(
   { cors: true, secrets: [lolaConnectModule.LOLA_CONNECT_SERVICE_TOKEN], invoker: 'public' },
   async (req, res) => {
     try {
@@ -605,7 +98,7 @@ exports.deleteNylasEvent = onRequest(
       const { eventId, notify } = req.body || {};
       if (!eventId) throw new Error('Missing eventId');
 
-      // Lola Connect only (asymmetric miss fixed 2026-08-05: createNylasEvent
+      // Lola Connect only (asymmetric miss fixed 2026-08-05: createCalendarEvent
       // migrated 2026-07-28 alongside sendContactEmail, this one didn't --
       // Nylas has been dead since Aug 2, code no longer touches it here).
       const lc = await lolaConnectModule.lcTryDeleteEvent(decoded.uid, { eventId, notify });
@@ -617,72 +110,17 @@ exports.deleteNylasEvent = onRequest(
       }
       return res.json({ ok: true, via: 'lola-connect' });
     } catch (e) {
-      console.error('[deleteNylasEvent]', e);
+      console.error('[deleteCalendarEvent]', e);
       sendErr(res, e);
     }
   }
 );
 
 // ============================================================
-// Shared helpers
-// ============================================================
-
-// Load the user's active grant. If missing/expired, respond with a
-// reconnect-prompt payload and return null (caller should stop).
-async function loadActiveGrant(uid, res) {
-  const snap = await db().doc(`users/${uid}/integrations/nylas`).get();
-  if (!snap.exists) {
-    res.status(409).json({ error: 'not_connected', needsReconnect: true });
-    return null;
-  }
-  const integration = snap.data();
-  if (integration.status === 'expired') {
-    res.status(409).json({ error: 'grant_expired', needsReconnect: true });
-    return null;
-  }
-  return integration;
-}
-
-// If a Nylas call fails with auth/grant errors, flip Firestore status to
-// 'expired' so the next status check surfaces a reconnect prompt.
-async function maybeFlagExpired(req, e) {
-  const status = e.statusCode || e.status || 0;
-  if (status !== 401 && status !== 403) return;
-  // A 403 from a missing scope is NOT token expiry. Don't flag the grant.
-  // Nylas nests the provider's message (e.g. Google's "insufficient
-  // authentication scopes") in providerError while e.message is just
-  // "Forbidden" — check both, or scope errors wrongly kill the grant.
-  const errMsg = (String(e.message || e.body || '') + ' '
-    + String(e.providerError?.error?.message || '')).toLowerCase();
-  if (errMsg.includes('scope') || errMsg.includes('permission') || errMsg.includes('insufficient')) return;
-  try {
-    const header = req.headers.authorization || '';
-    const token = header.startsWith('Bearer ') ? header.slice(7) : null;
-    if (!token) return;
-    const decoded = await admin.auth().verifyIdToken(token);
-    await db().doc(`users/${decoded.uid}/integrations/nylas`).set({ status: 'expired' }, { merge: true });
-  } catch (_) { /* best effort */ }
-}
-
-// Minimal branded result page for the OAuth callback.
-function resultPage(title, body, success) {
-  const accent = success ? '#34D399' : '#A78BFA';
-  return `<!doctype html><meta charset="utf-8"><title>SWH · ${escapeHtml(title)}</title>
-<body style="font-family:'DM Sans',-apple-system,sans-serif;background:#0f1117;color:#fff;min-height:100vh;margin:0;display:flex;align-items:center;justify-content:center;padding:24px;">
-  <div style="max-width:480px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:18px;padding:32px;line-height:1.6;text-align:center;">
-    <div style="width:48px;height:48px;border-radius:50%;background:${accent};margin:0 auto 18px;"></div>
-    <h1 style="font-size:22px;font-weight:800;margin:0 0 12px;">${escapeHtml(title)}</h1>
-    <p style="color:rgba(255,255,255,0.75);font-size:14px;margin:0 0 22px;">${body}</p>
-    <a href="${SWH_RETURN_BASE}" style="display:inline-block;background:${accent};color:#0f1117;padding:11px 22px;border-radius:12px;text-decoration:none;font-weight:700;font-size:14px;">Return to SWH</a>
-  </div>
-</body>`;
-}
-
-// ============================================================
 // Direct send from the Lola Draft modal — any contact, no queue.
-// Sends via the user's connected grant and records the email on the
-// contact (Emails tab). No step/points side effects; the user marks
-// steps intentionally.
+// Sends via the user's connected Lola Connect account and records the
+// email on the contact (Emails tab). No step/points side effects; the
+// user marks steps intentionally.
 // ============================================================
 // Nylas treats `body` as HTML while our drafts are plain text — sending raw
 // text collapses every paragraph break into one blob on the recipient's end.
@@ -693,7 +131,7 @@ function textBodyToHtml(body) {
 }
 
 exports.sendContactEmail = onRequest(
-  { cors: true, secrets: [NYLAS_API_KEY, lolaConnectModule.LOLA_CONNECT_SERVICE_TOKEN], invoker: 'public' },
+  { cors: true, secrets: [lolaConnectModule.LOLA_CONNECT_SERVICE_TOKEN], invoker: 'public' },
   async (req, res) => {
     try {
       const decoded = await requireAuth(req);
@@ -780,7 +218,7 @@ exports.sendFollowThroughEmail = onRequest(
       if (!contact.email) return res.status(400).json({ error: 'Contact has no email address.' });
 
       // Lola Connect only (asymmetric miss fixed 2026-08-05: sendContactEmail
-      // migrated 2026-07-28 alongside createNylasEvent, this one -- the
+      // migrated 2026-07-28 alongside createCalendarEvent, this one -- the
       // follow-through queue's one-tap send -- did not. Nylas has been dead
       // since Aug 2; every send through this path was failing until now).
       const lc = await lolaConnectModule.lcTrySendEmail(uid, {

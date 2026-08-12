@@ -10,8 +10,9 @@
 // The Lola Connect layer (connections/email/calendar/free-busy) is owned by
 // the loaniq-75a20 monorepo; SWH consumes its API only.
 //
-// ADDITIVE + FLAG-GATED: does not touch nylas.js or the legacy Gmail/Outlook
-// sync. Retirement (R2) is a later, separate step.
+// nylas.js's remaining endpoints (calendar events, direct/queue email send)
+// call into this module directly -- Nylas itself fully removed 2026-08-08.
+// The legacy Gmail/Outlook OAuth sync is a separate, still-independent path.
 //
 // Secret (Firebase Secret Manager, set with `firebase functions:secrets:set`):
 //   LOLA_CONNECT_SERVICE_TOKEN  — the SAME value as on loaniq-75a20. Never
@@ -171,8 +172,9 @@ function buildGatewayBody(op, uid, req) {
 // ── Server-side LC consumption (feature wiring, leg 1: email send) ──────────
 // Lets OTHER swh functions send through the caller's Lola Connect connection.
 // Returns { providerEmailId } on success, or null when this user has no
-// connected LC account (caller falls back to Nylas — dual-run, nobody breaks).
-// Throws only on a genuine send failure so the caller can surface it.
+// connected LC account (caller returns a 409 lola_connect_required — no
+// Nylas fallback, Nylas is fully removed). Throws only on a genuine send
+// failure so the caller can surface it.
 async function lcTrySendEmail(uid, { to, name, subject, html }) {
   if (!(await featureAllowed(uid))) return null;
   const call = async (body) => {
@@ -204,7 +206,7 @@ async function lcTrySendEmail(uid, { to, name, subject, html }) {
 
 // ── Leg 3: calendar event via the caller's LC connection ────────────────────
 // Mirrors lcTrySendEmail: null when the user has no connected LC account
-// (caller falls back to Nylas), throws on a genuine create failure.
+// (caller returns a 409 lola_connect_required), throws on a genuine create failure.
 // Times are ISO strings; notify defaults true so attendees get real invites
 // (the layer passes it to the vendor; NOTE Outlook always notifies regardless).
 async function lcTryCreateEvent(uid, { title, startISO, endISO, description, location, attendees, notify }) {
@@ -295,13 +297,15 @@ exports.LOLA_CONNECT_SERVICE_TOKEN = LOLA_CONNECT_SERVICE_TOKEN;
 // ── Leg 2: email auto-log via LC pull-sync ──────────────────────────────────
 // Every 15 minutes, for each SWH user with a connected LC account, pull new
 // mail and log it onto matched contacts' timelines — the LC replacement for
-// the Nylas webhook auto-log. Same doc shape as the legacy writers, with
-// source:'lola-connect' and lc_-prefixed ids.
+// the old Nylas webhook auto-log (removed 2026-08-05). Same doc shape as the
+// legacy writers, with source:'lola-connect' and lc_-prefixed ids.
 //
-// Double-log guard: the Nylas webhook (live until R2) logs the same mail for
-// users with a working grant, under a DIFFERENT doc id. Before writing, we
-// skip any message whose (sentAt, direction) already exists on that contact —
-// cheap contact-scoped equality query, no cross-stack id mapping needed.
+// Double-log guard: while the Nylas webhook was still live, it logged the
+// same mail under a DIFFERENT doc id for users with a working grant. Before
+// writing, skip any message whose (sentAt, direction) already exists on that
+// contact — cheap contact-scoped equality query, no cross-stack id mapping
+// needed. Kept post-removal so old webhook-logged history never double-counts
+// if a re-sync ever revisits the same window.
 
 const normEmail = (e) => String(e || '').trim().toLowerCase();
 

@@ -1821,14 +1821,9 @@ html.dark-theme .lola-review .lr-text{color:#C4B5FD;}
           <div class="content-pad" style="padding-top:12px;">
             <div class="more-layout">
               <div>
-                <!-- ===== EMAIL, CALENDAR & CONTACTS (NYLAS) ===== -->
+                <!-- ===== EMAIL, CALENDAR & CONTACTS ===== -->
                 <div class="st-sect-head" style="margin-top:0">Email, Calendar &amp; Contacts</div>
-                <!-- Legacy connect card: shown ONLY to users who are NOT Lola Connect
-                     beta-enabled. refreshLolaConnectStatus toggles it (hidden for beta users
-                     who get the Lola Connect card; revealed for everyone else until the flag
-                     flip). Default hidden to avoid a flash for beta users. -->
-                <div id="nylas-connect-mount" style="margin-bottom:14px;display:none;"></div>
-                <!-- LOLA CONNECT (P4 beta) — hidden until backend enables the user -->
+                <!-- LOLA CONNECT — hidden until backend enables the user (enabled for everyone since 2026-07-23) -->
                 <div class="settings-card" id="settings-lolaconnect-card" style="display:none;margin-bottom:14px;">
                   <div class="settings-row" id="settings-lolaconnect-row">
                     <div class="sr-left">
@@ -4601,10 +4596,9 @@ async function deletePlaybook(id) {
 // ── STATE ──
 let currentUser = null;
 
-// ── Lola Connect (P4) — email/calendar via the loaniq gateway, through the
-// swh-scoreboard /lolaConnect proxy. Additive + flag-gated: the settings card
-// stays hidden unless the proxy reports this user is beta-enabled
-// (system/lolaConnect). The legacy Nylas UI is untouched and stays primary.
+// ── Lola Connect — email/calendar via the loaniq gateway, through the
+// swh-scoreboard /lolaConnect proxy. The only connect path now that Nylas
+// is fully removed (enabled for everyone since 2026-07-23).
 let _lolaConnectConnId = null;
 async function _lolaConnectCall(op, body) {
   const token = await currentUser?.getIdToken();
@@ -4616,12 +4610,16 @@ async function _lolaConnectCall(op, body) {
   return { status: res.status, json: await res.json().catch(() => ({})) };
 }
 const _LC_PILL = "padding:6px 10px;background:var(--bg);border:1px solid var(--border);border-radius:8px;font-family:'DM Sans',sans-serif;font-size:12px;font-weight:600;color:var(--navy);cursor:pointer;";
-// Show/hide the legacy connect card (nylas-connect-mount). Coupled to the flag:
-// beta users (who get the Lola Connect card) don't see it; everyone else does,
-// so no one loses their email/calendar connect UI before the flag flip.
-function _lcLegacy(show) {
-  const m = document.getElementById('nylas-connect-mount');
-  if (m) m.style.display = show ? '' : 'none';
+// Small monospace, click-to-copy account_id chip appended to the
+// connection subtext (Austen's direction 2026-08-06, mirrors what
+// Unipile's own console shows). Escaped since sub is set via innerHTML.
+function _lcAccountIdChip(accountId) {
+  if (!accountId) return '';
+  const safe = escapeHtmlCRM(accountId);
+  return ' <span onclick="navigator.clipboard.writeText(\'' + safe.replace(/'/g, "\\'") + '\').then(()=>window.showToast&&showToast(\'Copied account_id\'))" ' +
+    'title="Copy account_id to clipboard" ' +
+    'style="font-family:monospace;font-size:11px;color:var(--muted);margin-left:8px;border:1px solid var(--line,rgba(0,0,0,0.12));border-radius:6px;padding:1px 6px;cursor:pointer;">' +
+    safe + '</span>';
 }
 window.refreshLolaConnectStatus = async function () {
   const card = document.getElementById('settings-lolaconnect-card');
@@ -4630,13 +4628,8 @@ window.refreshLolaConnectStatus = async function () {
   const actions = document.getElementById('settings-lolaconnect-actions');
   try {
     const { status, json } = await _lolaConnectCall('connections.list');
-    if (status === 403) { card.style.display = 'none'; _lcLegacy(true); return; } // not enabled → keep legacy
+    if (status === 403) { card.style.display = 'none'; window.__lcConnected = false; crmEmailConnected = false; return; } // not enabled for this user
     card.style.display = '';
-    // Release-to-everyone (2026-07-22): BOTH cards show. Lola Connect is the
-    // connect path going forward, but auto-log/send/calendar still consume the
-    // Nylas connection until the feature wiring lands — hiding the legacy card
-    // here is what stranded new users on 7-19. Re-couple only at R2 (Nylas retire).
-    _lcLegacy(true);
     const conns = (json.result && json.result.connections) || [];
     const active = conns.find(c => c.status === 'connected');
     // credentials_expired is a REAL, RECOVERABLE connection — not "no
@@ -4650,13 +4643,15 @@ window.refreshLolaConnectStatus = async function () {
     // reconnectConnectionId in core/operations.ts's startConnect; it was
     // just never being told to use it).
     const expired = !active && conns.find(c => c.status === 'credentials_expired');
+    window.__lcConnected = !!active;
+    crmEmailConnected = !!active;
     if (active) {
       _lolaConnectConnId = active.id;
-      if (sub) sub.textContent = 'Connected: ' + (active.email || 'account');
+      if (sub) sub.innerHTML = 'Connected: ' + escapeHtmlCRM(active.email || 'account') + _lcAccountIdChip(active.accountId);
       if (actions) actions.innerHTML = '<button onclick="lolaConnectDisconnect()" style="' + _LC_PILL + '">Disconnect</button>';
     } else if (expired) {
       _lolaConnectConnId = expired.id;
-      if (sub) sub.textContent = 'Reconnect needed: ' + (expired.email || 'account');
+      if (sub) sub.innerHTML = 'Reconnect needed: ' + escapeHtmlCRM(expired.email || 'account') + _lcAccountIdChip(expired.accountId);
       if (actions) actions.innerHTML =
         '<button onclick="lolaConnectConnect(\'' + (expired.provider === 'microsoft' ? 'microsoft' : 'google') + '\', \'' + expired.id + '\')" style="' + _LC_PILL + '">Reconnect</button>';
     } else {
@@ -4667,7 +4662,7 @@ window.refreshLolaConnectStatus = async function () {
         '<button onclick="lolaConnectConnect(\'microsoft\')" style="' + _LC_PILL + '">Outlook</button>' +
         '<button onclick="lolaConnectConnect(\'imap\')" style="' + _LC_PILL + '">IMAP</button>';
     }
-  } catch (e) { console.warn('[lolaConnect] status failed:', e.message); _lcLegacy(true); }
+  } catch (e) { console.warn('[lolaConnect] status failed:', e.message); }
 };
 window.lolaConnectConnect = async function (provider, reconnectConnectionId) {
   const actions = document.getElementById('settings-lolaconnect-actions');
@@ -4890,11 +4885,6 @@ async function _onCrmSignedIn(user) {
   }
   if (typeof refreshSettingsSubLabelsCRM === 'function') refreshSettingsSubLabelsCRM();
   loadThemePref();
-  if (window.SWHNylasEmail) {
-    SWHNylasEmail.config.getToken = () => currentUser?.getIdToken();
-    const nylasEl = document.getElementById('nylas-connect-mount');
-    if (nylasEl) SWHNylasEmail.mountConnect(nylasEl);
-  }
   setDoc(doc(db, 'users', user.uid), { lastSeenAt: new Date().toISOString() }, { merge: true }).catch(() => {});
   if (userPlan === 'pro') {
     NativeAPI.call('enrollOnboardingDrip', {}).catch(() => {});
@@ -5455,30 +5445,15 @@ async function initUser() {
     window._crmBareAccount = isNativeEarly && !window._crmProfileOk && !_ps.phone
       && userPlan !== 'pro' && userPlan !== 'scorecard' && userPlan !== 'trial';
   } catch(e) { console.log('[crm] config/settings load failed:', e.message); window._crmProfileOk = true; window._crmBareAccount = false; }
-  // Load Nylas connection status for calendar (non-blocking)
+  // Real Lola Connect status for email/calendar features. Replaces the old
+  // legacy-Nylas-doc read (users/{uid}/integrations/nylas) -- that doc is
+  // stale now that Nylas is fully removed and never gets rewritten.
   try {
-    const ns = await getDoc(doc(db,'users',currentUser.uid,'integrations','nylas'));
-    crmNylasConnected = ns.exists() && ns.data().status === 'active';
-    // Doc says expired but a grant exists → probe nylasStatus, which live-checks
-    // the grant against Nylas and self-heals a wrongly-flagged doc.
-    if (ns.exists() && !crmNylasConnected) {
-      (async () => {
-        try {
-          const tok = await lolaIdToken();
-          const r = await fetch(`${NYLAS_FN}/nylasStatus`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${tok}` },
-            body: '{}',
-          });
-          const s = await r.json();
-          if (s && s.connected && s.status === 'active') {
-            crmNylasConnected = true;
-            console.log('[nylas] status self-healed to active');
-          }
-        } catch (_) { /* non-fatal */ }
-      })();
-    }
-  } catch(_) {}
+    const { json } = await _lolaConnectCall('connections.list');
+    const conns = (json.result && json.result.connections) || [];
+    window.__lcConnected = conns.some(c => c.status === 'connected');
+  } catch (_) { window.__lcConnected = false; }
+  crmEmailConnected = window.__lcConnected;
 }
 
 // ── LOAD ALL DATA ──
@@ -5843,9 +5818,31 @@ function detectWastedHandshakes() {
     if (lastActivity && daysBetween(lastActivity,now) > THRESHOLDS.noContactTouch) wasted = true;
     // Next touch already on the calendar and not yet due → not stalled.
     if (bookedAhead.has(c.id)) wasted = false;
+    // Manually ignored (Austen 2026-08-07): "sometimes handshakes are wasted
+    // by design." wastedIgnoredSnapshot records the addedAt/lastActivityAt
+    // value at the moment it was ignored — if nothing has happened on the
+    // contact since, stay suppressed; if there's been new activity and it
+    // later goes stale again, that's a new episode and should re-flag.
+    if (c.wastedIgnoredSnapshot && c.wastedIgnoredSnapshot === (c.lastActivityAt || c.addedAt || null)) wasted = false;
     c.wasted = wasted;
   });
 }
+
+window.ignoreWastedHandshake = async function(contactId) {
+  const c = CONTACTS.find(x => x.id === contactId);
+  if (!c || !currentUser) return;
+  const snapshot = c.lastActivityAt || c.addedAt || null;
+  c.wastedIgnoredSnapshot = snapshot;
+  detectWastedHandshakes();
+  renderTasks();
+  renderDashboard();
+  try {
+    await updateDoc(doc(db,'users',currentUser.uid,'contacts',contactId), { wastedIgnoredSnapshot: snapshot });
+  } catch (e) {
+    console.warn('[ignoreWastedHandshake] write failed:', e.message);
+    if (typeof showToast === 'function') showToast('Could not save — try again');
+  }
+};
 
 // ── 8-STEP CLOCK ──
 // Due-date schedule is now per-playbook (May 2026). Contacts without an
@@ -7918,10 +7915,15 @@ function renderTasks() {
   });
   if (pendingQueue.length > 0) {
     html += `<div class="task-grp-lbl" style="color:#5B5BD6;">✨ Morning Queue <span class="cnt-badge">${pendingQueue.length}</span></div>`;
+    // The queue itself is independent of Lola Connect (drafting only needs an
+    // admin account, see runFollowThroughQueueBuild) -- only the one-tap Send
+    // needs a live connection. No connection: Send is greyed out, Copy always
+    // works so the draft is never stranded.
+    const sendReady = !!window.__lcConnected;
     pendingQueue.forEach(q => {
       const contactObj = CONTACTS.find(c => c.id === q.contactId);
       const accent = contactObj ? rowAccent(contactObj) : '';
-      html += `<div class="task-row" id="ftq-row-${q.id}" style="${accent}"><div class="task-dot" style="background:#5B5BD6;"></div><div style="flex:1;min-width:0;"><div class="task-name task-name-link" onclick="event.stopPropagation();toggleTaskExpand('${q.contactId}', this)" title="Open profile">${escapeHtmlCRM(q.contactName)}${contactObj ? sPill(contactObj) : ''}</div><div class="task-meta">${escapeHtmlCRM(q.stepName)}${q.kind === 'thankyou' ? ' · after your 1:1' : ' · Step ' + ((q.stepIndex||0)+1)}${q.contactEmail ? '' : ' · <span style="color:var(--red);">no email on file</span>'}</div><div id="ftq-body-${q.id}" style="margin-top:6px;font-size:12px;color:var(--text);background:var(--bg);border-radius:8px;padding:8px 10px;border:1px solid var(--border);white-space:pre-wrap;line-height:1.5;">${escapeHtmlCRM(q.draftBody||'')}</div><div id="ftq-edit-${q.id}" style="display:none;margin-top:6px;"><input id="ftq-subj-${q.id}" type="text" value="${escapeHtmlCRM(q.draftSubject||'')}" placeholder="Subject" style="width:100%;padding:6px 9px;border:1.5px solid var(--border);border-radius:7px;font-size:12px;font-family:'DM Sans',sans-serif;margin-bottom:6px;box-sizing:border-box;background:var(--bg);color:var(--navy);"><textarea id="ftq-ta-${q.id}" rows="5" style="width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:7px;font-size:12px;font-family:'DM Sans',sans-serif;resize:vertical;box-sizing:border-box;background:var(--bg);color:var(--navy);">${escapeHtmlCRM(q.draftBody||'')}</textarea></div></div><div style="display:flex;flex-direction:column;gap:5px;flex-shrink:0;align-items:flex-end;padding-left:8px;"><button onclick="event.stopPropagation();ftqSend('${q.id}')" style="padding:5px 11px;border-radius:7px;border:none;background:linear-gradient(135deg,#5B5BD6,#A78BFA);color:#fff;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;">Send</button><button onclick="event.stopPropagation();ftqToggleEdit('${q.id}')" id="ftq-edit-btn-${q.id}" style="padding:5px 11px;border-radius:7px;border:1px solid var(--border);background:var(--card);color:var(--navy);font-size:11px;font-weight:700;cursor:pointer;">Edit</button><button onclick="event.stopPropagation();ftqRegenerate('${q.id}')" style="padding:5px 11px;border-radius:7px;border:1px solid #5B5BD6;background:var(--card);color:#5B5BD6;font-size:11px;font-weight:700;cursor:pointer;">Regenerate</button><button onclick="event.stopPropagation();openFtqSnooze('${q.id}')" style="padding:5px 11px;border-radius:7px;border:1px solid var(--border);background:var(--card);color:var(--muted);font-size:11px;font-weight:700;cursor:pointer;">Snooze</button><button onclick="event.stopPropagation();ftqDismiss('${q.id}')" style="padding:5px 11px;border-radius:7px;border:1px solid var(--border);background:var(--card);color:var(--muted);font-size:11px;font-weight:700;cursor:pointer;">Dismiss</button></div></div>`;
+      html += `<div class="task-row" id="ftq-row-${q.id}" style="${accent}"><div class="task-dot" style="background:#5B5BD6;"></div><div style="flex:1;min-width:0;"><div class="task-name task-name-link" onclick="event.stopPropagation();toggleTaskExpand('${q.contactId}', this)" title="Open profile">${escapeHtmlCRM(q.contactName)}${contactObj ? sPill(contactObj) : ''}</div><div class="task-meta">${escapeHtmlCRM(q.stepName)}${q.kind === 'thankyou' ? ' · after your 1:1' : ' · Step ' + ((q.stepIndex||0)+1)}${q.contactEmail ? '' : ' · <span style="color:var(--red);">no email on file</span>'}${sendReady ? '' : ' · <span style="color:#5B5BD6;">connect email to send</span>'}</div><div id="ftq-body-${q.id}" style="margin-top:6px;font-size:12px;color:var(--text);background:var(--bg);border-radius:8px;padding:8px 10px;border:1px solid var(--border);white-space:pre-wrap;line-height:1.5;">${escapeHtmlCRM(q.draftBody||'')}</div><div id="ftq-edit-${q.id}" style="display:none;margin-top:6px;"><input id="ftq-subj-${q.id}" type="text" value="${escapeHtmlCRM(q.draftSubject||'')}" placeholder="Subject" style="width:100%;padding:6px 9px;border:1.5px solid var(--border);border-radius:7px;font-size:12px;font-family:'DM Sans',sans-serif;margin-bottom:6px;box-sizing:border-box;background:var(--bg);color:var(--navy);"><textarea id="ftq-ta-${q.id}" rows="5" style="width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:7px;font-size:12px;font-family:'DM Sans',sans-serif;resize:vertical;box-sizing:border-box;background:var(--bg);color:var(--navy);">${escapeHtmlCRM(q.draftBody||'')}</textarea></div></div><div style="display:flex;flex-direction:column;gap:5px;flex-shrink:0;align-items:flex-end;padding-left:8px;"><button onclick="event.stopPropagation();ftqSend('${q.id}')" ${sendReady ? '' : 'disabled title="Connect your email in Settings to send"'} style="padding:5px 11px;border-radius:7px;border:none;background:${sendReady ? 'linear-gradient(135deg,#5B5BD6,#A78BFA)' : 'var(--bg)'};color:${sendReady ? '#fff' : 'var(--muted)'};font-size:11px;font-weight:700;cursor:${sendReady ? 'pointer' : 'not-allowed'};white-space:nowrap;opacity:${sendReady ? '1' : '0.6'};">Send</button><button onclick="event.stopPropagation();ftqCopy('${q.id}')" style="padding:5px 11px;border-radius:7px;border:1px solid var(--border);background:var(--card);color:var(--navy);font-size:11px;font-weight:700;cursor:pointer;">Copy</button><button onclick="event.stopPropagation();ftqToggleEdit('${q.id}')" id="ftq-edit-btn-${q.id}" style="padding:5px 11px;border-radius:7px;border:1px solid var(--border);background:var(--card);color:var(--navy);font-size:11px;font-weight:700;cursor:pointer;">Edit</button><button onclick="event.stopPropagation();ftqRegenerate('${q.id}')" style="padding:5px 11px;border-radius:7px;border:1px solid #5B5BD6;background:var(--card);color:#5B5BD6;font-size:11px;font-weight:700;cursor:pointer;">Regenerate</button><button onclick="event.stopPropagation();openFtqSnooze('${q.id}')" style="padding:5px 11px;border-radius:7px;border:1px solid var(--border);background:var(--card);color:var(--muted);font-size:11px;font-weight:700;cursor:pointer;">Snooze</button><button onclick="event.stopPropagation();ftqDismiss('${q.id}')" style="padding:5px 11px;border-radius:7px;border:1px solid var(--border);background:var(--card);color:var(--muted);font-size:11px;font-weight:700;cursor:pointer;">Dismiss</button></div></div>`;
     });
   }
 
@@ -8025,7 +8027,7 @@ function renderTasks() {
   if(wasted.length>0) {
     html+=`<div class="task-grp-lbl" style="color:var(--red);">🔴 Wasted Handshakes <span class="cnt-badge">${wasted.length}</span></div>`;
     wasted.forEach(c=>{
-      html+=`<div class="task-row wasted" onclick="toggleTaskExpand('${c.id}', this)"><div class="task-dot" style="background:var(--red);"></div><div style="flex:1;"><div class="task-name">${c.name} ⚠️</div><div class="task-meta">${c.company||'—'} · needs attention</div></div><div class="task-chip" style="background:#fdecea;color:var(--red);">Stalled</div></div>`;
+      html+=`<div class="task-row wasted" onclick="toggleTaskExpand('${c.id}', this)"><div class="task-dot" style="background:var(--red);"></div><div style="flex:1;"><div class="task-name">${c.name} ⚠️</div><div class="task-meta">${c.company||'—'} · needs attention</div></div><div style="display:flex;gap:5px;align-items:center;"><div class="task-chip" style="background:#fdecea;color:var(--red);">Stalled</div><button onclick="event.stopPropagation();ignoreWastedHandshake('${c.id}')" title="Not every stall needs fixing — accept this one and stop flagging it" style="padding:4px 8px;border-radius:7px;border:1px solid var(--border);background:var(--card);color:var(--navy);font-size:11px;font-weight:700;cursor:pointer;">Ignore</button></div></div>`;
     });
   }
 
@@ -9237,7 +9239,7 @@ window.setSaMode = function(mode) {
   show('sa-meeting-sub',   'block', meeting);
   show('sa-booking-row',   'block', meeting && !!_saBookingUrl);
   show('sa-invite-row',    'flex',  meeting && _saCanInvite);
-  show('sa-calendar-hint', 'block', !meeting && crmNylasConnected);
+  show('sa-calendar-hint', 'block', !meeting && crmEmailConnected);
 
   const titleEl = document.getElementById('sa-modal-title');
   if (titleEl) titleEl.textContent = meeting ? 'Schedule a Meeting' : 'Schedule Activity';
@@ -9247,7 +9249,7 @@ window.setSaMode = function(mode) {
     const inviteOn = meeting && _saCanInvite && document.getElementById('sa-invite-check')?.checked;
     btn.textContent = meeting
       ? (inviteOn ? '📨 Schedule + Send Invite' : '🤝 Schedule Meeting')
-      : (crmNylasConnected ? '📅 Schedule + Add to Calendar' : 'Schedule');
+      : (crmEmailConnected ? '📅 Schedule + Add to Calendar' : 'Schedule');
   }
 };
 
@@ -9281,7 +9283,7 @@ window.openScheduleActivityModal = function(contactId) {
   // Mode setup: real meeting (invite + MyAppointment record) vs internal plan
   _saBookingUrl = apptBookingUrl();
   if (!_saBookingUrl && !apptUserSlug) loadApptData().catch(() => {}); // transient load miss — retry for next open
-  _saCanInvite = !!(crmNylasConnected && c.email);
+  _saCanInvite = !!(crmEmailConnected && c.email);
   const bookSub = document.getElementById('sa-booking-sub');
   if (_saBookingUrl && bookSub) {
     const first = (c.name || '').split(' ')[0] || 'them';
@@ -9332,13 +9334,11 @@ window.saveScheduleActivity = async function() {
   try {
     // 1) Calendar event first (its id feeds the MyAppointment record) —
     //    optionally inviting the contact
-    let inviteSent = false, nylasEventId = null;
+    let inviteSent = false, calendarEventId = null;
     {
-      // No client-side connected-gate here (2026-07-29): crmNylasConnected
-      // reflects Nylas only, and the server no longer falls back to Nylas —
-      // gating the fetch on it silently skipped the calendar write for any
-      // LC-only user, the same "looks scheduled, isn't" bug Austen hit
-      // before. Always attempt; the server routes LC-or-409 correctly.
+      // No client-side connected-gate here: crmEmailConnected is a session
+      // snapshot and can lag a fresh connect/disconnect. Always attempt;
+      // the server is the actual authority and routes LC-or-409 correctly.
       try {
         const token = await currentUser.getIdToken();
         const startUnix = Math.floor(new Date(startTime).getTime() / 1000);
@@ -9354,14 +9354,14 @@ window.saveScheduleActivity = async function() {
         if (whereTxt) evBody.location = whereTxt;
         if (note && !isMeeting) evBody.description = note; // notes are internal; never sent to the contact
         if (invite) evBody.participants = [{ email: c.email, name: c.name || '' }];
-        const resp = await fetch(`${NYLAS_FN}/createNylasEvent`, {
+        const resp = await fetch(`${CRM_FUNCTIONS_BASE}/createCalendarEvent`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
           body: JSON.stringify(evBody),
         });
         if (resp.ok) {
           const ev = await resp.json();
-          nylasEventId = ev.eventId || null;
+          calendarEventId = ev.eventId || null;
           inviteSent = invite && (ev.invited || 0) > 0;
         } else {
           const j = await resp.json().catch(() => ({}));
@@ -9390,7 +9390,7 @@ window.saveScheduleActivity = async function() {
             contactId,
             startISO: new Date(startTime).toISOString(),
             durationMins,
-            nylasEventId,
+            calendarEventId,
             location: whereTxt,
             timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
           }),
@@ -9423,7 +9423,7 @@ window.saveScheduleActivity = async function() {
         label: `${activityName} with ${c.name}`,
         status: 'open',
         createdAt: new Date().toISOString(),
-        calendarEventId: nylasEventId,
+        calendarEventId,
       };
       await setDoc(doc(db, 'users', currentUser.uid, 'tasks', taskId), taskData);
       RELATIONSHIP_TASKS.push({ id: taskId, ...taskData });
@@ -9497,7 +9497,7 @@ window.deleteScheduledActivity = async function(taskId, contactId, opts) {
       // Pull the calendar event too; notify sends the attendee the
       // provider's standard cancellation email
       if (t.calendarEventId) {
-        fetch(`${NYLAS_FN}/deleteNylasEvent`, {
+        fetch(`${CRM_FUNCTIONS_BASE}/deleteCalendarEvent`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
           body: JSON.stringify({ eventId: t.calendarEventId, notify: true }),
@@ -9919,21 +9919,12 @@ function neDraftShowError(err) {
   document.getElementById('ne-draft-spinner').style.display = 'block';
 }
 
-// ── Direct send via the user's connected email (Nylas grant) ───────────
+// ── Direct send via the user's connected Lola Connect account ───────────
 let _lolaSendReady = null; // session cache: null unknown, true/false known
 async function primeSendAvailability() {
-  if (_lolaSendReady === null) {
-    try {
-      const tok = await lolaIdToken();
-      const r = await fetch(`${CRM_FUNCTIONS_BASE}/nylasStatus`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${tok}` },
-        body: '{}',
-      });
-      const s = await r.json();
-      _lolaSendReady = !!(s && s.connected && s.status === 'active');
-    } catch (_) { _lolaSendReady = false; }
-  }
+  // window.__lcConnected is refreshed at boot and whenever
+  // refreshLolaConnectStatus() runs -- no separate network call needed here.
+  _lolaSendReady = !!window.__lcConnected;
   updateSendBtn();
 }
 
@@ -12015,7 +12006,7 @@ window.ftqSend = async function(docId) {
 
   try {
     const token = await currentUser.getIdToken();
-    const resp = await fetch(`${NYLAS_FN}/sendFollowThroughEmail`, {
+    const resp = await fetch(`${CRM_FUNCTIONS_BASE}/sendFollowThroughEmail`, {
       method: 'POST',
       headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
       body: JSON.stringify({ docId, contactId: q.contactId, stepIndex: q.stepIndex, kind: q.kind, subject, body }),
@@ -12042,6 +12033,27 @@ window.ftqSend = async function(docId) {
     console.error('[ftqSend]', e);
     if (btn) { btn.disabled = false; btn.textContent = 'Send'; }
     showToast('Send failed: ' + (e.message || 'unknown error'), true);
+  }
+};
+
+// Copy a queued draft to the clipboard so a user without a Lola Connect
+// connection can still act on it -- paste into their own email client.
+// Reads any live edit in the textarea/subject input first, same as ftqSend,
+// so what you copy matches what you're looking at, not the stale original.
+window.ftqCopy = async function(docId) {
+  const q = FOLLOW_THROUGH_QUEUE.find(x => x.id === docId);
+  if (!q) return;
+  const editArea = document.getElementById(`ftq-ta-${docId}`);
+  const subjInput = document.getElementById(`ftq-subj-${docId}`);
+  const body = editArea ? editArea.value.trim() : (q.draftBody || '');
+  const subject = subjInput ? subjInput.value.trim() : (q.draftSubject || '');
+  const text = subject ? `Subject: ${subject}\n\n${body}` : body;
+  try {
+    await navigator.clipboard.writeText(text);
+    showToast('Copied to clipboard');
+  } catch (e) {
+    console.error('[ftqCopy]', e);
+    showToast('Copy failed: ' + (e.message || 'unknown error'), true);
   }
 };
 
@@ -12229,9 +12241,7 @@ window.resumeCadence = async function(contactId) {
 let gcalToken = null;
 let calendarHour = 7; // Default 7:00 AM
 let calendarAutoAdd = false; // Loaded from config/settings — controls auto-add on campaign start
-let crmNylasConnected = false; // Loaded at boot from users/{uid}/integrations/nylas
-
-const NYLAS_FN = 'https://us-central1-swh-scoreboard.cloudfunctions.net';
+let crmEmailConnected = false; // Real Lola Connect status, refreshed at boot
 
 // Convert a YYYY-MM-DD date + hour (0-23) to a Unix timestamp (seconds).
 function dateHourToUnix(dateStr, hour) {
@@ -12305,7 +12315,7 @@ function initTokenClient(resolve) {
 async function addStepsToCalendar(contact) {
   const clockStart = contact.clockStarted;
   if(!clockStart) { showToast('⚠️ Start the clock first'); return; }
-  if(!crmNylasConnected) {
+  if(!crmEmailConnected) {
     showToast('⚠️ Connect Google Calendar in Settings to auto-schedule steps');
     return;
   }
@@ -12319,7 +12329,7 @@ async function addStepsToCalendar(contact) {
     const startTime = dateHourToUnix(dueDate, calendarHour);
     const title = `SWH Step ${i+1}: ${STEP_NAMES[i]} (${contact.name})`;
     try {
-      const res = await fetch(`${NYLAS_FN}/createNylasEvent`, {
+      const res = await fetch(`${CRM_FUNCTIONS_BASE}/createCalendarEvent`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ title, startTime, endTime: startTime + 1800 }),
@@ -12621,13 +12631,13 @@ window.saveWeeklyEmailSettings = async function() {
 window.toggleCalendarSync = async function(contactId) {
   const c = CONTACTS.find(x=>x.id===contactId);
   if(!c) return;
-  if(!crmNylasConnected) { showToast('⚠️ Connect Google Calendar in Settings first'); return; }
+  if(!crmEmailConnected) { showToast('⚠️ Connect Google Calendar in Settings first'); return; }
   const btn = document.getElementById(`gcal-btn-${contactId}`);
   let token;
   try { token = await currentUser?.getIdToken(); } catch(e) { showToast('⚠️ Sign-in required'); return; }
 
   if(c.calendarSynced && c.calendarEventIds?.length) {
-    // STOP SYNC — delete via Nylas. Deletes everything tracked in the
+    // STOP SYNC — delete via Lola Connect. Deletes everything tracked in the
     // step-indexed map (calendarStepEventIds), not just the flat display
     // array, so nothing merged in from a prior run is left orphaned.
     if(btn) { btn.textContent = '⏳ Stopping…'; btn.disabled = true; }
@@ -12635,7 +12645,7 @@ window.toggleCalendarSync = async function(contactId) {
     const idsToDelete = Object.values(c.calendarStepEventIds || {});
     for(const eventId of (idsToDelete.length ? idsToDelete : c.calendarEventIds)) {
       try {
-        const res = await fetch(`${NYLAS_FN}/deleteNylasEvent`, {
+        const res = await fetch(`${CRM_FUNCTIONS_BASE}/deleteCalendarEvent`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
           body: JSON.stringify({ eventId }),
@@ -12651,7 +12661,7 @@ window.toggleCalendarSync = async function(contactId) {
     showToast(`✅ Removed ${deleted} steps from Google Calendar`);
 
   } else {
-    // RUN SYNC — add via Nylas, skip completed steps AND steps that already
+    // RUN SYNC — add via Lola Connect, skip completed steps AND steps that already
     // have a tracked event (calendarStepEventIds, keyed by step index).
     // Previously this re-created every not-done step's event on every Run
     // with no per-step memory, and wrote a FULL OVERWRITE of the flat
@@ -12676,7 +12686,7 @@ window.toggleCalendarSync = async function(contactId) {
       const startTime = dateHourToUnix(dueDate, calendarHour);
       const title = `SWH Step ${i+1}: ${STEP_NAMES[i]} (${c.name})`;
       try {
-        const res = await fetch(`${NYLAS_FN}/createNylasEvent`, {
+        const res = await fetch(`${CRM_FUNCTIONS_BASE}/createCalendarEvent`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
           body: JSON.stringify({ title, startTime, endTime: startTime + 1800 }),
@@ -13155,8 +13165,9 @@ window.showActionableToast = function(msg, actionLabel, onClick) {
   t._t = setTimeout(() => t.classList.remove('show'), 8000); // longer — there's an action to take
 };
 
-// Shared response for the LC-required 409 (sendContactEmail, createNylasEvent
-// as of 2026-07-29). Jumps to Settings and scrolls to the Lola Connect card.
+// Shared response for the LC-required 409 (sendContactEmail, createCalendarEvent,
+// deleteCalendarEvent, sendFollowThroughEmail). Jumps to Settings and scrolls
+// to the Lola Connect card.
 window.promptLolaConnectRequired = function(msg) {
   showActionableToast(msg || 'Connect your email to restore this.', 'Connect', () => {
     if (window.showScreen) showScreen('settings');
@@ -13904,13 +13915,13 @@ window.loadEmailsPanel = async function(contactId) {
 function renderEmailsPanel(panel, contactId, emails) {
   const contact = CONTACTS.find(c => c.id === contactId);
   const contactEmail = contact?.email || '';
-  const hasGmail = _gmailStatus?.connected || window.__nylasConnected;
+  const hasGmail = _gmailStatus?.connected || window.__lcConnected;
   let header = '';
   if (!hasGmail) {
     header = `<div style="background:rgba(91,91,214,0.06);border:1px solid rgba(91,91,214,0.18);border-radius:10px;padding:12px;margin-bottom:12px;font-size:12px;line-height:1.55;color:var(--navy);">
       <strong style="display:block;margin-bottom:4px;color:#5B5BD6;">Connect your email to auto-log</strong>
       Sent and received emails between you and this contact will appear here automatically.
-      <button onclick="showScreen('settings');setTimeout(()=>document.getElementById('nylas-connect-mount')?.scrollIntoView({behavior:'smooth',block:'center'}),300);" style="display:block;margin-top:8px;background:#5B5BD6;border:none;border-radius:8px;padding:8px 14px;font-family:'DM Sans',sans-serif;font-size:12px;font-weight:700;color:#fff;cursor:pointer;">Connect email →</button>
+      <button onclick="showScreen('settings');setTimeout(()=>document.getElementById('settings-lolaconnect-card')?.scrollIntoView({behavior:'smooth',block:'center'}),300);" style="display:block;margin-top:8px;background:#5B5BD6;border:none;border-radius:8px;padding:8px 14px;font-family:'DM Sans',sans-serif;font-size:12px;font-weight:700;color:#fff;cursor:pointer;">Connect email →</button>
     </div>`;
   } else if (!contactEmail) {
     header = `<div style="background:#fff7e6;border:1px solid #fde68a;border-radius:10px;padding:12px;margin-bottom:12px;font-size:12px;color:#92400e;">⚠️ No email address on this contact. Add one so the Gmail sync can match messages.</div>`;
@@ -15406,9 +15417,6 @@ window.onSendToMyLolaSubmit = async function() {
   </div>
 </div>
 
-<!-- Nylas unified email + calendar UI (classic script; sets window.SWHNylasEmail
-     before the deferred module's auth handler runs). -->
-<script src="nylas-email.js"></script>
 
 <!-- ===== RELATIONSHIP GRADE MODAL ===== -->
 <div class="ctx-overlay" id="ne-draft-modal-overlay" onclick="if(event.target===this)neStepDraftClose()">
