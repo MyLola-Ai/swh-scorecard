@@ -1927,6 +1927,32 @@ html.dark-theme .lola-review .lr-text{color:#C4B5FD;}
                     <div class="sr-arrow">›</div>
                   </div>
                 </div>
+                <!-- ===== FOLLOW-THROUGH DIGEST ===== -->
+                <div class="st-sect-head">Follow-Through Digest</div>
+                <div class="settings-card">
+                  <div class="settings-row">
+                    <div class="sr-left">
+                      <div class="sr-icon">📧</div>
+                      <div>
+                        <div class="sr-text">Daily Digest Email</div>
+                        <div class="sr-sub">Weekdays only, and only when drafts are waiting</div>
+                      </div>
+                    </div>
+                    <div id="ftd-toggle-ui" onclick="toggleFollowThroughDigest()" style="width:48px;height:28px;border-radius:28px;background:#ccc;position:relative;cursor:pointer;transition:background 0.25s;flex-shrink:0;">
+                      <div id="ftd-toggle-knob" style="position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,0.2);transition:left 0.25s;"></div>
+                    </div>
+                  </div>
+                  <div class="settings-row">
+                    <div class="sr-left">
+                      <div class="sr-icon">⏰</div>
+                      <div>
+                        <div class="sr-text">Send Time</div>
+                        <div class="sr-sub">Central time</div>
+                      </div>
+                    </div>
+                    <select id="ftd-hour-select" onchange="saveFollowThroughDigestSettings()" style="padding:8px 10px;border:1.5px solid var(--border);border-radius:9px;font-family:'DM Sans',sans-serif;font-size:13px;background:var(--bg);color:var(--navy);"></select>
+                  </div>
+                </div>
                 <!-- ===== WASTED HANDSHAKE THRESHOLDS ===== -->
                 <div class="st-sect-head">Wasted Handshake Thresholds</div>
                 <div class="settings-card">
@@ -4738,6 +4764,11 @@ let userWeeklyEmailDay = 'monday';
 let userWeeklyEmailHour = 9;
 let userWeeklyEmailTimezone = (Intl.DateTimeFormat().resolvedOptions().timeZone) || 'America/Chicago';
 let userAccountabilityPartners = [];
+// Follow-through digest ("N follow-throughs ready for today"). Weekdays only,
+// hour-granularity to match sendFollowThroughDigest's hourly cron -- picking
+// a specific minute wouldn't do anything the hour alone doesn't already do.
+let userFollowThroughDigestEnabled = true;
+let userFollowThroughDigestHour = 8;
 let ctxEntries = {}, ctxActIndex = null, ctxChipSelections = {};
 let expandedContactId = null;
 let editingContactId = null;
@@ -5431,6 +5462,8 @@ async function initUser() {
       userWeeklyEmailHour = typeof s.weeklyEmailHour === 'number' ? s.weeklyEmailHour : 9;
       userWeeklyEmailTimezone = s.weeklyEmailTimezone || userWeeklyEmailTimezone;
       userAccountabilityPartners = Array.isArray(s.accountabilityPartners) ? [...s.accountabilityPartners] : [];
+      userFollowThroughDigestEnabled = !s.followThroughDigestDisabled;
+      userFollowThroughDigestHour = typeof s.followThroughDigestHour === 'number' ? s.followThroughDigestHour : 8;
       calendarAutoAdd = s.calendarAutoAdd === true;
       updateCalAutoAddToggle();
     }
@@ -12486,6 +12519,8 @@ function refreshSettingsSubLabelsCRM() {
   // MyAppointment.AI sub-labels
   updateSettingsApptSub();
 
+  populateFollowThroughDigestUI();
+
   // MyLola integration row — kick off async refresh, fire-and-forget.
   // The row stays in its current state until the Firestore read returns,
   // which avoids a flash of "Loading…" on every settings entry.
@@ -12626,6 +12661,53 @@ window.saveWeeklyEmailSettings = async function() {
   document.getElementById('weekly-email-overlay').classList.remove('open');
   refreshSettingsSubLabelsCRM();
   showToast(enabled ? '✅ Weekly email on' : '✅ Weekly email off');
+};
+
+function setFollowThroughDigestToggleUI(on) {
+  const track = document.getElementById('ftd-toggle-ui');
+  const knob = document.getElementById('ftd-toggle-knob');
+  if (!track || !knob) return;
+  track.style.background = on ? 'var(--gold)' : '#ccc';
+  knob.style.left = on ? '23px' : '3px';
+}
+window.toggleFollowThroughDigest = function() {
+  userFollowThroughDigestEnabled = !userFollowThroughDigestEnabled;
+  setFollowThroughDigestToggleUI(userFollowThroughDigestEnabled);
+  saveFollowThroughDigestSettings();
+};
+// Populates the toggle + hour select from current state. Called whenever
+// Settings renders (refreshSettingsSubLabelsCRM) since this is inline, not
+// behind a modal like the weekly email -- it has to be right every time the
+// screen shows, not just once on first open.
+function populateFollowThroughDigestUI() {
+  setFollowThroughDigestToggleUI(userFollowThroughDigestEnabled);
+  const hourSel = document.getElementById('ftd-hour-select');
+  if (!hourSel) return;
+  if (hourSel.options.length === 0) {
+    const opts = [];
+    for (let h = 0; h < 24; h++) {
+      const ampm = h >= 12 ? 'pm' : 'am';
+      const h12 = ((h + 11) % 12) + 1;
+      opts.push(`<option value="${h}">${h12}:00 ${ampm}</option>`);
+    }
+    hourSel.innerHTML = opts.join('');
+  }
+  hourSel.value = String(userFollowThroughDigestHour);
+}
+window.saveFollowThroughDigestSettings = async function() {
+  const hourSel = document.getElementById('ftd-hour-select');
+  const hour = hourSel ? (parseInt(hourSel.value) || 8) : userFollowThroughDigestHour;
+  userFollowThroughDigestHour = hour;
+  if (!currentUser) return;
+  try {
+    await setDoc(doc(db,'users',currentUser.uid,'config','settings'),
+      { followThroughDigestDisabled: !userFollowThroughDigestEnabled, followThroughDigestHour: hour },
+      { merge: true });
+    showToast(userFollowThroughDigestEnabled ? '✅ Digest on' : '✅ Digest off');
+  } catch (e) {
+    console.warn('[saveFollowThroughDigestSettings] failed:', e.message);
+    showToast('Could not save — try again', true);
+  }
 };
 
 window.toggleCalendarSync = async function(contactId) {

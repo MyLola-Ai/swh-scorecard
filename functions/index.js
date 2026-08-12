@@ -8818,14 +8818,27 @@ function _buildDigestText(firstName, items, dateLabel) {
   return `Good morning, ${firstName || 'there'}.\n\nLola drafted ${items.length} follow-through${items.length === 1 ? '' : 's'} for you, ${dateLabel}.\nReview and send in your queue: ${_QUEUE_URL}\n\n${lines.join('\n\n')}\n\n— Your daily Follow-Through digest from SWH\nManage in settings: ${_PREFS_URL}\n`;
 }
 
+// Runs hourly (not at a fixed 8:30am) so each user's own followThroughDigestHour
+// can be honored -- same shape as weeklyActivityEmail below. A single onSchedule
+// trigger can't fire at a different time per user, so this checks every eligible
+// user's LOCAL hour every run and only sends on a match, guarded by a
+// lastDigestSentDate stamp so a Cloud Scheduler double-fire (or two runs
+// landing in the same local hour near a DST edge) can't double-send.
 exports.sendFollowThroughDigest = onSchedule({
-  schedule: '30 8 * * 1-5',
-  timeZone: 'America/Chicago',
+  schedule: '0 * * * *',
+  timeZone: 'UTC',
 }, async () => {
-  const todayCentral = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Chicago' });
-  const dateLabel = new Date().toLocaleDateString('en-US', {
-    timeZone: 'America/Chicago', weekday: 'long', month: 'long', day: 'numeric',
-  });
+  const now = new Date();
+  const tz = 'America/Chicago';
+  const localHour = parseInt(now.toLocaleString('en-US', { hour: 'numeric', hour12: false, timeZone: tz })) % 24;
+  const localDayName = now.toLocaleString('en-US', { weekday: 'long', timeZone: tz }).toLowerCase();
+  const todayCentral = now.toLocaleDateString('en-CA', { timeZone: tz });
+  const dateLabel = now.toLocaleDateString('en-US', { timeZone: tz, weekday: 'long', month: 'long', day: 'numeric' });
+
+  if (localDayName === 'saturday' || localDayName === 'sunday') {
+    console.log('[sendFollowThroughDigest] weekend, skipping');
+    return;
+  }
 
   // V1 gate: iterate ADMIN_EMAILS directly, same as runFollowThroughQueueBuild.
   // Used to enumerate active Nylas grants first and filter down to
@@ -8848,7 +8861,20 @@ exports.sendFollowThroughDigest = onSchedule({
     const email = ud.email || adminEmail;
 
     const settingsSnap = await db.doc(`users/${uid}/config/settings`).get();
-    if (settingsSnap.data()?.followThroughDigestDisabled) continue;
+    const settings = settingsSnap.data() || {};
+    if (settings.followThroughDigestDisabled) continue;
+
+    const targetHour = typeof settings.followThroughDigestHour === 'number' ? settings.followThroughDigestHour : 8;
+    if (localHour !== targetHour) continue;
+
+    const lastSent = settings.lastDigestSentDate;
+    if (lastSent) {
+      const hoursSinceSent = (now.getTime() - new Date(lastSent).getTime()) / (1000 * 60 * 60);
+      if (hoursSinceSent < 20) {
+        console.log('[sendFollowThroughDigest] skipping', uid, '-- already sent', Math.round(hoursSinceSent), 'h ago');
+        continue;
+      }
+    }
 
     const firstName = String(ud.displayName || ud.name || email).split(/[\s@]/)[0];
 
@@ -8870,11 +8896,12 @@ exports.sendFollowThroughDigest = onSchedule({
           text: _buildDigestText(firstName, items, dateLabel),
         },
       });
+      await db.doc(`users/${uid}/config/settings`).set({ lastDigestSentDate: now.toISOString() }, { merge: true });
       sent++;
       console.log('[sendFollowThroughDigest]', email, items.length, 'items');
     } catch (e) {
       console.error('[sendFollowThroughDigest] failed for', uid, e.message);
     }
   }
-  console.log(`[sendFollowThroughDigest] sent=${sent} date=${todayCentral}`);
+  console.log(`[sendFollowThroughDigest] sent=${sent} hour=${localHour} date=${todayCentral}`);
 });
