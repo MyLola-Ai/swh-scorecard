@@ -15,10 +15,51 @@ service cloud.firestore {
     }
 
     // ── /users — user docs and all subcollections ──
+    // Entitlement fields are server-write-only. Cloud Functions run as admin
+    // and bypass rules entirely, so this only ever restricts direct browser
+    // writes. Found 2026-08-13: an owner could set planOverride (checked
+    // FIRST in computeEntitlement, no expiry) or plan (the legacy no-apple/
+    // no-stripe branch reads it raw) directly and grant themselves paid
+    // access, invisible in Stripe. Verified live against the deployed
+    // ruleset and real Firestore data before this fix: 0 of 56 user docs had
+    // planOverride set, 0 forged trialEndsAt -- not exploited.
+    function entitlementFieldsUpdate() {
+      return ['planOverride', 'plan', 'trial', 'trialEndsAt', 'trialStartedAt',
+              'apple', 'stripe', 'currentPeriodEnd', 'cancelAtPeriodEnd',
+              'teamId', 'teamRole', 'subscriptionStatus', 'stripeSubscriptionId',
+              'stripeCustomerId', 'appleTransactionId'];
+    }
+    // create's own list omits 'plan': the real signup flow (both CRM and
+    // Scorecard) stamps plan:'free' on first write, which is harmless (it's
+    // the safe default anyway) -- checked explicitly below instead of
+    // blocking the field outright, so a genuine first-time signup keeps
+    // working unmodified.
+    function entitlementFieldsCreate() {
+      return ['planOverride', 'trial', 'trialEndsAt', 'trialStartedAt',
+              'apple', 'stripe', 'currentPeriodEnd', 'cancelAtPeriodEnd',
+              'teamId', 'teamRole', 'subscriptionStatus', 'stripeSubscriptionId',
+              'stripeCustomerId', 'appleTransactionId'];
+    }
     match /users/{uid} {
       allow read:   if isOwner(uid) || isAdmin();
-      allow create: if isOwner(uid);                 // first-time signup creates own doc
-      allow update: if isOwner(uid) || isAdmin();    // admin can flip plan, etc.
+      // First-time signup creates own doc -- but was completely unrestricted,
+      // meaning a hand-crafted first write (bypassing the app's own signup
+      // code, calling the SDK directly) could include planOverride:'pro' in
+      // the SAME call and grant itself paid access on account #1. Now: any
+      // entitlement field beyond plan is admin-only even on create, and plan
+      // itself may only be 'free' (or omitted) -- matching exactly what the
+      // real signup flow already sends, nothing else changes for it.
+      allow create: if isOwner(uid)
+                    && (isAdmin()
+                        || (!request.resource.data.keys().hasAny(entitlementFieldsCreate())
+                            && (!('plan' in request.resource.data) || request.resource.data.plan == 'free')));
+      // admin can still flip plan, etc.; an owner update may touch anything
+      // EXCEPT the entitlement fields above -- those only ever move via a
+      // Cloud Function (Stripe/RevenueCat webhooks, comp grants), which run
+      // as admin and are unaffected by this rule.
+      allow update: if (isOwner(uid) || isAdmin())
+                    && (isAdmin()
+                        || !request.resource.data.diff(resource.data).affectedKeys().hasAny(entitlementFieldsUpdate()));
       allow delete: if isAdmin();
 
       // Catch-all for any subcollection (contacts, days, opportunities, config, lag, …)
