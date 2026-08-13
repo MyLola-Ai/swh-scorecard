@@ -5255,13 +5255,15 @@ exports.gmailDisconnect = onRequest({ cors: true }, async (req, res) => {
   }
 });
 
+const _gmailSyncLolaConnect = require('./lola-connect');
+
 // ── Scheduled sync: poll every 15 min for users with Gmail connected ──
 // Uses Gmail history API: requests changes since lastHistoryId, processes only new messages.
 exports.gmailScheduledSync = onSchedule({
   schedule: 'every 15 minutes',
   timeoutSeconds: 540,
   memory: '512MiB',
-  secrets: [GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET],
+  secrets: [GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET, _gmailSyncLolaConnect.LOLA_CONNECT_SERVICE_TOKEN],
 }, async () => {
   // Find all users with active Gmail integrations
   const integrationsSnap = await db.collectionGroup('integrations')
@@ -5269,12 +5271,28 @@ exports.gmailScheduledSync = onSchedule({
     .where('status', 'in', ['connected'])
     .get();
   console.log(`[gmail-sync] processing ${integrationsSnap.docs.length} integrations`);
+  // Fetched once per run, not per user -- same cost regardless of how many
+  // Gmail-direct integrations exist. Fail CLOSED, not open: an empty Set on
+  // failure would mean "no one has migrated" and let legacy sync run for
+  // EVERYONE this cycle -- the exact double-log bug this guard exists to
+  // prevent, just triggered by a transient gateway failure instead of the
+  // old stale-doc bug. A skipped cron cycle self-heals in 15 minutes and
+  // costs nothing anyone notices; duplicated timeline entries don't
+  // self-heal and are invisible until someone stares at a contact. So on
+  // failure, skip the entire run rather than guess.
+  let lcConnectedUids;
+  try {
+    lcConnectedUids = await _gmailSyncLolaConnect.lcConnectedUidSet();
+  } catch (e) {
+    console.error('[gmail-sync] lcConnectedUidSet failed -- skipping this ENTIRE run so legacy sync never runs without the migration guard:', e.message);
+    return;
+  }
   for (const intDoc of integrationsSnap.docs) {
     // path is users/{uid}/integrations/gmail
     const pathParts = intDoc.ref.path.split('/');
     const uid = pathParts[1];
     try {
-      await runGmailIncrementalSync(uid);
+      await runGmailIncrementalSync(uid, lcConnectedUids);
     } catch (e) {
       console.error(`[gmail-sync] uid=${uid} failed:`, e.message);
     }
@@ -5282,18 +5300,23 @@ exports.gmailScheduledSync = onSchedule({
 });
 
 // ── Incremental sync via Gmail history API ──
-async function runGmailIncrementalSync(uid) {
+async function runGmailIncrementalSync(uid, lcConnectedUids) {
   const intSnap = await db.doc(`users/${uid}/integrations/gmail`).get();
   if (!intSnap.exists) return;
   const integration = intSnap.data();
-  // Migration guard: once a user is on the unified Nylas integration, stop the
-  // legacy Gmail sync so inbound email is not double-logged onto contacts.
-  // Marking the doc 'migrated' also drops it from the scheduled query above.
-  const nylasSnap = await db.doc(`users/${uid}/integrations/nylas`).get();
-  if (nylasSnap.exists && nylasSnap.data().status === 'active') {
+  // Migration guard: once a user has a connected Lola Connect account, stop
+  // the legacy Gmail sync so inbound email is not double-logged onto
+  // contacts. Marking the doc 'migrated' also drops it from the scheduled
+  // query above. Was keyed on the old unified-Nylas integration doc; Nylas
+  // is fully removed (2026-08-08) so that condition could never be true
+  // again -- silently disabling this guard for every Gmail-direct user who
+  // connects Lola Connect instead. gmailOauthInitiate still has a live
+  // frontend caller, so this was a real, current double-log risk, not a
+  // leftover from an already-dead path.
+  if (lcConnectedUids.has(uid)) {
     if (integration.status !== 'migrated') {
       await intSnap.ref.set({ status: 'migrated', migratedAt: new Date().toISOString() }, { merge: true });
-      console.log(`[gmail-sync] uid=${uid} migrated to Nylas — pausing legacy sync`);
+      console.log(`[gmail-sync] uid=${uid} migrated to Lola Connect — pausing legacy sync`);
     }
     return;
   }

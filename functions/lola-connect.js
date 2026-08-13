@@ -294,6 +294,32 @@ exports.lcTryCreateEvent = lcTryCreateEvent;
 exports.lcTryDeleteEvent = lcTryDeleteEvent;
 exports.LOLA_CONNECT_SERVICE_TOKEN = LOLA_CONNECT_SERVICE_TOKEN;
 
+// Returns the Set of uids with a connected LC account for product swh.
+// Same connections.listByPool call already used by lolaConnectFollowThroughSweep
+// below, pulled out so index.js's gmail-sync migration guard can reuse it
+// instead of a third inline copy.
+async function lcConnectedUidSet() {
+  const call = async (body) => {
+    const r = await fetch(GATEWAY_URL, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${LOLA_CONNECT_SERVICE_TOKEN.value()}`,
+      },
+      body: JSON.stringify({ subject: { pool: SWH_POOL, uid: 'service' }, product: SWH_PRODUCT, ...body }),
+    });
+    return { status: r.status, json: await r.json().catch(() => ({})) };
+  };
+  const listing = await call({ op: 'connections.listByPool' });
+  const conns = (listing.json.result && listing.json.result.connections) || [];
+  const uids = new Set();
+  conns
+    .filter((c) => c.status === 'connected' && c.products && c.products.swh)
+    .forEach((c) => (c.uids || []).forEach((uid) => uids.add(uid)));
+  return uids;
+}
+exports.lcConnectedUidSet = lcConnectedUidSet;
+
 // ── Leg 2: email auto-log via LC pull-sync ──────────────────────────────────
 // Every 15 minutes, for each SWH user with a connected LC account, pull new
 // mail and log it onto matched contacts' timelines — the LC replacement for
