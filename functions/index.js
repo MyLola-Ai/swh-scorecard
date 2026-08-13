@@ -5890,23 +5890,38 @@ exports.pushContactToOutlook = onRequest({
   }
 });
 
+const _outlookSyncLolaConnect = require('./lola-connect');
+
 // ── Scheduled sync: poll every 15 min for users with Outlook connected ──
 exports.outlookScheduledSync = onSchedule({
   schedule: 'every 15 minutes',
   timeoutSeconds: 540,
   memory: '512MiB',
-  secrets: [MICROSOFT_OAUTH_CLIENT_ID, MICROSOFT_OAUTH_CLIENT_SECRET],
+  secrets: [MICROSOFT_OAUTH_CLIENT_ID, MICROSOFT_OAUTH_CLIENT_SECRET, _outlookSyncLolaConnect.LOLA_CONNECT_SERVICE_TOKEN],
 }, async () => {
   const integrationsSnap = await db.collectionGroup('integrations')
     .where('provider', '==', 'outlook')
     .where('status', 'in', ['connected'])
     .get();
   console.log(`[outlook-sync] processing ${integrationsSnap.docs.length} integrations`);
+  // Same migration guard as gmailScheduledSync, and the same reason it needs
+  // one: this cron never had one at all, so anyone on Outlook AND Lola
+  // Connect double-logs inbound email under two doc keys right now. Fail
+  // CLOSED on lookup failure -- skip the whole run rather than sync without
+  // the guard in place. A skipped cron cycle self-heals in 15 minutes;
+  // duplicated timeline entries don't.
+  let lcConnectedUids;
+  try {
+    lcConnectedUids = await _outlookSyncLolaConnect.lcConnectedUidSet();
+  } catch (e) {
+    console.error('[outlook-sync] lcConnectedUidSet failed -- skipping this ENTIRE run so legacy sync never runs without the migration guard:', e.message);
+    return;
+  }
   for (const intDoc of integrationsSnap.docs) {
     const pathParts = intDoc.ref.path.split('/');
     const uid = pathParts[1];
     try {
-      await runOutlookIncrementalSync(uid);
+      await runOutlookIncrementalSync(uid, lcConnectedUids);
     } catch (e) {
       console.error(`[outlook-sync] uid=${uid} failed:`, e.message);
     }
@@ -5914,10 +5929,22 @@ exports.outlookScheduledSync = onSchedule({
 });
 
 // ── Incremental sync via Graph delta query ──
-async function runOutlookIncrementalSync(uid) {
+async function runOutlookIncrementalSync(uid, lcConnectedUids) {
   const intSnap = await db.doc(`users/${uid}/integrations/outlook`).get();
   if (!intSnap.exists) return;
   const integration = intSnap.data();
+  // Migration guard: once a user has a connected Lola Connect account, stop
+  // the legacy Outlook sync so inbound email is not double-logged onto
+  // contacts. Marking the doc 'migrated' also drops it from the scheduled
+  // query above (mirrors runGmailIncrementalSync's guard exactly -- this
+  // path never had one before).
+  if (lcConnectedUids && lcConnectedUids.has(uid)) {
+    if (integration.status !== 'migrated') {
+      await intSnap.ref.set({ status: 'migrated', migratedAt: new Date().toISOString() }, { merge: true });
+      console.log(`[outlook-sync] uid=${uid} migrated to Lola Connect — pausing legacy sync`);
+    }
+    return;
+  }
   const deltaLinks = integration.deltaLinks || { inbox: null, sentitems: null };
   if (!deltaLinks.inbox && !deltaLinks.sentitems) {
     // No baseline — backfill must complete first
