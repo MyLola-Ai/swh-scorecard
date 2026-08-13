@@ -1481,7 +1481,7 @@ html.dark-theme .lola-review .lr-text{color:#C4B5FD;}
       <!-- Shown for team owners and co-leads only -->
       <button class="nav-btn" id="nav-team" onclick="openCrmTeamDashboard()" style="display:none;"><span class="nav-icon">🏆</span><span class="nav-text">My Team</span></button>
       <div class="nav-section">Account</div>
-      <button class="nav-btn" onclick="showScreen('history',this)"><span class="nav-icon">📋</span><span class="nav-text">History</span></button>
+      <button class="nav-btn" id="nav-history" onclick="showScreen('history',this)"><span class="nav-icon">📋</span><span class="nav-text">History</span></button>
       <button class="nav-btn" id="nav-appointments" onclick="showScreen('appointments',this)"><span class="nav-icon">📅</span><span class="nav-text">Appointments</span></button>
       <button class="nav-btn" onclick="showScreen('settings',this)"><span class="nav-icon">⚙️</span><span class="nav-text">Settings</span></button>
       <button class="nav-btn" onclick="goToScorecard()" title="Open the Scorecard app"><span class="nav-icon">↗️</span><span class="nav-text">Open Scorecard</span></button>
@@ -1849,6 +1849,25 @@ html.dark-theme .lola-review .lr-text{color:#C4B5FD;}
                     <div id="settings-cal-autoadd-toggle" style="width:40px;height:22px;border-radius:11px;background:var(--border);position:relative;transition:background 0.2s;flex-shrink:0;">
                       <div style="position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,0.2);transition:transform 0.2s;"></div>
                     </div>
+                  </div>
+                </div>
+                <!-- ===== PERFORMANCE ===== -->
+                <!-- History exists in the desktop sidebar (#nav-history) but had no
+                     entry point on mobile at all -- the bottom nav's "More" tab goes
+                     straight to Settings, and Settings itself never linked to it.
+                     Added here to match the same hub pattern Appointments already
+                     uses (Settings screen as the mobile overflow menu). -->
+                <div class="st-sect-head">Performance</div>
+                <div class="settings-card">
+                  <div class="settings-row" onclick="showScreen('history',document.getElementById('nav-history'))">
+                    <div class="sr-left">
+                      <div class="sr-icon">📋</div>
+                      <div>
+                        <div class="sr-text">History</div>
+                        <div class="sr-sub">Performance &amp; Trends</div>
+                      </div>
+                    </div>
+                    <div class="sr-arrow">›</div>
                   </div>
                 </div>
                 <!-- ===== SCHEDULING ===== -->
