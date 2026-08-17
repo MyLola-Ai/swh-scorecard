@@ -9921,6 +9921,7 @@ const LOLA_DRAFT_TYPES = [
   { key: 'reconnect',  emoji: '🌱', label: 'Reconnect',       hint: 'Warm the relationship back up' },
 ];
 
+window.renderDraftTypes = renderDraftTypes; // the picker's "← Back" button calls this from an inline onclick
 function renderDraftTypes(mode) { // 'pick' = full option list, 'chips' = compact switcher
   const wrap = document.getElementById('ne-draft-types');
   const active = _neDraftCtx?.draftType;
@@ -9935,7 +9936,14 @@ function renderDraftTypes(mode) { // 'pick' = full option list, 'chips' = compac
           <span style="font-size:13.5px;font-weight:700;color:var(--text);">${t.label}</span>
           <span style="font-size:11.5px;color:var(--muted);">${t.hint}</span>
         </span>
-      </button>`).join('');
+      </button>`).join('') + `
+      <button onclick="showCustomDraftPrompt()" style="display:flex;align-items:center;gap:12px;padding:12px 14px;border:1.5px dashed var(--border);background:var(--card);border-radius:12px;cursor:pointer;text-align:left;font-family:'DM Sans',sans-serif;width:100%;">
+        <span style="font-size:20px;">✏️</span>
+        <span style="display:flex;flex-direction:column;gap:1px;">
+          <span style="font-size:13.5px;font-weight:700;color:var(--text);">Your own prompt</span>
+          <span style="font-size:11.5px;color:var(--muted);">Tell Lola exactly what to write about</span>
+        </span>
+      </button>`;
   } else {
     wrap.style.flexDirection = 'row';
     wrap.style.flexWrap = 'wrap';
@@ -9945,6 +9953,27 @@ function renderDraftTypes(mode) { // 'pick' = full option list, 'chips' = compac
     }).join('');
   }
 }
+
+window.showCustomDraftPrompt = function() {
+  const wrap = document.getElementById('ne-draft-types');
+  wrap.style.flexDirection = 'column';
+  wrap.style.flexWrap = 'nowrap';
+  wrap.innerHTML = `
+    <button onclick="renderDraftTypes('pick')" style="align-self:flex-start;background:none;border:none;color:var(--muted);font-size:12px;font-weight:700;cursor:pointer;padding:2px 0 6px;font-family:'DM Sans',sans-serif;">← Back</button>
+    <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px;">What should Lola write about?</div>
+    <textarea id="ne-draft-custom-prompt" rows="3" placeholder="e.g. Congratulate them on the new job and ask if they want to grab coffee to celebrate" onkeydown="if((event.metaKey||event.ctrlKey)&&event.key==='Enter')neDraftGenerateCustom()" style="width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;font-family:'DM Sans',sans-serif;resize:vertical;box-sizing:border-box;background:var(--bg);color:var(--navy);line-height:1.5;margin-bottom:10px;"></textarea>
+    <button onclick="neDraftGenerateCustom()" style="padding:10px 14px;border-radius:10px;border:none;background:linear-gradient(135deg,#5B5BD6,#A78BFA);color:#fff;font-size:13.5px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;width:100%;">Write it →</button>
+  `;
+  const ta = document.getElementById('ne-draft-custom-prompt');
+  if (ta) ta.focus();
+};
+
+window.neDraftGenerateCustom = async function() {
+  const el = document.getElementById('ne-draft-custom-prompt');
+  const text = (el ? el.value : '').trim().slice(0, 500);
+  if (!text) { showToast('Tell Lola what to write about first'); return; }
+  await neDraftGenerate('auto', { guidance: text, isCustom: true });
+};
 
 function neDraftSpinner(msg) {
   document.getElementById('ne-draft-spinner').innerHTML =
@@ -10078,7 +10107,7 @@ window.neDraftGenerate = async function(draftType, opts) {
 
   renderDraftTypes('chips');
   document.getElementById('ne-draft-modal-title').textContent = 'Drafting your email...';
-  neDraftSpinner(opts?.guidance ? 'Applying your notes...' : 'Lola is writing...');
+  neDraftSpinner(opts?.isCustom ? 'Writing from your prompt...' : (opts?.guidance ? 'Applying your notes...' : 'Lola is writing...'));
 
   try {
     const payload = { contactId, draftType };
@@ -10091,8 +10120,9 @@ window.neDraftGenerate = async function(draftType, opts) {
     const res = await callLolaFn('draftContactEmail', payload, 90000);
     neDraftShowResult(res.data);
     const stepsDone = c?.steps || 0;
-    document.getElementById('ne-draft-modal-title').textContent =
-      draftType === 'auto'
+    document.getElementById('ne-draft-modal-title').textContent = opts?.isCustom
+      ? 'Draft ready: your prompt'
+      : draftType === 'auto'
         ? (stepsDone >= 8 ? 'Draft ready, keeping it warm' : `Draft ready, ${stepsDone}/8 steps in`)
         : `Draft ready: ${meta.label}`;
   } catch (err) { neDraftShowError(err); }

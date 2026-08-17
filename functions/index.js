@@ -8287,7 +8287,9 @@ exports.draftContactEmail = onCall({ secrets: [ANTHROPIC_API_KEY] }, async (requ
     prevBody ? `\nMy current draft (revise this, keep what works):\nSubject: ${String(prev.subject || '')}\n${prevBody}` : '',
     guidance ? `What to change — apply exactly: ${guidance}` : '',
     '',
-    (guidance || prevBody) ? 'Revise my email with those instructions. Return the same JSON shape.' : 'Draft this email for me.',
+    prevBody
+      ? 'Revise my email with those instructions. Return the same JSON shape.'
+      : (guidance ? 'Draft this email using those instructions. Return the same JSON shape.' : 'Draft this email for me.'),
   ].filter(Boolean).join('\n');
 
   const systemPrompt = VOICE_PROFILE + `\n\nReturn ONLY valid JSON, no prose, no markdown fences:\n{"subject":"<email subject, 5-10 words, warm and specific, no em-dashes>","body":"<the full email body in Austen's voice, first-person, referencing the contact by first name. End with a short sign-off and his first name (e.g. Thanks, Austen). Do NOT add phone, email, or a contact block; that is appended automatically. No bracket placeholders, no em-dashes>","text":"<same as body>"}`;
