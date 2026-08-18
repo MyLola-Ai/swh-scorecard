@@ -8077,9 +8077,9 @@ function renderTasks() {
 
   // Wasted handshakes
   if(wasted.length>0) {
-    html+=`<div class="task-grp-lbl" style="color:var(--red);">🔴 Wasted Handshakes <span class="cnt-badge">${wasted.length}</span></div>`;
+    html+=`<div class="task-grp-lbl" style="color:var(--red);">🔴 Wasted Handshakes <span class="cnt-badge" id="wasted-count-badge">${wasted.length}</span></div>`;
     wasted.forEach(c=>{
-      html+=`<div class="task-row wasted" onclick="toggleTaskExpand('${c.id}', this)"><div class="task-dot" style="background:var(--red);"></div><div style="flex:1;"><div class="task-name">${c.name} ⚠️</div><div class="task-meta">${c.company||'—'} · needs attention</div></div><div style="display:flex;gap:5px;align-items:center;"><div class="task-chip" style="background:#fdecea;color:var(--red);">Stalled</div><button onclick="event.stopPropagation();ignoreWastedHandshake('${c.id}')" title="Not every stall needs fixing — accept this one and stop flagging it" style="padding:4px 8px;border-radius:7px;border:1px solid var(--border);background:var(--card);color:var(--navy);font-size:11px;font-weight:700;cursor:pointer;">Ignore</button></div></div>`;
+      html+=`<div class="task-row wasted" id="task-row-${c.id}" onclick="toggleTaskExpand('${c.id}', this)"><div class="task-dot" style="background:var(--red);"></div><div style="flex:1;"><div class="task-name">${c.name} ⚠️</div><div class="task-meta">${c.company||'—'} · needs attention</div></div><div style="display:flex;gap:5px;align-items:center;"><div class="task-chip" style="background:#fdecea;color:var(--red);">Stalled</div><button onclick="event.stopPropagation();ignoreWastedHandshake('${c.id}')" title="Not every stall needs fixing — accept this one and stop flagging it" style="padding:4px 8px;border-radius:7px;border:1px solid var(--border);background:var(--card);color:var(--navy);font-size:11px;font-weight:700;cursor:pointer;">Ignore</button></div></div>`;
     });
   }
 
@@ -10554,10 +10554,29 @@ async function logContactActivity(contactId, opts) {
     if (wrap) wrap.classList.toggle('wasted-wrap', !!c?.wasted);
     const banner = document.getElementById('wasted-banner-' + contactId);
     if (banner) banner.style.display = c?.wasted ? '' : 'none';
+    clearWastedTaskRow(contactId, c);
     return entry;
   } catch (e) {
     console.error('[logContactActivity] error:', e);
     return null;
+  }
+}
+
+// Tasks view's Wasted Handshakes row has no re-render hook of its own --
+// re-engaging should clear the Stalled chip immediately, not just on the
+// next full renderTasks() (which would also collapse anything expanded).
+function clearWastedTaskRow(contactId, c) {
+  if (c && !c.wasted) {
+    const taskRow = document.getElementById('task-row-' + contactId);
+    if (taskRow) {
+      taskRow.remove();
+      const badge = document.getElementById('wasted-count-badge');
+      if (badge) {
+        const n = Math.max(0, (parseInt(badge.textContent, 10) || 1) - 1);
+        if (n === 0) { const lbl = badge.closest('.task-grp-lbl'); if (lbl) lbl.remove(); }
+        else badge.textContent = String(n);
+      }
+    }
   }
 }
 
