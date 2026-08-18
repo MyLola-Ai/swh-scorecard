@@ -7958,6 +7958,9 @@ function renderTasks() {
     // already due, so this never hides one of those.
     if (q.dueDate && q.dueDate > getTodayKey()) return false;
     const c = CONTACTS.find(x => x.id === q.contactId);
+    // Contact no longer exists (deleted some other way than deleteContact,
+    // e.g. a merge) -- nothing left to send to or open, so close it here too.
+    if (!c) { closeOrphanedQueueDocs(q.contactId); return false; }
     // A thank-you is not a playbook step, so step progress must not auto-close
     // it (it carries no stepIndex, which would read as step 0 and always look
     // "behind").
@@ -10346,6 +10349,7 @@ window.deleteContact=async function(id){
   if(!confirm('Remove this contact? This cannot be undone.'))return;
   await deleteDoc(doc(db,'users',currentUser.uid,'contacts',id));
   teamIndexRemove(id);
+  await closeOrphanedQueueDocs(id); // no contact left behind for these cards to reference
   CONTACTS=CONTACTS.filter(c=>c.id!==id);expandedContactId=null;
   renderNetwork();showToast('🗑️ Contact removed');
 };
@@ -12177,6 +12181,21 @@ async function closeQueueDocsUpTo(contactId, stepsDone) {
     q.status = 'done';
     try { await updateDoc(doc(db, 'users', currentUser.uid, 'followThroughQueue', q.id), { status: 'done', closedBy: 'step_completed', closedAt: new Date().toISOString() }); }
     catch (e) { console.warn('[closeQueueDocsUpTo]', q.id, e); }
+  }
+  return stale.length;
+}
+
+// Contact deleted -- any pending Morning Queue cards for them are now
+// orphaned (no contact left to send to, open, or advance steps on) and
+// must not keep surfacing. Same lazy-close pattern as closeQueueDocsUpTo,
+// called both from deleteContact directly and defensively at render time
+// in case a contact was ever removed some other way.
+async function closeOrphanedQueueDocs(contactId) {
+  const stale = FOLLOW_THROUGH_QUEUE.filter(q => q.contactId === contactId && q.status === 'pending');
+  for (const q of stale) {
+    q.status = 'done';
+    try { await updateDoc(doc(db, 'users', currentUser.uid, 'followThroughQueue', q.id), { status: 'done', closedBy: 'contact_deleted', closedAt: new Date().toISOString() }); }
+    catch (e) { console.warn('[closeOrphanedQueueDocs]', q.id, e); }
   }
   return stale.length;
 }
