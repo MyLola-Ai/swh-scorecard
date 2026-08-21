@@ -8302,7 +8302,7 @@ exports.draftContactEmail = onCall({ secrets: [ANTHROPIC_API_KEY] }, async (requ
       'anthropic-version': '2023-06-01',
     },
     body: JSON.stringify({
-      model: 'claude-opus-4-8',
+      model: 'claude-sonnet-5', // Sonnet 5 draft upgrade, staged 2026-08-18 -- Austen-approved, held for explicit deploy go
       max_tokens: 600,
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
