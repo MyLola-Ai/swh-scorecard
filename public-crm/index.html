@@ -5444,11 +5444,20 @@ async function initUser() {
     }
   } else {
     weeklyGoal = snap.data().weeklyGoal || 150;
-    userPlan = snap.data().plan || 'pro';
+    const _userDocData = snap.data();
+    const _rawPlan = _userDocData.plan || 'pro';
+    // Raw 'trial' needs resolving the same way computeEntitlement does
+    // server-side (TRIAL_TIER='pro') -- was falling through unresolved and
+    // failing every userPlan==='pro' gate below, paywalling active trials.
+    if (_rawPlan === 'trial') {
+      const _trialEnds = (_userDocData.trial && _userDocData.trial.endsAt) || _userDocData.trialEndsAt || null;
+      userPlan = (_trialEnds && new Date(_trialEnds).getTime() > Date.now()) ? 'pro' : 'free';
+    } else {
+      userPlan = _rawPlan;
+    }
     // ===== Team CRM entitlement =====
     // If user is on a team with plan='team_crm' AND active, treat as pro (full CRM).
     // Mirrors the entitlement merge done server-side in getMe.
-    const _userDocData = snap.data();
     // Store teamRole so renderCrmTeamDashboard can treat co_lead same as owner
     // even if getTeamSummary CF doesn't return co_lead as the role.
     window._userTeamRole = _userDocData.teamRole || null;
