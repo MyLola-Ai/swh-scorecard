@@ -3773,6 +3773,11 @@ import { getFunctions, httpsCallable }
 // True immediately (before any async) — used to gate native-only paths.
 const isNativeEarly = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
 const isNative = () => isNativeEarly;
+// True when embedded in a third-party page (e.g. MyLola). A session that
+// persists across reloads in a framed context is the wrong security posture
+// there, not just an ITP compatibility risk -- see the setPersistence call
+// in the web auth-init block below.
+const isFramedEarly = window.top !== window.self;
 
 
 // RevenueCat public API key for the SWH CRM iOS app.
@@ -5093,6 +5098,11 @@ window.recheckCrmAccountState = async function(opts) {
     // Web browser: dynamic import Firebase Auth + use popup flow
     const _fbAuthMod = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js");
     const _auth = _fbAuthMod.getAuth(firebaseApp);
+    // Framed: stay in-memory rather than Firebase's local-persistence default.
+    // The embedding host (MyLola) mints a fresh #signin= token on every mount,
+    // so a reload here is just a fresh mount, never a perceived sign-out.
+    await _fbAuthMod.setPersistence(_auth, isFramedEarly ? _fbAuthMod.inMemoryPersistence : _fbAuthMod.browserLocalPersistence)
+      .catch(e => console.error('[auth] persistence setup failed:', e));
     window._xprodSigninInFlight = /[#&]signin=[^&]+/.test(window.location.hash || '');
     const _h = window.location.hash || '';
     const _m = _h.match(/[#&]signin=([^&]+)/);

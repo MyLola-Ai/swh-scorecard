@@ -147,7 +147,14 @@
   // On native (capacitor:// origin), browserLocalPersistence triggers a Google APIs
   // iframe load that fails CORS and hangs onAuthStateChanged forever. inMemoryPersistence
   // skips the iframe entirely. On web, localStorage is fine.
-  setPersistence(auth, isNativeEarly ? inMemoryPersistence : browserLocalPersistence)
+  //
+  // Framed (e.g. embedded inside MyLola): a session that persists across reloads in a
+  // third-party context is the wrong security posture, not just an ITP compatibility
+  // risk -- so this stays in-memory even where local persistence would otherwise work.
+  // The embedding host is expected to mint a fresh sign-in on every mount, so a reload
+  // here is just a fresh mount, not a sign-out.
+  const isFramedEarly = window.top !== window.self;
+  setPersistence(auth, (isNativeEarly || isFramedEarly) ? inMemoryPersistence : browserLocalPersistence)
     .catch(e => console.error('[auth] persistence setup failed:', e));
 
   // ===== NATIVE API ADAPTER =====
