@@ -148,11 +148,13 @@
   // iframe load that fails CORS and hangs onAuthStateChanged forever. inMemoryPersistence
   // skips the iframe entirely. On web, localStorage is fine.
   //
-  // Framed (e.g. embedded inside MyLola): a session that persists across reloads in a
-  // third-party context is the wrong security posture, not just an ITP compatibility
-  // risk -- so this stays in-memory even where local persistence would otherwise work.
-  // The embedding host is expected to mint a fresh sign-in on every mount, so a reload
-  // here is just a fresh mount, not a sign-out.
+  // Framed (embedded in any third-party page): a session that persists across
+  // reloads in that context is the wrong security posture on its own, independent
+  // of any specific integration -- so this stays in-memory even where local
+  // persistence would otherwise work, regardless of who is doing the framing or
+  // whether we've authorized it. Any legitimate embedding host should mint a
+  // fresh sign-in on every mount, making a reload while framed just a fresh
+  // mount rather than a sign-out.
   const isFramedEarly = window.top !== window.self;
   setPersistence(auth, (isNativeEarly || isFramedEarly) ? inMemoryPersistence : browserLocalPersistence)
     .catch(e => console.error('[auth] persistence setup failed:', e));
