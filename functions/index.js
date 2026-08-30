@@ -8995,10 +8995,27 @@ function _buildDripText(entry, firstName, unsubUrl) {
 
 // Idempotent enrollment — used by both the callable and mirrorSubscriptionToUser.
 // Creates onboardingDrip/{uid}; no-ops if it already exists.
+//
+// Suppressed for any cross-product-provisioned account (CTO ruling,
+// 2026-08-30, same reasoning as the sendFollowThroughDigest ruling an hour
+// earlier): a user provisioned via getOrProvisionSwhUser did not sign up
+// for SWH -- they were given the Scorecard (or, for 'myclosings', the CRM)
+// as part of a different product. "Welcome to Stop Wasting Handshakes,
+// here's how to get started" misreads who they are; if that population
+// needs orientation, it belongs in the OTHER product's own voice, not
+// SWH's drip. provisionedVia is written ONLY by cross-product provisioning
+// -- an organic SWH signup has no such field -- so its mere presence is the
+// gate, not a specific value.
 async function enrollOnboardingDripForUid(uid, email) {
   if (!uid || !email) return;
   const ref = db.collection('onboardingDrip').doc(uid);
   if ((await ref.get()).exists) return;
+  const userSnap = await db.doc(`users/${uid}`).get();
+  const provisionedVia = userSnap.data()?.provisionedVia;
+  if (provisionedVia) {
+    console.log('[enrollOnboardingDrip] suppressed -- cross-product-provisioned uid:', uid, 'via:', provisionedVia);
+    return;
+  }
   const settingsSnap = await db.doc(`users/${uid}/config/settings`).get();
   const displayName = settingsSnap.data()?.displayName || '';
   const firstName = (displayName || email).split(/[\s@]/)[0];
