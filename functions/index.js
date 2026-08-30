@@ -6394,13 +6394,17 @@ exports.getScorecardForUser = onRequest(
       const requestedTo = (typeof toDateKey === 'string' && toDateKey) ? toDateKey : today;
       const effectiveTo = requestedTo > today ? today : requestedTo;
 
-      const [actSnap, daysSnap, userSnap] = await Promise.all([
+      const [actSnap, daysSnap, userSnap, settingsSnap] = await Promise.all([
         admin.firestore().doc(`users/${uid}/config/activities`).get(),
         admin.firestore().collection(`users/${uid}/days`)
           .where('dateKey', '>=', effectiveFrom)
           .where('dateKey', '<=', effectiveTo)
           .get(),
+        // The user doc is still needed: resolveEffectivePlan takes it.
         admin.firestore().doc(`users/${uid}`).get(),
+        // weeklyGoal lives HERE, not on the user doc. saveSettings writes it to
+        // config/settings and getMe reads it from there.
+        admin.firestore().doc(`users/${uid}/config/settings`).get(),
       ]);
 
       const activities = (actSnap.exists && Array.isArray(actSnap.data().list) && actSnap.data().list.length)
@@ -6420,10 +6424,30 @@ exports.getScorecardForUser = onRequest(
       }).sort((a, b) => a.dateKey.localeCompare(b.dateKey));
 
       const userData = userSnap.exists ? userSnap.data() : {};
-      const weeklyGoal = (typeof userData.weeklyGoal === 'number' && userData.weeklyGoal > 0) ? userData.weeklyGoal : 150;
+      // weeklyGoal is read from config/settings, NOT from the user document.
+      // It was read from userData until 2026-08-29, which made this ALWAYS
+      // return the 150 default -- including for users who had deliberately set
+      // a goal -- because saveSettings only ever writes it to config/settings
+      // (see saveSettings, and getMe which reads it correctly). Nothing errored
+      // and 150 is plausible, so the wrong number would have shipped silently
+      // and MyLola would have bound a streak to a constant.
+      const settings = settingsSnap.exists ? settingsSnap.data() : {};
+      const weeklyGoal = (typeof settings.weeklyGoal === 'number' && settings.weeklyGoal > 0)
+        ? settings.weeklyGoal
+        : 150;
       // A control that cannot work should not be offered: MyLola needs to know
       // in advance whether a log attempt will 402, not discover it by trying.
-      const canLog = (await resolveEffectivePlan(uid, userData)) !== 'free';
+      // Fail closed on the CAPABILITY, never on the read. This await sits inside
+      // the outer try whose catch returns 500, so an unguarded billing-lookup
+      // fault would hide the user's entire scorecard behind "could not load" --
+      // a new failure mode on a path that never depended on plan resolution.
+      // On the WRITE, fail-closed means 402; on the READ it means canLog:false.
+      let canLog = false;
+      try {
+        canLog = (await resolveEffectivePlan(uid, userData)) !== 'free';
+      } catch (e) {
+        console.warn('[getScorecardForUser] plan lookup failed, canLog=false:', e && e.message);
+      }
 
       res.json({ found: true, activities, days, weeklyGoal, canLog });
     } catch (e) {
