@@ -6394,12 +6394,13 @@ exports.getScorecardForUser = onRequest(
       const requestedTo = (typeof toDateKey === 'string' && toDateKey) ? toDateKey : today;
       const effectiveTo = requestedTo > today ? today : requestedTo;
 
-      const [actSnap, daysSnap] = await Promise.all([
+      const [actSnap, daysSnap, userSnap] = await Promise.all([
         admin.firestore().doc(`users/${uid}/config/activities`).get(),
         admin.firestore().collection(`users/${uid}/days`)
           .where('dateKey', '>=', effectiveFrom)
           .where('dateKey', '<=', effectiveTo)
           .get(),
+        admin.firestore().doc(`users/${uid}`).get(),
       ]);
 
       const activities = (actSnap.exists && Array.isArray(actSnap.data().list) && actSnap.data().list.length)
@@ -6418,9 +6419,191 @@ exports.getScorecardForUser = onRequest(
         };
       }).sort((a, b) => a.dateKey.localeCompare(b.dateKey));
 
-      res.json({ found: true, activities, days });
+      const userData = userSnap.exists ? userSnap.data() : {};
+      const weeklyGoal = (typeof userData.weeklyGoal === 'number' && userData.weeklyGoal > 0) ? userData.weeklyGoal : 150;
+      // A control that cannot work should not be offered: MyLola needs to know
+      // in advance whether a log attempt will 402, not discover it by trying.
+      const canLog = (await resolveEffectivePlan(uid, userData)) !== 'free';
+
+      res.json({ found: true, activities, days, weeklyGoal, canLog });
     } catch (e) {
       console.error('[getScorecardForUser]', e);
+      res.status(500).json({ error: 'internal' });
+    }
+  }
+);
+
+// ===== saveDayForUser — write half of the SWH<->MyLola shared activity ledger =====
+// Sibling of getScorecardForUser: identical auth (shared bearer) and identity
+// resolution (verified email -> SWH uid, never client-supplied). See
+// docs/swh-write-bridge-spec.md (loaniq repo) for the full spec this implements.
+//
+// Deliberately takes {name, count} pairs, not caller-computed points: SWH owns
+// its own scoring catalog, and if MyLola sent points directly the two products
+// would silently disagree the first time SWH re-prices an activity.
+//
+// Writes BOTH counts (index-keyed, what the SWH day editor reads --
+// public-scorecard/index.html's todayCounts[i]) and breakdown (name-keyed).
+// A writer that only sets breakdown produces a real split: the score moves but
+// the editing grid shows zero for that activity, because counts never changed.
+// Resolving name -> catalog index is done here, server-side, using the same
+// resolved activities array getScorecardForUser already returns, because only
+// SWH can be trusted to know its own catalog order.
+//
+// Paywall: paid SWH subscribers only (Austen's ruling, 2026-08-29). Unlike
+// saveDay's own denyIfUnpaid (which deliberately fails OPEN for an interactive
+// session -- "don't block a legit user on a transient read fault"), this fails
+// CLOSED: a machine caller silently granted a paid capability by a transient
+// read error is a worse failure mode than a legitimate write occasionally
+// needing a retry.
+exports.saveDayForUser = onRequest(
+  { cors: true, secrets: [MYLOLA_INTEGRATION_SECRET] },
+  async (req, res) => {
+    if (req.method === 'OPTIONS') { res.status(204).send(''); return; }
+    if (req.method !== 'POST') { res.status(405).json({ error: 'Method not allowed' }); return; }
+    try {
+      const header = req.headers.authorization || '';
+      const token = header.startsWith('Bearer ') ? header.slice(7).trim() : '';
+      if (!token || token !== MYLOLA_INTEGRATION_SECRET.value().trim()) {
+        return res.status(401).json({ error: 'unauthorized' });
+      }
+
+      const { subjectEmail, dateKey, entries, source, clientEventId } = req.body || {};
+      if (!subjectEmail || typeof subjectEmail !== 'string') {
+        return res.status(400).json({ error: 'subjectEmail is required' });
+      }
+      if (!dateKey || typeof dateKey !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) {
+        return res.status(400).json({ error: 'dateKey must be YYYY-MM-DD' });
+      }
+      if (!Array.isArray(entries) || entries.length === 0) {
+        return res.status(400).json({ error: 'entries must be a non-empty array' });
+      }
+      if (!source || typeof source !== 'string') {
+        return res.status(400).json({ error: 'source is required' });
+      }
+
+      let uid;
+      try {
+        uid = (await admin.auth().getUserByEmail(subjectEmail.trim().toLowerCase())).uid;
+      } catch (e) {
+        return res.json({ found: false });
+      }
+
+      const userRef = admin.firestore().doc(`users/${uid}`);
+      const [userSnap, actSnap] = await Promise.all([
+        userRef.get(),
+        admin.firestore().doc(`users/${uid}/config/activities`).get(),
+      ]);
+      if (!userSnap.exists) return res.json({ found: false });
+      const userData = userSnap.data();
+
+      // Fail CLOSED, deliberately -- see block comment above.
+      let effectivePlan;
+      try {
+        effectivePlan = await resolveEffectivePlan(uid, userData);
+      } catch (e) {
+        console.error('[saveDayForUser] plan resolution failed, failing closed:', e);
+        return res.status(402).json({ error: 'subscription_required', code: 'PAYWALL' });
+      }
+      if (effectivePlan === 'free') {
+        return res.status(402).json({ error: 'subscription_required', code: 'PAYWALL' });
+      }
+
+      const activities = (actSnap.exists && Array.isArray(actSnap.data().list) && actSnap.data().list.length)
+        ? actSnap.data().list
+        : SCORECARD_DEFAULT_ACTIVITIES;
+      const nameToIndex = new Map(activities.map((act, i) => [act.name, i]));
+
+      const unknown = entries
+        .map(e => e && e.name)
+        .filter(name => typeof name !== 'string' || !nameToIndex.has(name));
+      if (unknown.length) {
+        // Do NOT score these as zero and accept the write -- a silent zero
+        // looks like a successful log and the user's points quietly don't move.
+        return res.status(400).json({ error: 'unknown_activities', activities: unknown });
+      }
+
+      const dayRef = userRef.collection('days').doc(dateKey);
+      const daySnap = await dayRef.get();
+      const existingData = daySnap.exists ? daySnap.data() : {};
+      const counts = { ...(existingData.counts || {}) };
+      const breakdown = { ...(existingData.breakdown || {}) };
+      const applied = [];
+      let skippedDuplicate = false;
+
+      for (const entry of entries) {
+        const name = entry.name;
+        const incomingCount = parseInt(entry.count, 10);
+        if (!Number.isFinite(incomingCount) || incomingCount <= 0) continue;
+        const idx = nameToIndex.get(name);
+        const act = activities[idx];
+        const isLead = act.lead !== false;
+
+        const existingEntry = breakdown[name] || { count: 0, pts: 0, icon: act.icon, category: act.cat || 'Other', lead: isLead };
+        const mylola = existingEntry.mylola || { count: 0, pts: 0, eventIds: [] };
+
+        // Idempotency: a re-send of the exact same client event replaces
+        // rather than adds to MyLola's own contribution, so a double-tap on a
+        // slow connection can't silently inflate the score.
+        if (clientEventId && mylola.eventIds.includes(clientEventId)) {
+          skippedDuplicate = true;
+          continue;
+        }
+
+        // Namespaced by source so a MyLola write can never clobber -- only
+        // add alongside -- whatever SWH's own CRM/Scorecard already logged
+        // for this activity today.
+        const nonMylolaCount = existingEntry.count - mylola.count;
+        const nonMylolaPts = existingEntry.pts - mylola.pts;
+        const newMylolaCount = mylola.count + incomingCount;
+        const newMylolaPts = newMylolaCount * act.pts;
+
+        counts[idx] = (counts[idx] || 0) + incomingCount;
+        breakdown[name] = {
+          count: nonMylolaCount + newMylolaCount,
+          pts: nonMylolaPts + newMylolaPts,
+          icon: act.icon,
+          category: act.cat || 'Other',
+          lead: isLead,
+          mylola: {
+            count: newMylolaCount,
+            pts: newMylolaPts,
+            eventIds: clientEventId ? [...mylola.eventIds, clientEventId].slice(-20) : mylola.eventIds,
+          },
+        };
+        applied.push({ name, count: incomingCount, pts: incomingCount * act.pts, lead: isLead });
+      }
+
+      let totalPts = 0, leadPts = 0, lagPts = 0;
+      const categoryPts = {};
+      Object.values(breakdown).forEach(bd => {
+        if (!bd || !(bd.count > 0)) return;
+        totalPts += bd.pts || 0;
+        if (bd.lead === false) lagPts += bd.pts || 0; else leadPts += bd.pts || 0;
+        const cat = bd.category || 'Other';
+        categoryPts[cat] = (categoryPts[cat] || 0) + (bd.pts || 0);
+      });
+
+      await dayRef.set({
+        ...existingData,
+        dateKey,
+        dateLabel: existingData.dateLabel || dateKey,
+        weekKey: existingData.weekKey || dateKey,
+        monthKey: existingData.monthKey || dateKey.slice(0, 7),
+        counts, breakdown, totalPts, leadPts, lagPts, categoryPts,
+        submitted: true,
+        submittedAt: new Date().toISOString(),
+      }, { merge: true });
+
+      res.json({
+        ok: true,
+        dateKey,
+        applied,
+        skippedDuplicate,
+        dayTotals: { totalPts, leadPts, lagPts },
+      });
+    } catch (e) {
+      console.error('[saveDayForUser]', e);
       res.status(500).json({ error: 'internal' });
     }
   }
