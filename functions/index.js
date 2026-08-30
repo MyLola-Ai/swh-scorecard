@@ -6448,8 +6448,14 @@ exports.getScorecardForUser = onRequest(
       } catch (e) {
         console.warn('[getScorecardForUser] plan lookup failed, canLog=false:', e && e.message);
       }
+      // Same convention as getMe / getWeekStart's own default: a lowercase
+      // day name, written only by saveSettings (see DAY_INDEX), defaulting
+      // to 'monday'. MyLola needs this so its own streak's week boundary
+      // agrees with the one SWH shows the same user -- computing against an
+      // assumed Monday would silently disagree for anyone who changed it.
+      const weekStartDay = settings.weekStartDay || 'monday';
 
-      res.json({ found: true, activities, days, weeklyGoal, canLog });
+      res.json({ found: true, activities, days, weeklyGoal, canLog, weekStartDay });
     } catch (e) {
       console.error('[getScorecardForUser]', e);
       res.status(500).json({ error: 'internal' });
