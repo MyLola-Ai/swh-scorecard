@@ -3612,7 +3612,7 @@
     updateNavHeight(); // re-measure now that nav is visible — fixes save-bar bottom offset on native
     updateCoachingBadge();
     const crmBtn = document.getElementById('open-crm-btn');
-    if (crmBtn) crmBtn.style.display = (!isNativeEarly && userPlan === 'pro') ? 'inline-flex' : 'none';
+    if (crmBtn) crmBtn.style.display = (!isNativeEarly && userPlan === 'pro') ? '' : 'none';
     renderAnnouncementsBanner();
     showScreen('home');
   }
@@ -5032,7 +5032,6 @@
       </div>
     </div>
     <div class="topbar-right">
-      <button id="open-crm-btn" onclick="goToCRM()" title="Open the CRM" style="display:none;align-items:center;gap:6px;padding:8px 12px;border:1px solid rgba(255,255,255,0.18);background:rgba(255,255,255,0.04);border-radius:10px;font-family:'DM Sans',sans-serif;font-size:12px;font-weight:700;color:#fff;cursor:pointer;">CRM ↗</button>
       <button class="icon-btn" onclick="openLagModal()">📈</button>
     </div>
   </div>
@@ -5416,6 +5415,10 @@
     <div class="nav-label">Team</div>
   </button>
   <button class="nav-item" onclick="showScreen('settings',this)"><div class="nav-icon">⚙️</div><div class="nav-label">Settings</div></button>
+  <button class="nav-item" id="open-crm-btn" onclick="goToCRM()" title="Open the CRM" style="display:none;">
+    <div class="nav-icon">📇</div>
+    <div class="nav-label">CRM ↗</div>
+  </button>
 </div>
 
 <!-- COACHING SCREEN -->
