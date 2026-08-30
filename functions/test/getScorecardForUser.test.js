@@ -46,6 +46,9 @@ function makeFakeFirestore(seed) {
           const data = docs[path];
           return { exists: data !== undefined, data: () => data };
         },
+        async set(data, opts) {
+          docs[path] = (opts && opts.merge) ? { ...(docs[path] || {}), ...data } : data;
+        },
       };
     },
     collection(path) {
@@ -72,10 +75,16 @@ function makeFakeFirestore(seed) {
 
 function withFakes({ users = {}, docs = {}, dayDocs = {} }, run) {
   return async () => {
+    let nextProvisionedUid = 0;
     const fakeAuth = {
       async getUserByEmail(email) {
         const uid = users[email];
         if (!uid) { const e = new Error('no user'); e.code = 'auth/user-not-found'; throw e; }
+        return { uid };
+      },
+      async createUser({ email }) {
+        const uid = 'provisioned_' + (nextProvisionedUid++);
+        users[email] = uid; // so a second lookup in the same test would resolve it too
         return { uid };
       },
     };
@@ -113,15 +122,36 @@ test('rejects a missing subjectEmail even with a valid secret', async () => {
   assert.equal(res.statusCode, 400);
 });
 
-test('found:false when no SWH account matches the email -- the "link your account" path', withFakes(
+// Austen's ruling, 2026-08-30: a MyLola user implies a comped SWH account.
+// An unknown email is no longer "link your account" -- it's provisioned on
+// the spot, via the same getOrProvisionSwhUser three endpoints share.
+test('an unknown email is provisioned on the spot, not told to link an account', withFakes(
   { users: {} },
   async () => {
     const { req, res } = fakeReqRes({ subjectEmail: 'nobody@example.com' });
     await getScorecardForUser(req, res);
     assert.equal(res.statusCode, 200);
-    assert.deepEqual(res._json, { found: false });
+    assert.equal(res._json.found, true, 'a fresh account must read as found, not found:false');
+    assert.ok(res._json.activities.length > 0, 'a brand-new account still gets the default activities catalog');
+    assert.deepEqual(res._json.days, [], 'no days logged yet');
   }
 ));
+
+test('provisioning stamps the comped plan fields and attributes the trigger path', async () => {
+  const docs = {};
+  await withFakes({ users: {}, docs }, async () => {
+    const { req, res } = fakeReqRes({ subjectEmail: 'fresh@example.com' });
+    await getScorecardForUser(req, res);
+    assert.equal(res.statusCode, 200);
+  })();
+  const written = Object.entries(docs).find(([path]) => /^users\/[^/]+$/.test(path));
+  assert.ok(written, 'expected a write to the bare users/{uid} doc');
+  const [, data] = written;
+  assert.equal(data.plan, 'pro');
+  assert.equal(data.subscriptionStatus, 'comp');
+  assert.equal(data.provisionedVia, 'mylola-scorecard-read');
+  assert.equal(data.email, 'fresh@example.com');
+});
 
 test('returns the matched user\'s own days and their custom activities list, not the default', withFakes(
   {

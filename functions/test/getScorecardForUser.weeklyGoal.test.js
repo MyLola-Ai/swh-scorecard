@@ -66,6 +66,10 @@ function makeHandler({ userDoc, settingsDoc, activitiesList, plan, planThrows, s
   // Never throws in the real implementation (own internal try/catch) -- the
   // fake mirrors that contract rather than a scenario that can't happen.
   const hasLinkedMyLolaAccount = async () => !!mylolaLinked;
+  // This file's userDoc is always present (uid 'u1') -- provisioning's
+  // "not found" branch isn't what these tests are about, so the fake just
+  // mirrors the fixed-uid lookup it replaced.
+  const getOrProvisionSwhUser = async () => ({ uid: 'u1', provisioned: false });
 
   let statusCode = 200, jsonBody = null;
   const fakeRes = {
@@ -73,10 +77,10 @@ function makeHandler({ userDoc, settingsDoc, activitiesList, plan, planThrows, s
     json(b) { jsonBody = b; return this; },
   };
   const fn = new Function(
-    'admin', 'MYLOLA_INTEGRATION_SECRET', 'resolveEffectivePlan', 'hasLinkedMyLolaAccount', 'chicagoTodayKey',
+    'admin', 'MYLOLA_INTEGRATION_SECRET', 'resolveEffectivePlan', 'hasLinkedMyLolaAccount', 'getOrProvisionSwhUser', 'chicagoTodayKey',
     'SCORECARD_READ_MAX_DAYS', 'SCORECARD_DEFAULT_ACTIVITIES',
     `return async (req, res) => {${handlerOnlySrc}}`,
-  )(admin, MYLOLA_INTEGRATION_SECRET, resolveEffectivePlan, hasLinkedMyLolaAccount, chicagoTodayKey,
+  )(admin, MYLOLA_INTEGRATION_SECRET, resolveEffectivePlan, hasLinkedMyLolaAccount, getOrProvisionSwhUser, chicagoTodayKey,
     SCORECARD_READ_MAX_DAYS, SCORECARD_DEFAULT_ACTIVITIES);
 
   return async (body) => {

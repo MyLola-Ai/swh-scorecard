@@ -108,6 +108,18 @@ function makeHandler({ users, days, activitiesDocs, secretValue, mylolaLinked })
   // its own internal try/catch) -- the fake mirrors that contract rather
   // than a scenario that can't happen.
   const hasLinkedMyLolaAccount = async () => !!mylolaLinked;
+  // Mirrors the real getOrProvisionSwhUser's observable contract (find or
+  // create-with-comp) against this file's own users-keyed-by-uid shape, so
+  // a provisioned user is readable by the SAME userRef.get() the handler
+  // uses afterward -- not a separate code path a test could fake past.
+  let provisionCounter = 0;
+  const getOrProvisionSwhUser = async (email, via) => {
+    const existingUid = Object.keys(users).find(u => users[u].email === email);
+    if (existingUid) return { uid: existingUid, provisioned: false };
+    const uid = 'provisioned_' + (provisionCounter++);
+    users[uid] = { email, plan: 'pro', subscriptionStatus: 'comp', provisionedVia: via };
+    return { uid, provisioned: true };
+  };
 
   const fakeReq = { method: 'POST', headers: {}, body: {} };
   let statusCode = 200, jsonBody = null;
@@ -119,9 +131,9 @@ function makeHandler({ users, days, activitiesDocs, secretValue, mylolaLinked })
 
   const onRequest = (_opts, fn) => fn;
   const runner = new Function(
-    'admin', 'MYLOLA_INTEGRATION_SECRET', 'resolveEffectivePlan', 'hasLinkedMyLolaAccount', 'SCORECARD_DEFAULT_ACTIVITIES', 'onRequest', 'console',
+    'admin', 'MYLOLA_INTEGRATION_SECRET', 'resolveEffectivePlan', 'hasLinkedMyLolaAccount', 'getOrProvisionSwhUser', 'SCORECARD_DEFAULT_ACTIVITIES', 'onRequest', 'console',
     `const handler = onRequest({}, async (req, res) => {${handlerOnlySrc}});\nreturn handler;`
-  )(admin, MYLOLA_INTEGRATION_SECRET, resolveEffectivePlan, hasLinkedMyLolaAccount, SCORECARD_DEFAULT_ACTIVITIES, onRequest, console);
+  )(admin, MYLOLA_INTEGRATION_SECRET, resolveEffectivePlan, hasLinkedMyLolaAccount, getOrProvisionSwhUser, SCORECARD_DEFAULT_ACTIVITIES, onRequest, console);
 
   return async (body, headers) => {
     fakeReq.body = body;
@@ -138,11 +150,20 @@ test('rejects a bad bearer token', async () => {
   assert.equal(r.status, 401);
 });
 
-test('unknown email returns found:false, not an error', async () => {
-  const call = makeHandler({ users: {}, days: {}, activitiesDocs: {}, secretValue: 's' });
-  const r = await call({ subjectEmail: 'nobody@example.com', dateKey: '2026-08-29', entries: [{ name: 'x', count: 1 }], source: 'mylola' });
+// Austen's ruling, 2026-08-30: a MyLola user implies a comped SWH account.
+// An unknown email is provisioned on the spot -- pro plan, no paywall --
+// rather than told to link an account.
+test('an unknown email is provisioned (comped pro) and the write succeeds, not found:false', async () => {
+  const users = {};
+  const call = makeHandler({ users, days: {}, activitiesDocs: {}, secretValue: 's' });
+  const r = await call({ subjectEmail: 'nobody@example.com', dateKey: '2026-08-29', entries: [{ name: 'Attend 1:1, Coffee, Lunch', count: 1 }], source: 'mylola' });
   assert.equal(r.status, 200);
-  assert.equal(r.body.found, false);
+  assert.equal(r.body.ok, true);
+  const provisioned = Object.values(users).find(u => u.email === 'nobody@example.com');
+  assert.ok(provisioned, 'expected a provisioned user record');
+  assert.equal(provisioned.plan, 'pro');
+  assert.equal(provisioned.subscriptionStatus, 'comp');
+  assert.equal(provisioned.provisionedVia, 'mylola-scorecard-write');
 });
 
 test('free plan is paywalled (402), never silently accepted', async () => {

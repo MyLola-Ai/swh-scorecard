@@ -6399,11 +6399,22 @@ exports.getScorecardForUser = onRequest(
         return res.status(400).json({ error: 'subjectEmail is required' });
       }
 
+      // Provisions on a miss rather than returning found:false -- Austen's
+      // ruling, 2026-08-30: a MyLola user is entitled to a comped SWH
+      // account whether or not they've ever clicked into the SWH CRM
+      // directly. See getOrProvisionSwhUser's own comment for the full
+      // invariant, the race handling, and how "no user-visible side effect"
+      // was verified. This can no longer return found:false for a real
+      // MyLola user -- a lookup failure here means provisioning itself
+      // threw, which is a 500 (an honest "couldn't resolve this"), not a
+      // fabricated found:false (a specific, false claim that no account
+      // exists).
       let uid;
       try {
-        uid = (await admin.auth().getUserByEmail(subjectEmail.trim().toLowerCase())).uid;
+        ({ uid } = await getOrProvisionSwhUser(subjectEmail.trim().toLowerCase(), 'mylola-scorecard-read'));
       } catch (e) {
-        return res.json({ found: false });
+        console.error('[getScorecardForUser] provisioning failed:', e);
+        return res.status(500).json({ error: 'internal' });
       }
 
       // Clamp the range server-side regardless of what's requested — a
@@ -6551,11 +6562,20 @@ exports.saveDayForUser = onRequest(
         return res.status(400).json({ error: 'source is required' });
       }
 
+      // Provisions on a miss -- see getOrProvisionSwhUser's own comment for
+      // the full invariant (Austen's ruling, 2026-08-30), the race handling,
+      // and how "no user-visible side effect" was verified. The
+      // !userSnap.exists check just below is no longer reachable via
+      // "unknown email" -- getOrProvisionSwhUser guarantees a uid that
+      // either already had a doc or just got one. It still guards a
+      // concurrent request's write not having landed yet (self-heals on
+      // retry) and any other Auth/Firestore desync, same as before.
       let uid;
       try {
-        uid = (await admin.auth().getUserByEmail(subjectEmail.trim().toLowerCase())).uid;
+        ({ uid } = await getOrProvisionSwhUser(subjectEmail.trim().toLowerCase(), 'mylola-scorecard-write'));
       } catch (e) {
-        return res.json({ found: false });
+        console.error('[saveDayForUser] provisioning failed:', e);
+        return res.status(500).json({ error: 'internal' });
       }
 
       const userRef = admin.firestore().doc(`users/${uid}`);
@@ -6711,6 +6731,84 @@ exports.saveDayForUser = onRequest(
 // SWH's granted-not-paid marker (adminCompTeam, used for teams).
 // Reused, not new, so nothing downstream has to learn a new value.
 const SWH_COMP_PLAN_FIELDS = { plan: 'pro', subscriptionStatus: 'comp' };
+
+// Single shared provisioning helper for the bridge invariant Austen ruled
+// 2026-08-30: "the SWH scorecard is available for all MyLola user[s]" means
+// a MyLola (or MyClosings) user IMPLIES a comped SWH account -- not a side
+// effect of clicking one particular button. Used by mintSwhSessionForUser,
+// getScorecardForUser, and saveDayForUser alike, so there is one place that
+// creates-with-comp, not three.
+//
+// Direction is one-way by construction: this only ever creates an SWH
+// account from an email a trusted MyLola/MyClosings caller (shared secret)
+// asked about. Nothing in this codebase calls the reverse (an SWH user
+// causing a MyLola/MyClosings account to be created) -- verifyMyLolaAccount
+// and friends stay check-only, per the invite-only ruling.
+//
+// Race-safety: getUserByEmail-then-createUser is check-then-act. Two
+// concurrent first-touches from the same new email will not both create --
+// Firebase Auth enforces email uniqueness itself, so the loser's createUser
+// rejects with auth/email-already-exists and is handled by re-resolving the
+// uid the winner just created, not by erroring. There remains a narrow
+// window where the loser resolves a uid before the winner's users/{uid}
+// write has landed; every caller here already tolerates a momentarily
+// doc-less uid (getScorecardForUser falls back to {} and its own defaults,
+// saveDayForUser's existing !userSnap.exists guard degrades to a
+// found:false a client just retries) rather than needing a transaction for
+// a millisecond-scale gap on a handful of requests a day.
+//
+// No user-visible side effect: this writes ONLY users/{uid}. Verified
+// 2026-08-30 -- no Firebase Auth onCreate trigger exists in this codebase at
+// all; every Firestore document trigger (onProfileCompleted, onActivityWrite,
+// onOneOnOneLogged, onEmailWrite) is scoped at least one level below
+// users/{uid} itself (config/settings, contacts/{c}/activities|emails/{x}),
+// so writing the bare user doc fires none of them; and every per-user
+// scheduled sweep (weeklyActivityEmail, dailySMSReminder,
+// dailyActivityReminder, sendOnboardingDrip) requires an explicit
+// config/settings opt-in or a separate onboardingDrip enrollment doc that
+// provisioning never writes -- a fresh account has neither, so all four
+// skip it. (sendOnboardingDrip's own two enrollment paths -- Stripe-driven
+// mirrorSubscriptionToUser, and an onCall that requires an already-signed-in
+// SWH session -- are both structurally unreachable from a bearer-secret
+// server-to-server provisioning call.)
+//
+// `via` is stamped as provisionedVia (the field mintSwhSessionForUser
+// already used for 'myclosings') so every provisioning event is
+// attributable to the endpoint that caused it -- log every one.
+async function getOrProvisionSwhUser(email, via) {
+  try {
+    const uid = (await admin.auth().getUserByEmail(email)).uid;
+    return { uid, provisioned: false };
+  } catch (e) {
+    // Not found -- fall through to create.
+  }
+
+  let uid;
+  try {
+    const created = await admin.auth().createUser({ email, emailVerified: true });
+    uid = created.uid;
+  } catch (e) {
+    if (e.code === 'auth/email-already-exists') {
+      // Lost a create race to a concurrent request for the same email --
+      // resolve the uid the winner just created rather than treating this
+      // as a failure.
+      const uidAfterRace = (await admin.auth().getUserByEmail(email)).uid;
+      console.log('[getOrProvisionSwhUser] create race lost, resolved existing uid, via:', via, 'email:', email);
+      return { uid: uidAfterRace, provisioned: false };
+    }
+    throw e;
+  }
+
+  await admin.firestore().doc(`users/${uid}`).set({
+    email,
+    ...SWH_COMP_PLAN_FIELDS,
+    provisionedVia: via,
+    createdAt: new Date().toISOString(),
+  }, { merge: true });
+  console.log('[getOrProvisionSwhUser] provisioned uid:', uid, 'via:', via, 'email:', email);
+  return { uid, provisioned: true };
+}
+
 exports.mintSwhSessionForUser = onRequest(
   { cors: true, secrets: [MYLOLA_INTEGRATION_SECRET] },
   async (req, res) => {
@@ -6727,25 +6825,7 @@ exports.mintSwhSessionForUser = onRequest(
       }
       const email = subjectEmail.trim().toLowerCase();
 
-      let uid, provisioned = false;
-      try {
-        uid = (await admin.auth().getUserByEmail(email)).uid;
-      } catch (e) {
-        // No SWH account for this email -- create it AND stamp full comped
-        // access. See the block comment above for why: a doc-less user
-        // silently resolves to SWH's free/paywalled tier, not what a
-        // MyClosings-provisioned user is supposed to get.
-        const created = await admin.auth().createUser({ email, emailVerified: true });
-        uid = created.uid;
-        await admin.firestore().doc(`users/${uid}`).set({
-          email,
-          ...SWH_COMP_PLAN_FIELDS,
-          provisionedVia: 'myclosings',
-          createdAt: new Date().toISOString(),
-        }, { merge: true });
-        provisioned = true;
-      }
-
+      const { uid, provisioned } = await getOrProvisionSwhUser(email, 'myclosings');
       const customToken = await admin.auth().createCustomToken(uid);
       res.json({ found: true, provisioned, customToken });
     } catch (e) {
