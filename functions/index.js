@@ -163,6 +163,30 @@ async function resolveEffectivePlan(uid, userData) {
   return plan;
 }
 
+// Single named entitlement predicate for the MyLola ecosystem ruling
+// (Austen, 2026-08-30): "The SWH scorecard is available for all MyLola user
+// but MyLola is not available for all SWH users." A confirmed-linked MyLola
+// account is entitled to SWH's logging/queue features regardless of SWH plan
+// -- the entitlement flows from MyLola down, never the other direction, so
+// this must never be used to grant an unlinked SWH user anything.
+//
+// "Linked" means users/{uid}/integrations/mylola has connectionStatus
+// 'connected' -- stamped client-side (public-crm/index.html connectMyLola())
+// only after verifyMyLolaConnection confirms a real MyLola account exists at
+// this user's email. Kept as one named function, not an inline condition, so
+// tightening this later (e.g. to a paid MyLola tier specifically, per the
+// open question on which rung of Free/SWH-CRM/MyLola-CRM actually qualifies)
+// is one edit here rather than a hunt across every call site.
+async function hasLinkedMyLolaAccount(uid) {
+  try {
+    const snap = await admin.firestore().doc(`users/${uid}/integrations/mylola`).get();
+    return snap.exists && snap.data().connectionStatus === 'connected';
+  } catch (e) {
+    console.warn('[hasLinkedMyLolaAccount] lookup failed, treating as not linked:', e.message);
+    return false;
+  }
+}
+
 // Write-endpoint gate: block metered logging for free/expired users so the
 // browse-don't-save model holds against a tampered/dev-tools client (the app
 // already gates via requirePaid; this is the server backstop). Account config
@@ -6442,11 +6466,19 @@ exports.getScorecardForUser = onRequest(
       // fault would hide the user's entire scorecard behind "could not load" --
       // a new failure mode on a path that never depended on plan resolution.
       // On the WRITE, fail-closed means 402; on the READ it means canLog:false.
+      //
+      // Entitled if EITHER a paid SWH plan OR a linked MyLola account (Austen's
+      // ruling, 2026-08-30) -- a paying MyLola customer on SWH's free tier must
+      // still see a working log control, not a paywall SWH alone would show.
       let canLog = false;
       try {
-        canLog = (await resolveEffectivePlan(uid, userData)) !== 'free';
+        const [linked, plan] = await Promise.all([
+          hasLinkedMyLolaAccount(uid),
+          resolveEffectivePlan(uid, userData),
+        ]);
+        canLog = linked || plan !== 'free';
       } catch (e) {
-        console.warn('[getScorecardForUser] plan lookup failed, canLog=false:', e && e.message);
+        console.warn('[getScorecardForUser] entitlement lookup failed, canLog=false:', e && e.message);
       }
       // Same convention as getMe / getWeekStart's own default: a lowercase
       // day name, written only by saveSettings (see DAY_INDEX), defaulting
@@ -6480,12 +6512,19 @@ exports.getScorecardForUser = onRequest(
 // resolved activities array getScorecardForUser already returns, because only
 // SWH can be trusted to know its own catalog order.
 //
-// Paywall: paid SWH subscribers only (Austen's ruling, 2026-08-29). Unlike
-// saveDay's own denyIfUnpaid (which deliberately fails OPEN for an interactive
-// session -- "don't block a legit user on a transient read fault"), this fails
-// CLOSED: a machine caller silently granted a paid capability by a transient
-// read error is a worse failure mode than a legitimate write occasionally
-// needing a retry.
+// Paywall: paid SWH subscribers OR a linked MyLola account (Austen's ruling,
+// 2026-08-30, superseding the paid-SWH-only ruling of 2026-08-29 -- made
+// before SWH joined the Lola ecosystem). "The SWH scorecard is available for
+// all MyLola user[s] but MyLola is not available for all SWH users": a
+// MyLola customer is entitled here regardless of their own SWH plan, so a
+// paying MyLola user on SWH's free tier does not 402. See
+// hasLinkedMyLolaAccount's own comment for what "linked" means.
+//
+// Unlike saveDay's own denyIfUnpaid (which deliberately fails OPEN for an
+// interactive session -- "don't block a legit user on a transient read
+// fault"), this fails CLOSED: a machine caller silently granted a paid
+// capability by a transient read error is a worse failure mode than a
+// legitimate write occasionally needing a retry.
 exports.saveDayForUser = onRequest(
   { cors: true, secrets: [MYLOLA_INTEGRATION_SECRET] },
   async (req, res) => {
@@ -6528,14 +6567,17 @@ exports.saveDayForUser = onRequest(
       const userData = userSnap.data();
 
       // Fail CLOSED, deliberately -- see block comment above.
-      let effectivePlan;
+      let linkedToMyLola, effectivePlan;
       try {
-        effectivePlan = await resolveEffectivePlan(uid, userData);
+        [linkedToMyLola, effectivePlan] = await Promise.all([
+          hasLinkedMyLolaAccount(uid),
+          resolveEffectivePlan(uid, userData),
+        ]);
       } catch (e) {
-        console.error('[saveDayForUser] plan resolution failed, failing closed:', e);
+        console.error('[saveDayForUser] entitlement resolution failed, failing closed:', e);
         return res.status(402).json({ error: 'subscription_required', code: 'PAYWALL' });
       }
-      if (effectivePlan === 'free') {
+      if (!linkedToMyLola && effectivePlan === 'free') {
         return res.status(402).json({ error: 'subscription_required', code: 'PAYWALL' });
       }
 
@@ -8140,18 +8182,43 @@ async function runFollowThroughQueueBuild(opts) {
   const todayKey = chicagoTodayKey();
   console.log('[buildFollowThroughQueue] running for', todayKey);
 
-  // V1 gate: build for ADMIN_EMAILS directly. Drafting needs no email
-  // connection — do NOT key on Nylas grants (Nylas is being replaced by
-  // Unipile/Lola Connect; the send path migrates there, drafts shouldn't
-  // die with the old stack).
+  // V1 gate lifted (Austen's ruling, 2026-08-30): "The SWH scorecard is
+  // available for all MyLola user but MyLola is not available for all SWH
+  // users." Build for ADMIN_EMAILS (the original bootstrap accounts) UNION
+  // any uid with a linked MyLola account -- NOT all SWH users; entitlement
+  // flows from MyLola down, never the other way. See hasLinkedMyLolaAccount's
+  // own comment for what "linked" means. Drafting needs no email connection —
+  // do NOT key on Nylas grants (Nylas is being replaced by Unipile/Lola
+  // Connect; the send path migrates there, drafts shouldn't die with the old
+  // stack).
+  //
+  // Scale (2026-08-30): 59 total SWH users, 5 currently MyLola-linked. A
+  // collectionGroup query on the mylola integration doc would be cheaper at
+  // real scale, but that doc carries no provider/status discriminator fields
+  // (unlike gmail's own already-indexed collectionGroup query) -- querying it
+  // that way hits FAILED_PRECONDITION today; no index exists for it. At this
+  // size a plain per-user scan needs no new index. Revisit if the linked
+  // population grows enough that this scan, not the drafting calls, becomes
+  // the bottleneck.
+  const adminUids = new Set();
   for (const adminEmail of ADMIN_EMAILS) {
-    let uid = null;
     try {
-      uid = (await admin.auth().getUserByEmail(adminEmail)).uid;
+      adminUids.add((await admin.auth().getUserByEmail(adminEmail)).uid);
     } catch (_) {
       console.warn('[buildFollowThroughQueue] no auth user for', adminEmail);
-      continue;
     }
+  }
+  const allUsersSnap = await admin.firestore().collection('users').get();
+  const linkedUids = [];
+  for (const uDoc of allUsersSnap.docs) {
+    if (adminUids.has(uDoc.id)) continue;
+    if (await hasLinkedMyLolaAccount(uDoc.id)) linkedUids.push(uDoc.id);
+  }
+  const eligibleUids = [...adminUids, ...linkedUids];
+  console.log('[buildFollowThroughQueue] eligible uids:', eligibleUids.length,
+    '(admin:', adminUids.size, ', mylola-linked:', linkedUids.length, ')');
+
+  for (const uid of eligibleUids) {
     console.log('[buildFollowThroughQueue] uid', uid);
 
     const [userSnap, pbSnap, contactsSnap, settingsSnap] = await Promise.all([
@@ -8290,6 +8357,16 @@ exports.buildFollowThroughQueue = onSchedule({
   schedule: 'every day 08:00',
   timeZone: 'America/Chicago',
   secrets: [ANTHROPIC_API_KEY],
+  // Matches buildFollowThroughQueueNow's own override below, for the same
+  // underlying operation. Unset here (platform default, 60s) was never
+  // exercised: this ran for exactly one account until the 2026-08-30 gate
+  // change, sequentially draining one user's due items in well under a
+  // minute. Widening the eligible set processes each user's own drafting
+  // pass one after another, not in parallel across users, so total runtime
+  // now scales with however many users have due items on a given morning —
+  // the risk buildFollowThroughQueueNow was already deliberately hardened
+  // against is now live on the cron too.
+  timeoutSeconds: 540,
 }, runFollowThroughQueueBuild);
 
 // Manual trigger for the morning draft builder — refills the Morning

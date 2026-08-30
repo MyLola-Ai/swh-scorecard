@@ -30,7 +30,7 @@ const endIdx = src.indexOf('\n  }\n);', openBrace);
 assert.ok(endIdx !== -1, 'handler end not found');
 const handlerOnlySrc = src.slice(openBrace, endIdx);
 
-function makeHandler({ userDoc, settingsDoc, activitiesList, plan, planThrows, secretValue }) {
+function makeHandler({ userDoc, settingsDoc, activitiesList, plan, planThrows, secretValue, mylolaLinked }) {
   const admin = {
     auth: () => ({
       getUserByEmail: async () => ({ uid: 'u1' }),
@@ -63,6 +63,9 @@ function makeHandler({ userDoc, settingsDoc, activitiesList, plan, planThrows, s
   const chicagoTodayKey = () => '2026-08-29';
   const SCORECARD_READ_MAX_DAYS = 90;
   const SCORECARD_DEFAULT_ACTIVITIES = [{ cat: 'Networking', name: 'Coffee', pts: 5 }];
+  // Never throws in the real implementation (own internal try/catch) -- the
+  // fake mirrors that contract rather than a scenario that can't happen.
+  const hasLinkedMyLolaAccount = async () => !!mylolaLinked;
 
   let statusCode = 200, jsonBody = null;
   const fakeRes = {
@@ -70,10 +73,10 @@ function makeHandler({ userDoc, settingsDoc, activitiesList, plan, planThrows, s
     json(b) { jsonBody = b; return this; },
   };
   const fn = new Function(
-    'admin', 'MYLOLA_INTEGRATION_SECRET', 'resolveEffectivePlan', 'chicagoTodayKey',
+    'admin', 'MYLOLA_INTEGRATION_SECRET', 'resolveEffectivePlan', 'hasLinkedMyLolaAccount', 'chicagoTodayKey',
     'SCORECARD_READ_MAX_DAYS', 'SCORECARD_DEFAULT_ACTIVITIES',
     `return async (req, res) => {${handlerOnlySrc}}`,
-  )(admin, MYLOLA_INTEGRATION_SECRET, resolveEffectivePlan, chicagoTodayKey,
+  )(admin, MYLOLA_INTEGRATION_SECRET, resolveEffectivePlan, hasLinkedMyLolaAccount, chicagoTodayKey,
     SCORECARD_READ_MAX_DAYS, SCORECARD_DEFAULT_ACTIVITIES);
 
   return async (body) => {
@@ -109,6 +112,13 @@ test('canLog is true for a paid plan, false for free', async () => {
   assert.equal((await paid({ subjectEmail: 'a@b.c' })).body.canLog, true);
   const free = makeHandler({ ...BASE, userDoc: { plan: 'free' }, settingsDoc: {}, plan: 'free' });
   assert.equal((await free({ subjectEmail: 'a@b.c' })).body.canLog, false);
+});
+
+// Austen's ruling, 2026-08-30: a linked MyLola account is entitled
+// regardless of SWH plan.
+test('canLog is true on a free SWH plan when the account is linked to MyLola', async () => {
+  const call = makeHandler({ ...BASE, userDoc: { plan: 'free' }, settingsDoc: {}, plan: 'free', mylolaLinked: true });
+  assert.equal((await call({ subjectEmail: 'a@b.c' })).body.canLog, true);
 });
 
 test('a billing-lookup failure yields canLog:false and STILL RETURNS THE SCORECARD', async () => {

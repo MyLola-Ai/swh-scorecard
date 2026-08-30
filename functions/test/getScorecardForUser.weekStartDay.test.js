@@ -53,6 +53,7 @@ function makeHandler({ userDoc, settingsDoc, activitiesList, plan, secretValue }
 
   const MYLOLA_INTEGRATION_SECRET = { value: () => secretValue };
   const resolveEffectivePlan = async () => plan || 'free';
+  const hasLinkedMyLolaAccount = async () => false;
   const chicagoTodayKey = () => '2026-08-29';
   const SCORECARD_READ_MAX_DAYS = 90;
   const SCORECARD_DEFAULT_ACTIVITIES = [{ cat: 'Networking', name: 'Coffee', pts: 5 }];
@@ -63,10 +64,10 @@ function makeHandler({ userDoc, settingsDoc, activitiesList, plan, secretValue }
     json(b) { jsonBody = b; return this; },
   };
   const fn = new Function(
-    'admin', 'MYLOLA_INTEGRATION_SECRET', 'resolveEffectivePlan', 'chicagoTodayKey',
+    'admin', 'MYLOLA_INTEGRATION_SECRET', 'resolveEffectivePlan', 'hasLinkedMyLolaAccount', 'chicagoTodayKey',
     'SCORECARD_READ_MAX_DAYS', 'SCORECARD_DEFAULT_ACTIVITIES',
     `return async (req, res) => {${handlerOnlySrc}}`,
-  )(admin, MYLOLA_INTEGRATION_SECRET, resolveEffectivePlan, chicagoTodayKey,
+  )(admin, MYLOLA_INTEGRATION_SECRET, resolveEffectivePlan, hasLinkedMyLolaAccount, chicagoTodayKey,
     SCORECARD_READ_MAX_DAYS, SCORECARD_DEFAULT_ACTIVITIES);
 
   return async (body) => {

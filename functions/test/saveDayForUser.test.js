@@ -39,7 +39,7 @@ assert.ok(endIdx !== -1, 'end marker not found');
 // template below supplies both the opening and closing brace.
 const handlerOnlySrc = src.slice(startIdx + startMarker.length, endIdx);
 
-function makeHandler({ users, days, activitiesDocs, secretValue }) {
+function makeHandler({ users, days, activitiesDocs, secretValue, mylolaLinked }) {
   const admin = {
     auth: () => ({
       getUserByEmail: async (email) => {
@@ -104,6 +104,10 @@ function makeHandler({ users, days, activitiesDocs, secretValue }) {
 
   const MYLOLA_INTEGRATION_SECRET = { value: () => secretValue };
   const resolveEffectivePlan = async (uid, userData) => userData.plan || 'free';
+  // hasLinkedMyLolaAccount never throws in the real implementation (it has
+  // its own internal try/catch) -- the fake mirrors that contract rather
+  // than a scenario that can't happen.
+  const hasLinkedMyLolaAccount = async () => !!mylolaLinked;
 
   const fakeReq = { method: 'POST', headers: {}, body: {} };
   let statusCode = 200, jsonBody = null;
@@ -115,9 +119,9 @@ function makeHandler({ users, days, activitiesDocs, secretValue }) {
 
   const onRequest = (_opts, fn) => fn;
   const runner = new Function(
-    'admin', 'MYLOLA_INTEGRATION_SECRET', 'resolveEffectivePlan', 'SCORECARD_DEFAULT_ACTIVITIES', 'onRequest', 'console',
+    'admin', 'MYLOLA_INTEGRATION_SECRET', 'resolveEffectivePlan', 'hasLinkedMyLolaAccount', 'SCORECARD_DEFAULT_ACTIVITIES', 'onRequest', 'console',
     `const handler = onRequest({}, async (req, res) => {${handlerOnlySrc}});\nreturn handler;`
-  )(admin, MYLOLA_INTEGRATION_SECRET, resolveEffectivePlan, SCORECARD_DEFAULT_ACTIVITIES, onRequest, console);
+  )(admin, MYLOLA_INTEGRATION_SECRET, resolveEffectivePlan, hasLinkedMyLolaAccount, SCORECARD_DEFAULT_ACTIVITIES, onRequest, console);
 
   return async (body, headers) => {
     fakeReq.body = body;
@@ -144,6 +148,24 @@ test('unknown email returns found:false, not an error', async () => {
 test('free plan is paywalled (402), never silently accepted', async () => {
   const users = { u1: { email: 'lo@example.com', plan: 'free' } };
   const call = makeHandler({ users, days: {}, activitiesDocs: {}, secretValue: 's' });
+  const r = await call({ subjectEmail: 'lo@example.com', dateKey: '2026-08-29', entries: [{ name: 'Attend 1:1, Coffee, Lunch', count: 1 }], source: 'mylola' });
+  assert.equal(r.status, 402);
+  assert.equal(r.body.code, 'PAYWALL');
+});
+
+// Austen's ruling, 2026-08-30: a linked MyLola account is entitled here
+// regardless of SWH plan -- the exact case MyLola LO flagged, a paying
+// MyLola customer stuck behind SWH's own free-tier paywall.
+test('a free SWH plan does NOT paywall a linked MyLola account', async () => {
+  const users = { u1: { email: 'lo@example.com', plan: 'free' } };
+  const call = makeHandler({ users, days: {}, activitiesDocs: {}, secretValue: 's', mylolaLinked: true });
+  const r = await call({ subjectEmail: 'lo@example.com', dateKey: '2026-08-29', entries: [{ name: 'Attend 1:1, Coffee, Lunch', count: 1 }], source: 'mylola' });
+  assert.equal(r.status, 200);
+});
+
+test('an unlinked free SWH plan is still paywalled -- the ruling does not grant this to everyone', async () => {
+  const users = { u1: { email: 'lo@example.com', plan: 'free' } };
+  const call = makeHandler({ users, days: {}, activitiesDocs: {}, secretValue: 's', mylolaLinked: false });
   const r = await call({ subjectEmail: 'lo@example.com', dateKey: '2026-08-29', entries: [{ name: 'Attend 1:1, Coffee, Lunch', count: 1 }], source: 'mylola' });
   assert.equal(r.status, 402);
   assert.equal(r.body.code, 'PAYWALL');
