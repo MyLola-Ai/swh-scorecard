@@ -62,6 +62,11 @@ function makeHandler({ userDoc, settingsDoc, activitiesList, plan, planThrows, s
   };
   const chicagoTodayKey = () => '2026-08-29';
   const SCORECARD_READ_MAX_DAYS = 90;
+  const SCORECARD_STREAK_LOOKBACK_DAYS = 180;
+  // Not under test here (see getScorecardForUser.weeklyStreak.test.js) --
+  // the mocked collection() call always returns empty docs, so the real
+  // function would return 0 anyway; this fake just satisfies the reference.
+  const calcWeeklyStreakServer = () => 0;
   const SCORECARD_DEFAULT_ACTIVITIES = [{ cat: 'Networking', name: 'Coffee', pts: 5 }];
   // Never throws in the real implementation (own internal try/catch) -- the
   // fake mirrors that contract rather than a scenario that can't happen.
@@ -78,10 +83,10 @@ function makeHandler({ userDoc, settingsDoc, activitiesList, plan, planThrows, s
   };
   const fn = new Function(
     'admin', 'MYLOLA_INTEGRATION_SECRET', 'resolveEffectivePlan', 'hasLinkedMyLolaAccount', 'getOrProvisionSwhUser', 'chicagoTodayKey',
-    'SCORECARD_READ_MAX_DAYS', 'SCORECARD_DEFAULT_ACTIVITIES',
+    'SCORECARD_READ_MAX_DAYS', 'SCORECARD_STREAK_LOOKBACK_DAYS', 'calcWeeklyStreakServer', 'SCORECARD_DEFAULT_ACTIVITIES',
     `return async (req, res) => {${handlerOnlySrc}}`,
   )(admin, MYLOLA_INTEGRATION_SECRET, resolveEffectivePlan, hasLinkedMyLolaAccount, getOrProvisionSwhUser, chicagoTodayKey,
-    SCORECARD_READ_MAX_DAYS, SCORECARD_DEFAULT_ACTIVITIES);
+    SCORECARD_READ_MAX_DAYS, SCORECARD_STREAK_LOOKBACK_DAYS, calcWeeklyStreakServer, SCORECARD_DEFAULT_ACTIVITIES);
 
   return async (body) => {
     await fn({ method: 'POST', headers: { authorization: 'Bearer ' + secretValue }, body }, fakeRes);

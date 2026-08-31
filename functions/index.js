@@ -6393,6 +6393,50 @@ const MYLOLA_VERIFY_ACCOUNT_URL =
 // no SWH account for that email — the "link your SWH account" path.
 const SCORECARD_READ_MAX_DAYS = 90;
 
+// Independent of SCORECARD_READ_MAX_DAYS on purpose. That constant bounds
+// what a CALLER can request in the `days` array (a display/export size
+// concern); weeklyStreak must always be computed over the SAME lookback
+// SWH's own client uses (public-scorecard/index.html's getMe, 180 days),
+// regardless of whatever range the caller happens to ask for elsewhere in
+// the same request. A caller requesting a short custom range for display
+// must not silently truncate the streak underneath it -- a 15-week streak
+// is not representable from a 90-day window, which is exactly the bug this
+// exists to prevent (MyLola LO, 2026-08-31: two implementations of one
+// number disagreed because one of them physically couldn't see enough
+// history to agree).
+const SCORECARD_STREAK_LOOKBACK_DAYS = 180;
+
+// Server-side port of public-scorecard/index.html's calcWeeklyStreak,
+// kept in exact lockstep by hand (same trade-off as the other client
+// mirrors in this file) rather than reimplemented from a description.
+// `history` here must already be filtered to totalPts > 0 -- calcWeeklyStreak
+// counts every entry it's given as a logged day, and relies on its OWN
+// caller to have filtered; this mirrors that contract exactly rather than
+// filtering twice or in a different place than the original does.
+function calcWeeklyStreakServer(history, todayKey, weekStartDay) {
+  if (!history.length) return 0;
+  const weekDays = {};
+  history.forEach(d => {
+    const wk = getWeekStart(d.dateKey, weekStartDay);
+    weekDays[wk] = (weekDays[wk] || 0) + 1;
+  });
+  const prevWeek = (wk) => {
+    const d = new Date(wk + 'T12:00:00');
+    d.setDate(d.getDate() - 7);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
+  let wk = getWeekStart(todayKey, weekStartDay);
+  // If the current week isn't active yet, start counting from last week --
+  // don't penalize a streak for a week still in progress.
+  if ((weekDays[wk] || 0) < 3) wk = prevWeek(wk);
+  let streak = 0;
+  while ((weekDays[wk] || 0) >= 3) {
+    streak++;
+    wk = prevWeek(wk);
+  }
+  return streak;
+}
+
 // Minimal server-side mirror of public-crm/index.html's DEFAULT_ACTS —
 // intentionally NOT the full catalog (drops the ctx field-definitions,
 // which are CRM logging-form UI only, irrelevant to a read-only display).
@@ -6462,7 +6506,11 @@ exports.getScorecardForUser = onRequest(
       const requestedTo = (typeof toDateKey === 'string' && toDateKey) ? toDateKey : today;
       const effectiveTo = requestedTo > today ? today : requestedTo;
 
-      const [actSnap, daysSnap, userSnap, settingsSnap] = await Promise.all([
+      const streakOldestAllowed = new Date(today + 'T12:00:00Z');
+      streakOldestAllowed.setUTCDate(streakOldestAllowed.getUTCDate() - SCORECARD_STREAK_LOOKBACK_DAYS);
+      const streakOldestAllowedKey = streakOldestAllowed.toISOString().slice(0, 10);
+
+      const [actSnap, daysSnap, userSnap, settingsSnap, streakDaysSnap] = await Promise.all([
         admin.firestore().doc(`users/${uid}/config/activities`).get(),
         admin.firestore().collection(`users/${uid}/days`)
           .where('dateKey', '>=', effectiveFrom)
@@ -6473,6 +6521,13 @@ exports.getScorecardForUser = onRequest(
         // weeklyGoal lives HERE, not on the user doc. saveSettings writes it to
         // config/settings and getMe reads it from there.
         admin.firestore().doc(`users/${uid}/config/settings`).get(),
+        // Separate, fixed-window read for weeklyStreak specifically -- see
+        // SCORECARD_STREAK_LOOKBACK_DAYS's own comment for why this can't
+        // reuse effectiveFrom/effectiveTo above.
+        admin.firestore().collection(`users/${uid}/days`)
+          .where('dateKey', '>=', streakOldestAllowedKey)
+          .where('dateKey', '<=', today)
+          .get(),
       ]);
 
       const activities = (actSnap.exists && Array.isArray(actSnap.data().list) && actSnap.data().list.length)
@@ -6531,7 +6586,16 @@ exports.getScorecardForUser = onRequest(
       // assumed Monday would silently disagree for anyone who changed it.
       const weekStartDay = settings.weekStartDay || 'monday';
 
-      res.json({ found: true, activities, days, weeklyGoal, canLog, weekStartDay });
+      // Logged day = totalPts > 0, same filter calcWeeklyStreak's own
+      // caller applies client-side (public-scorecard/index.html) -- NOT
+      // "has a days doc at all," which would count a zero-point day as
+      // active and inflate the streak.
+      const streakHistory = streakDaysSnap.docs
+        .map(d => d.data())
+        .filter(x => (x.totalPts || 0) > 0);
+      const weeklyStreak = calcWeeklyStreakServer(streakHistory, today, weekStartDay);
+
+      res.json({ found: true, activities, days, weeklyGoal, canLog, weekStartDay, weeklyStreak });
     } catch (e) {
       console.error('[getScorecardForUser]', e);
       res.status(500).json({ error: 'internal' });

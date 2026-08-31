@@ -212,3 +212,135 @@ test('clamps an out-of-range fromDateKey to the max lookback window instead of r
     assert.ok(!keys.includes('2020-01-01'), 'the 2020 row is outside the 90-day clamp and must not be returned even though it was in range of the requested (unclamped) window');
   }
 ));
+
+// ── weeklyStreak (2026-08-31, MyLola LO) ───────────────────────────────────
+// MyLola's own streak implementation disagreed with SWH's displayed number
+// on the same account, same day, because it measured a different thing
+// under the same name (points-goal weeks vs. calcWeeklyStreak's >=3-logged-
+// days weeks) and, separately, could not have matched even with the right
+// definition -- the cross-product read was clamped to 90 days while SWH's
+// own streak looks back 180. These tests use real dates computed relative
+// to whatever "today" actually is when the suite runs (chicagoTodayKey is
+// the real function here, unmocked), so they hold regardless of run date.
+// LOCAL date methods throughout (getDay/setDate/getFullYear), matching the
+// real getWeekStart/fmtDate exactly -- both parse dateKey + 'T12:00:00' with
+// NO timezone suffix, so the JS engine reads it as local time. Using UTC
+// methods here instead would silently disagree with the real function on
+// any machine whose local timezone isn't UTC (confirmed: this one is
+// America/Chicago), producing an off-by-one that looks like a bug in the
+// server code when it's actually a mismatch in the test's own date math.
+function mondayOnOrBefore(d) {
+  const day = d.getDay(); // 0=Sun..6=Sat
+  const diff = day === 0 ? 6 : day - 1; // days since Monday
+  const out = new Date(d);
+  out.setDate(out.getDate() - diff);
+  return out;
+}
+function fmt(d) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
+function weeksAgoMonday(n) {
+  const today = new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate(), 12);
+  const thisMonday = mondayOnOrBefore(today);
+  const target = new Date(thisMonday);
+  target.setDate(target.getDate() - n * 7);
+  return target;
+}
+// Builds `count` logged day-docs (totalPts > 0) inside the week starting at
+// `weekStartDate`, on its first `count` days (Mon, Tue, ... as needed).
+function loggedDaysInWeek(weekStartDate, count) {
+  const out = [];
+  for (let i = 0; i < count; i++) {
+    const d = new Date(weekStartDate);
+    d.setDate(d.getDate() + i);
+    out.push({ dateKey: fmt(d), counts: {}, totalPts: 5, leadPts: 5, lagPts: 0, breakdown: {} });
+  }
+  return out;
+}
+
+test('weeklyStreak: 3 consecutive qualifying weeks (current week already active)', () => {
+  const dayDocsList = [
+    ...loggedDaysInWeek(weeksAgoMonday(0), 3), // this week, already qualifies
+    ...loggedDaysInWeek(weeksAgoMonday(1), 4),
+    ...loggedDaysInWeek(weeksAgoMonday(2), 3),
+    ...loggedDaysInWeek(weeksAgoMonday(3), 1), // breaks the streak here
+  ];
+  return withFakes(
+    { users: { 'lo@example.com': 'uid_streak1' }, dayDocs: { 'users/uid_streak1/days': dayDocsList } },
+    async () => {
+      const { req, res } = fakeReqRes({ subjectEmail: 'lo@example.com' });
+      await getScorecardForUser(req, res);
+      assert.equal(res._json.weeklyStreak, 3);
+    }
+  )();
+});
+
+test('weeklyStreak: current week in progress (only 1 day so far) does not break the streak -- counts from last week', () => {
+  const dayDocsList = [
+    ...loggedDaysInWeek(weeksAgoMonday(0), 1), // in progress, not yet >=3
+    ...loggedDaysInWeek(weeksAgoMonday(1), 3),
+    ...loggedDaysInWeek(weeksAgoMonday(2), 3),
+  ];
+  return withFakes(
+    { users: { 'lo@example.com': 'uid_streak2' }, dayDocs: { 'users/uid_streak2/days': dayDocsList } },
+    async () => {
+      const { req, res } = fakeReqRes({ subjectEmail: 'lo@example.com' });
+      await getScorecardForUser(req, res);
+      assert.equal(res._json.weeklyStreak, 2, 'the in-progress current week must not zero out the streak from the two completed weeks before it');
+    }
+  )();
+});
+
+test('weeklyStreak: a zero-point day does not count as logged', () => {
+  const wk = weeksAgoMonday(0);
+  const thirdDay = new Date(wk);
+  thirdDay.setDate(thirdDay.getDate() + 2);
+  const dayDocsList = [
+    ...loggedDaysInWeek(wk, 2), // two real logged days (Mon, Tue)
+    { dateKey: fmt(thirdDay), counts: {}, totalPts: 0, leadPts: 0, lagPts: 0, breakdown: {} }, // has a doc, but totalPts:0 -- not "logged"
+  ];
+  return withFakes(
+    { users: { 'lo@example.com': 'uid_streak3' }, dayDocs: { 'users/uid_streak3/days': dayDocsList } },
+    async () => {
+      const { req, res } = fakeReqRes({ subjectEmail: 'lo@example.com' });
+      await getScorecardForUser(req, res);
+      assert.equal(res._json.weeklyStreak, 0, 'only 2 of the 3 day-docs are actually logged (totalPts>0), so this week never reached 3 and the streak is 0');
+    }
+  )();
+});
+
+test('weeklyStreak: unaffected by a caller-requested narrow days range -- the exact bug this field exists to fix', () => {
+  // A streak long enough that it could NEVER fit inside a 90-day window --
+  // 15 weeks is >= 105 days, matching the real screenshot discrepancy
+  // MyLola LO described (15 vs 1).
+  const dayDocsList = [];
+  for (let w = 0; w < 15; w++) dayDocsList.push(...loggedDaysInWeek(weeksAgoMonday(w), 3));
+  return withFakes(
+    { users: { 'lo@example.com': 'uid_streak4' }, dayDocs: { 'users/uid_streak4/days': dayDocsList } },
+    async () => {
+      // Caller explicitly requests only the last 7 days for the `days` array
+      // -- a real, legitimate ask for a short display window that must NOT
+      // truncate the streak, which needs the full 180-day lookback regardless.
+      // Computed the same way chicagoTodayKey() itself does (not plain
+      // new Date(), and not UTC) -- the request is clamped server-side
+      // against that exact value, so matching it here avoids an off-by-one
+      // depending on what hour this test happens to run.
+      const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Chicago' });
+      const sevenDaysAgoDate = new Date();
+      sevenDaysAgoDate.setDate(sevenDaysAgoDate.getDate() - 7);
+      const sevenDaysAgo = sevenDaysAgoDate.toLocaleDateString('en-CA', { timeZone: 'America/Chicago' });
+      const { req, res } = fakeReqRes({ subjectEmail: 'lo@example.com', fromDateKey: sevenDaysAgo, toDateKey: today });
+      await getScorecardForUser(req, res);
+      assert.ok(res._json.days.length <= 8, 'the days array itself should honor the narrow requested range');
+      assert.equal(res._json.weeklyStreak, 15, 'the streak must use its own fixed 180-day lookback, independent of whatever range was requested for days');
+    }
+  )();
+});
+
+test('weeklyStreak: zero history returns 0, not an error', withFakes(
+  { users: { 'lo@example.com': 'uid_streak5' }, dayDocs: { 'users/uid_streak5/days': [] } },
+  async () => {
+    const { req, res } = fakeReqRes({ subjectEmail: 'lo@example.com' });
+    await getScorecardForUser(req, res);
+    assert.equal(res.statusCode, 200);
+    assert.equal(res._json.weeklyStreak, 0);
+  }
+));
