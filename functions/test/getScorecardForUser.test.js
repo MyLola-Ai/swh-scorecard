@@ -344,3 +344,145 @@ test('weeklyStreak: zero history returns 0, not an error', withFakes(
     assert.equal(res._json.weeklyStreak, 0);
   }
 ));
+
+// ── tier (2026-08-31, MyLola LO) ────────────────────────────────────────────
+// Ported from public-scorecard/index.html exactly, not reimplemented from a
+// description (see the tier block's own comment in index.js). Real getTier /
+// getWeekStart / getNextTierServer run unmocked here, via the real handler --
+// no hand-copied mirror of any of the three to fall out of sync, which is
+// exactly the class of bug the weeklyStreak work above hit once already.
+// One synthetic day-doc per test carries the whole week's totals; the
+// qualifier sums breakdown counts across every matched day, so it doesn't
+// matter whether a test spreads activity across multiple days or puts it
+// all on one -- these put it on one for a smaller fixture.
+function weekDay(weekStartDate, { leadPts = 0, lagPts = 0, breakdown = {} } = {}) {
+  return { dateKey: fmt(weekStartDate), counts: {}, totalPts: leadPts + lagPts, leadPts, lagPts, breakdown };
+}
+function act(count) { return { count, pts: 0, icon: '', category: 'Networking', lead: true }; }
+
+test('tier reflects only the CURRENT week\'s lead points, not a prior week\'s', withFakes(
+  {
+    users: { 'lo@example.com': 'uid_tier1' },
+    dayDocs: {
+      'users/uid_tier1/days': [
+        weekDay(weeksAgoMonday(1), { leadPts: 300 }), // prior week -- would be Master Networker if wrongly included
+        weekDay(weeksAgoMonday(0), { leadPts: 60 }),  // this week -- Active Networker band (50-99)
+      ],
+    },
+  },
+  async () => {
+    const { req, res } = fakeReqRes({ subjectEmail: 'lo@example.com' });
+    await getScorecardForUser(req, res);
+    assert.equal(res._json.tier.pts, 60, 'tier.pts must be this week\'s lead points only');
+    assert.equal(res._json.tier.name, 'Active Networker', 'a prior week\'s points must not leak into this week\'s tier');
+  }
+));
+
+test('tier at the top band has no next tier to report', withFakes(
+  { users: { 'lo@example.com': 'uid_tier2' }, dayDocs: { 'users/uid_tier2/days': [weekDay(weeksAgoMonday(0), { leadPts: 250 })] } },
+  async () => {
+    const { req, res } = fakeReqRes({ subjectEmail: 'lo@example.com' });
+    await getScorecardForUser(req, res);
+    const { tier } = res._json;
+    assert.equal(tier.name, 'Master Networker');
+    assert.equal(tier.nextName, null);
+    assert.equal(tier.nextAt, null);
+    assert.equal(tier.ptsToNext, null);
+  }
+));
+
+test('nextName/nextAt/ptsToNext are correct mid-band', withFakes(
+  { users: { 'lo@example.com': 'uid_tier3' }, dayDocs: { 'users/uid_tier3/days': [weekDay(weeksAgoMonday(0), { leadPts: 120 })] } },
+  async () => {
+    const { req, res } = fakeReqRes({ subjectEmail: 'lo@example.com' });
+    await getScorecardForUser(req, res);
+    const { tier } = res._json;
+    assert.equal(tier.name, 'Consistent Connector');
+    assert.equal(tier.nextName, 'Professional Networker');
+    assert.equal(tier.nextAt, 150);
+    assert.equal(tier.ptsToNext, 30);
+  }
+));
+
+test('master qualifier: true when all four thresholds are met, split across both alternate activity names per bucket', withFakes(
+  {
+    users: { 'lo@example.com': 'uid_tier4' },
+    dayDocs: {
+      'users/uid_tier4/days': [weekDay(weeksAgoMonday(0), {
+        leadPts: 200,
+        breakdown: {
+          'In-Person Meeting (coffee, lunch, etc.)': act(1),
+          'Deeper Conversation (strategy, collaboration)': act(1), // 2 meetings total
+          'Simple Follow Through (text, email)': act(4),
+          'Personalized Follow Through (video, voice)': act(3),
+          'Light Touch (comment, like, engagement)': act(3), // 10 follow-throughs total
+          'Introduce Two People': act(1),
+          'Strategic Introduction': act(1), // 2 intros total
+        },
+      })],
+    },
+  },
+  async () => {
+    const { req, res } = fakeReqRes({ subjectEmail: 'lo@example.com' });
+    await getScorecardForUser(req, res);
+    const { tier } = res._json;
+    assert.equal(tier.qualified, true);
+    assert.equal(tier.shortfall, null);
+  }
+));
+
+test('master qualifier: false when short on exactly one bucket (intros), shortfall reports only the real gap', withFakes(
+  {
+    users: { 'lo@example.com': 'uid_tier5' },
+    dayDocs: {
+      'users/uid_tier5/days': [weekDay(weeksAgoMonday(0), {
+        leadPts: 200,
+        breakdown: {
+          'In-Person Meeting (coffee, lunch, etc.)': act(2),
+          'Simple Follow Through (text, email)': act(10),
+          'Introduce Two People': act(1), // only 1 of the required 2
+        },
+      })],
+    },
+  },
+  async () => {
+    const { req, res } = fakeReqRes({ subjectEmail: 'lo@example.com' });
+    await getScorecardForUser(req, res);
+    const { tier } = res._json;
+    assert.equal(tier.qualified, false);
+    assert.ok(tier.shortfall, 'expected a shortfall at 200 lead points');
+    assert.equal(tier.shortfall.intros, 1);
+    assert.equal(tier.shortfall.meetings, 0, 'meetings already met -- must not report a false gap');
+    assert.equal(tier.shortfall.followThroughs, 0, 'follow-throughs already met -- must not report a false gap');
+  }
+));
+
+test('shortfall stays null below the 150-point warning threshold, even when not qualified', withFakes(
+  { users: { 'lo@example.com': 'uid_tier6' }, dayDocs: { 'users/uid_tier6/days': [weekDay(weeksAgoMonday(0), { leadPts: 140 })] } },
+  async () => {
+    const { req, res } = fakeReqRes({ subjectEmail: 'lo@example.com' });
+    await getScorecardForUser(req, res);
+    const { tier } = res._json;
+    assert.equal(tier.qualified, false);
+    assert.equal(tier.shortfall, null, 'below 150 the client shows no warning at all -- shortfall must match that, not just "not qualified"');
+  }
+));
+
+test('an activity name outside the exact qualifier catalog earns no credit toward any bucket', withFakes(
+  {
+    users: { 'lo@example.com': 'uid_tier7' },
+    dayDocs: {
+      'users/uid_tier7/days': [weekDay(weeksAgoMonday(0), {
+        leadPts: 200,
+        breakdown: { 'Some Legacy Activity Name': act(50) }, // high count, wrong name entirely
+      })],
+    },
+  },
+  async () => {
+    const { req, res } = fakeReqRes({ subjectEmail: 'lo@example.com' });
+    await getScorecardForUser(req, res);
+    const { tier } = res._json;
+    assert.equal(tier.qualified, false);
+    assert.deepEqual(tier.shortfall, { meetings: 2, followThroughs: 10, intros: 2 }, 'zero credit from an unrecognized name -- the full requirement is still outstanding');
+  }
+));

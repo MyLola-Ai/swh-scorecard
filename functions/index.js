@@ -436,6 +436,29 @@ function getTier(pts) {
   return { name:'Getting Started', emoji:'🟢', color:'#16A34A', msg:"The first step is taken. Trust is built in small kept commitments." };
 }
 
+// Threshold mirror of public-scorecard/index.html's own TIERS array --
+// KEEP IN SYNC the same way getTier's own comment already asks for (that
+// comment only ever covered the msgs/names via getTier; the .min
+// thresholds needed for "how far to the next tier" are a separate mirror,
+// added here rather than reshaping getTier's existing return value and
+// risking every other caller of it). Used only by getScorecardForUser's
+// nextName/nextAt/ptsToNext -- getTier alone is still the source of
+// name/emoji/color/msg everywhere else in this file.
+const SCORECARD_TIER_THRESHOLDS = [
+  { name: 'Getting Started', min: 0 },
+  { name: 'Active Networker', min: 50 },
+  { name: 'Consistent Connector', min: 100 },
+  { name: 'Professional Networker', min: 150 },
+  { name: 'Master Networker', min: 200 },
+];
+function getNextTierServer(pts) {
+  const idx = SCORECARD_TIER_THRESHOLDS.findIndex((t, i) => {
+    const next = SCORECARD_TIER_THRESHOLDS[i + 1];
+    return pts >= t.min && (!next || pts < next.min);
+  });
+  return (idx === -1 || idx === SCORECARD_TIER_THRESHOLDS.length - 1) ? null : SCORECARD_TIER_THRESHOLDS[idx + 1];
+}
+
 // Canonical category/lead per default activity name. Saved day breakdowns
 // carry whatever category the user's (possibly stale/legacy) activity list
 // had at log time — e.g. "Perform Other 8 Step Activities" labeled
@@ -1272,7 +1295,18 @@ async function computeUserWeeklyStats(uid) {
   priorSnap.forEach(d => { priorTotal += (d.data() || {}).totalPts || 0; });
   const trendPct = priorTotal > 0 ? Math.round(((totalPts - priorTotal) / priorTotal) * 100) : null;
 
-  const tier = getTier(totalPts);
+  // Bug fixed 2026-08-31 (MyLola LO, Austen: "fix the lead vs total tier
+  // mismatch"): this used totalPts (lead+lag); the Scoreboard has always
+  // used leadPts specifically -- public-scorecard/index.html's own comment
+  // is explicit and attributed: "driven by LEAD points (Danny's coaching:
+  // lead = future business)". A tier is a statement about what the user
+  // DID; lag points are what came back to them, not effort they put in.
+  // Confirmed live on Austen's own account before this fix (774 lead vs
+  // 126 lag) -- the recap email could show a HIGHER tier than the
+  // Scoreboard the user checks daily. goalPct/goalHit below stay on
+  // totalPts deliberately -- the weekly point GOAL is legitimately about
+  // total effort; only the TIER is lead-only, matching the client exactly.
+  const tier = getTier(leadPts);
   const goal = settings.weeklyGoal || 150;
   const goalPct = Math.round((totalPts / goal) * 100);
   const goalHit = totalPts >= goal;
@@ -6595,7 +6629,58 @@ exports.getScorecardForUser = onRequest(
         .filter(x => (x.totalPts || 0) > 0);
       const weeklyStreak = calcWeeklyStreakServer(streakHistory, today, weekStartDay);
 
-      res.json({ found: true, activities, days, weeklyGoal, canLog, weekStartDay, weeklyStreak });
+      // tier: ported from public-scorecard/index.html exactly (MyLola LO,
+      // 2026-08-31), not reimplemented from a description -- the streak
+      // field above already taught this file what mirroring the wrong
+      // source costs. Driven by the CURRENT week's lead points specifically
+      // (see the tier-fix comment on computeUserWeeklyStats above for why
+      // lead, not total). Reuses streakHistory (already fetched, already
+      // filtered to totalPts>0) rather than a third query -- it's a superset
+      // of any week that matters here, current week included, regardless of
+      // whatever range the caller requested for the `days` array.
+      const thisWeekStart = getWeekStart(today, weekStartDay);
+      const thisWeekDocs = streakHistory.filter(d => getWeekStart(d.dateKey, weekStartDay) === thisWeekStart);
+      const weekLead = thisWeekDocs.reduce((s, d) => s + (d.leadPts || 0), 0);
+      const tierInfo = getTier(weekLead);
+      const nextTierInfo = getNextTierServer(weekLead);
+
+      // Master qualifier -- client-only until now (public-scorecard/
+      // index.html:3107-3119). Counts by activity NAME out of breakdown,
+      // same as the client; inherits the same catalog-naming limitation the
+      // client already has (a customized catalog with different names
+      // silently scores zero here too) rather than silently behaving
+      // differently from what the user's own Scoreboard shows.
+      const sumBreakdownNames = (names) => thisWeekDocs.reduce((s, d) => {
+        const bd = d.breakdown || {};
+        return s + names.reduce((n, name) => n + (bd[name]?.count || 0), 0);
+      }, 0);
+      const weekMeetings = sumBreakdownNames(['In-Person Meeting (coffee, lunch, etc.)', 'Deeper Conversation (strategy, collaboration)']);
+      const weekFollowups = sumBreakdownNames(['Simple Follow Through (text, email)', 'Personalized Follow Through (video, voice)', 'Light Touch (comment, like, engagement)']);
+      const weekIntros = sumBreakdownNames(['Introduce Two People', 'Strategic Introduction']);
+      const qualified = weekLead >= 200 && weekMeetings >= 2 && weekFollowups >= 10 && weekIntros >= 2;
+      // Only populated where the client would actually show the warning
+      // (150+ pts, not qualified) -- shortfall:null below that threshold
+      // matches "nothing shown", not "fully qualified".
+      const shortfall = (weekLead >= 150 && !qualified) ? {
+        meetings: Math.max(0, 2 - weekMeetings),
+        followThroughs: Math.max(0, 10 - weekFollowups),
+        intros: Math.max(0, 2 - weekIntros),
+      } : null;
+
+      const tier = {
+        name: tierInfo.name,
+        emoji: tierInfo.emoji,
+        color: tierInfo.color,
+        msg: tierInfo.msg,
+        pts: weekLead,
+        nextName: nextTierInfo ? nextTierInfo.name : null,
+        nextAt: nextTierInfo ? nextTierInfo.min : null,
+        ptsToNext: nextTierInfo ? Math.max(0, nextTierInfo.min - weekLead) : null,
+        qualified,
+        shortfall,
+      };
+
+      res.json({ found: true, activities, days, weeklyGoal, canLog, weekStartDay, weeklyStreak, tier });
     } catch (e) {
       console.error('[getScorecardForUser]', e);
       res.status(500).json({ error: 'internal' });

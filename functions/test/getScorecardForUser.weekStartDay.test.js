@@ -58,10 +58,23 @@ function makeHandler({ userDoc, settingsDoc, activitiesList, plan, secretValue }
   const chicagoTodayKey = () => '2026-08-29';
   const SCORECARD_READ_MAX_DAYS = 90;
   const SCORECARD_STREAK_LOOKBACK_DAYS = 180;
-  // Not under test here (see getScorecardForUser.weeklyStreak.test.js) --
-  // the mocked collection() call always returns empty docs, so the real
-  // function would return 0 anyway; this fake just satisfies the reference.
+  // Not under test here (see getScorecardForUser.test.js's weeklyStreak/tier
+  // cases) -- the mocked collection() call always returns empty docs, so
+  // these fakes just satisfy the references with the real, cheap-to-mirror
+  // logic rather than stubbing them to constants that could mask a real
+  // reference error elsewhere in the handler.
   const calcWeeklyStreakServer = () => 0;
+  const getWeekStart = (dateKey, wsd) => {
+    const DAY_INDEX = { sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6 };
+    const startIdx = DAY_INDEX[(wsd || 'monday').toLowerCase()] ?? 1;
+    const d = new Date(dateKey + 'T12:00:00');
+    let diff = d.getDay() - startIdx;
+    if (diff < 0) diff += 7;
+    d.setDate(d.getDate() - diff);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
+  const getTier = () => ({ name: 'Getting Started', emoji: '🟢', color: '#16A34A', msg: 'x' });
+  const getNextTierServer = () => null;
   const SCORECARD_DEFAULT_ACTIVITIES = [{ cat: 'Networking', name: 'Coffee', pts: 5 }];
 
   let statusCode = 200, jsonBody = null;
@@ -71,10 +84,10 @@ function makeHandler({ userDoc, settingsDoc, activitiesList, plan, secretValue }
   };
   const fn = new Function(
     'admin', 'MYLOLA_INTEGRATION_SECRET', 'resolveEffectivePlan', 'hasLinkedMyLolaAccount', 'getOrProvisionSwhUser', 'chicagoTodayKey',
-    'SCORECARD_READ_MAX_DAYS', 'SCORECARD_STREAK_LOOKBACK_DAYS', 'calcWeeklyStreakServer', 'SCORECARD_DEFAULT_ACTIVITIES',
+    'SCORECARD_READ_MAX_DAYS', 'SCORECARD_STREAK_LOOKBACK_DAYS', 'calcWeeklyStreakServer', 'getWeekStart', 'getTier', 'getNextTierServer', 'SCORECARD_DEFAULT_ACTIVITIES',
     `return async (req, res) => {${handlerOnlySrc}}`,
   )(admin, MYLOLA_INTEGRATION_SECRET, resolveEffectivePlan, hasLinkedMyLolaAccount, getOrProvisionSwhUser, chicagoTodayKey,
-    SCORECARD_READ_MAX_DAYS, SCORECARD_STREAK_LOOKBACK_DAYS, calcWeeklyStreakServer, SCORECARD_DEFAULT_ACTIVITIES);
+    SCORECARD_READ_MAX_DAYS, SCORECARD_STREAK_LOOKBACK_DAYS, calcWeeklyStreakServer, getWeekStart, getTier, getNextTierServer, SCORECARD_DEFAULT_ACTIVITIES);
 
   return async (body) => {
     await fn({ method: 'POST', headers: { authorization: 'Bearer ' + secretValue }, body }, fakeRes);
