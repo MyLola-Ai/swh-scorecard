@@ -7095,7 +7095,29 @@ exports.actOnFollowThroughForUser = onRequest(
 // (~line 7117 in public-crm/index.html), and 'comp' already exists as
 // SWH's granted-not-paid marker (adminCompTeam, used for teams).
 // Reused, not new, so nothing downstream has to learn a new value.
-const SWH_COMP_PLAN_FIELDS = { plan: 'pro', subscriptionStatus: 'comp' };
+//
+// PER-CALLER GRANT LEVEL (CTO + Austen, 2026-08-31). Austen was asked,
+// specifically about MyLola: "does a MyLola customer get the SWH
+// Scorecard, or the full SWH CRM?" He answered "scorecard." MyClosings was
+// never part of that question, and the paragraph above is why: "the full
+// app + coaching Austen asked for" is traced, real evidence, specific to
+// MyClosings ("a MyClosings user" verbatim) -- 'pro' is what the real
+// Stripe-upgrade path stamps, reused deliberately for that caller. MyLola's
+// grant at 'pro' was never that kind of decision -- it was inherited by
+// construction when this helper was unified across both callers, and never
+// independently re-derived. So this isn't reversing a decision; it's
+// closing a gap that was open from the start.
+//
+// Default is the lower tier, not the higher one: an unrecognized `via`
+// (a future caller nobody has reasoned about yet) gets 'scorecard', same
+// as MyLola, rather than silently inheriting MyClosings' higher grant by
+// accident the way MyLola did here. 'myclosings' is the one caller with
+// actual evidence for 'pro' and is named explicitly so that stays true only
+// for as long as someone deliberately keeps it that way.
+function swhCompPlanFieldsFor(via) {
+  if (via === 'myclosings') return { plan: 'pro', subscriptionStatus: 'comp' };
+  return { plan: 'scorecard', subscriptionStatus: 'comp' };
+}
 
 // Single shared provisioning helper for the bridge invariant Austen ruled
 // 2026-08-30: "the SWH scorecard is available for all MyLola user[s]" means
@@ -7166,7 +7188,7 @@ async function getOrProvisionSwhUser(email, via) {
 
   await admin.firestore().doc(`users/${uid}`).set({
     email,
-    ...SWH_COMP_PLAN_FIELDS,
+    ...swhCompPlanFieldsFor(via),
     provisionedVia: via,
     createdAt: new Date().toISOString(),
   }, { merge: true });

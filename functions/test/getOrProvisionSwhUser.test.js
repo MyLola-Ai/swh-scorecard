@@ -39,11 +39,16 @@ function makeFn({ existingUidByEmail = {}, createUserImpl, firestoreDocs = {} })
       }),
     }),
   };
-  const SWH_COMP_PLAN_FIELDS = { plan: 'pro', subscriptionStatus: 'comp' };
+  // Mirrors the real swhCompPlanFieldsFor: 'myclosings' keeps 'pro', every
+  // other caller (all MyLola vias, and any future one nobody's reasoned
+  // about yet) gets 'scorecard' -- the lower tier is the default, not the
+  // higher one.
+  const swhCompPlanFieldsFor = (via) =>
+    via === 'myclosings' ? { plan: 'pro', subscriptionStatus: 'comp' } : { plan: 'scorecard', subscriptionStatus: 'comp' };
   const fn = new Function(
-    'admin', 'SWH_COMP_PLAN_FIELDS', 'console',
+    'admin', 'swhCompPlanFieldsFor', 'console',
     `return async (email, via) => {${bodySrc}}`,
-  )(admin, SWH_COMP_PLAN_FIELDS, console);
+  )(admin, swhCompPlanFieldsFor, console);
   return fn;
 }
 
@@ -61,7 +66,7 @@ test('an existing account is found and NOT re-created', async () => {
   assert.deepEqual(firestoreDocs, {}, 'must not write anything for an existing account');
 });
 
-test('a first-touch email is provisioned with comp fields, attributed to the caller', async () => {
+test('a first-touch MyLola email is provisioned at scorecard tier, attributed to the caller', async () => {
   const firestoreDocs = {};
   const fn = makeFn({
     existingUidByEmail: {},
@@ -76,11 +81,44 @@ test('a first-touch email is provisioned with comp fields, attributed to the cal
   assert.deepEqual(result, { uid: 'uid_fresh', provisioned: true });
   const written = firestoreDocs['users/uid_fresh'];
   assert.ok(written, 'expected a write to users/{uid}');
-  assert.equal(written.plan, 'pro');
+  assert.equal(written.plan, 'scorecard', 'MyLola-originated provisioning grants scorecard, not the full CRM tier (Austen, 2026-08-31)');
   assert.equal(written.subscriptionStatus, 'comp');
   assert.equal(written.provisionedVia, 'mylola-scorecard-write');
   assert.equal(written.email, 'fresh@example.com');
   assert.ok(written.createdAt, 'expected a createdAt stamp');
+});
+
+// MyClosings keeps the higher grant -- real, traced evidence for it (see
+// getOrProvisionSwhUser's own block comment: "the full app + coaching
+// Austen asked for", specifically about MyClosings, and 'pro' is the exact
+// value the real Stripe-upgrade path stamps). The MyLola tightening above
+// closes a gap that was never independently decided; it does not reverse
+// this one.
+test('a first-touch MyClosings email keeps the pro tier -- unaffected by the MyLola tightening', async () => {
+  const firestoreDocs = {};
+  const fn = makeFn({
+    existingUidByEmail: {},
+    createUserImpl: async () => ({ uid: 'uid_myclosings' }),
+    firestoreDocs,
+  });
+  const result = await fn('agent@example.com', 'myclosings');
+  assert.equal(result.provisioned, true);
+  const written = firestoreDocs['users/uid_myclosings'];
+  assert.equal(written.plan, 'pro');
+  assert.equal(written.subscriptionStatus, 'comp');
+  assert.equal(written.provisionedVia, 'myclosings');
+});
+
+test('an unrecognized via defaults to the lower tier, not the higher one', async () => {
+  const firestoreDocs = {};
+  const fn = makeFn({
+    existingUidByEmail: {},
+    createUserImpl: async () => ({ uid: 'uid_unknown' }),
+    firestoreDocs,
+  });
+  await fn('someone@example.com', 'some-future-caller-nobody-has-reasoned-about-yet');
+  const written = firestoreDocs['users/uid_unknown'];
+  assert.equal(written.plan, 'scorecard', 'an unrecognized caller must not silently inherit the higher grant');
 });
 
 test('a concurrent create race resolves to the winner\'s uid instead of erroring', async () => {
@@ -102,11 +140,12 @@ test('a concurrent create race resolves to the winner\'s uid instead of erroring
     }),
     firestore: () => ({ doc: () => ({ set: async () => { throw new Error('must not write -- lost the race'); } }) }),
   };
-  const SWH_COMP_PLAN_FIELDS = { plan: 'pro', subscriptionStatus: 'comp' };
+  const swhCompPlanFieldsFor = (via) =>
+    via === 'myclosings' ? { plan: 'pro', subscriptionStatus: 'comp' } : { plan: 'scorecard', subscriptionStatus: 'comp' };
   const raced = new Function(
-    'admin', 'SWH_COMP_PLAN_FIELDS', 'console',
+    'admin', 'swhCompPlanFieldsFor', 'console',
     `return async (email, via) => {${bodySrc}}`,
-  )(admin, SWH_COMP_PLAN_FIELDS, console);
+  )(admin, swhCompPlanFieldsFor, console);
   const result = await raced('contested@example.com', 'mylola-scorecard-read');
   assert.deepEqual(result, { uid: 'uid_winner', provisioned: false }, 'the loser must resolve the winner\'s uid, not error or double-create');
   assert.equal(getUserByEmailCalls, 2, 'expected exactly the pre-create miss and the post-collision resolve');

@@ -147,7 +147,7 @@ test('provisioning stamps the comped plan fields and attributes the trigger path
   const written = Object.entries(docs).find(([path]) => /^users\/[^/]+$/.test(path));
   assert.ok(written, 'expected a write to the bare users/{uid} doc');
   const [, data] = written;
-  assert.equal(data.plan, 'pro');
+  assert.equal(data.plan, 'scorecard', 'MyLola-originated provisioning grants scorecard, not the full CRM tier (Austen, 2026-08-31)');
   assert.equal(data.subscriptionStatus, 'comp');
   assert.equal(data.provisionedVia, 'mylola-scorecard-read');
   assert.equal(data.email, 'fresh@example.com');
