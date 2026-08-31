@@ -7236,7 +7236,7 @@ exports.actOnFollowThroughForUser = onRequest(
       ]);
       const c = (contactSnap && contactSnap.exists) ? contactSnap.data() : {};
       const ud = { ...userData, ...(settingsSnap.exists ? settingsSnap.data() : {}) };
-      const userFirstName = String(ud.displayName || ud.name || 'Austen').split(' ')[0];
+      const userFirstName = String(ud.displayName || ud.name || 'there').split(' ')[0];
       const draft = await draftWriteStep({
         stepName: q.stepName,
         stepDescription: '',
@@ -8535,7 +8535,7 @@ exports.onOneOnOneLogged = onDocumentWritten(
 
     const uSnap = await fs.doc(`users/${uid}`).get();
     const ud = uSnap.exists ? uSnap.data() : {};
-    const userFirstName = String(ud.displayName || ud.name || 'Austen').split(' ')[0];
+    const userFirstName = String(ud.displayName || ud.name || 'there').split(' ')[0];
 
     const baseKey = toDateKey(a.timestamp || a.dateKey) || new Date().toISOString().slice(0, 10);
     const dueDate = addDaysServer(baseKey, THANKYOU_DELAY_DAYS);
@@ -8730,7 +8730,24 @@ function stepLink(stepName) {
 
 // Austen's writing voice, distilled from his real samples + the copy across his
 // products. Used as the system prompt so every draft sounds like he wrote it.
-const VOICE_PROFILE = `You are drafting a networking follow-up email AS Austen Smith. It must read like Austen personally typed it, never like AI.
+// Built for Austen specifically (the only real user for months), with his
+// name hardcoded throughout including the sign-off rotation and all three
+// worked examples. Never noticed because the fallback name in every caller
+// was ALSO literally 'Austen' -- until a second real user (Tony Cubbage,
+// 2026-08-31, whose own account correctly has displayName set everywhere:
+// Firestore root doc, config/settings, and the Firebase Auth record itself)
+// generated a draft signed "Thanks, Austen" anyway. The model was doing
+// exactly what this prompt told it to: "AS Austen Smith... sign-off ...
+// e.g. Thanks, Austen" is a much stronger instruction than the caller's own
+// "My name: Tony" line buried in the user message. Parameterized so the
+// voice/tone/structure guidance -- all of which is real, deliberate,
+// carefully-tuned product work -- is preserved verbatim; only the name
+// references change, including inside the worked examples themselves,
+// since the model was shown to imitate their literal name over an inline
+// instruction to use a different one.
+function voiceProfileFor(userFirstName, userFullName) {
+  const fullName = userFullName || userFirstName;
+  return `You are drafting a networking follow-up email AS ${fullName}. It must read like ${userFirstName} personally typed it, never like AI.
 
 VOICE: Warm, confident, educational, helpful-first. You are a guide who happens to do mortgages, not a salesperson. Write the way you talk.
 
@@ -8751,7 +8768,7 @@ EARLY RELATIONSHIPS (roughly the first half of the follow-through steps, or any 
 CARRY-THE-WORK OFFERS to draw from (at most one per email, and only once the relationship warrants it): "I'm one text away," "give me 5 min on a call," "happy to point you in the right direction," "happy to think out loud with you," "let me know if there's ever anything I can help with."
 Keep recommendations soft and collaborative: "probably makes the most sense," "Want me to...?" Never "You should" or "I recommend" as a command. Validate the person before suggesting anything.
 
-SIGN-OFFS to rotate: "Thanks, Austen" / "Chat soon, Austen" / "Talk soon, Austen" / just "Austen." On a more formal first touch, "Thanks, Austen Smith." Never "Best regards," "Sincerely," or a title block.
+SIGN-OFFS to rotate: "Thanks, ${userFirstName}" / "Chat soon, ${userFirstName}" / "Talk soon, ${userFirstName}" / just "${userFirstName}." On a more formal first touch, "Thanks, ${fullName}." Never "Best regards," "Sincerely," or a title block.
 
 NEVER USE: em-dashes, emoji, corporate filler ("I hope this finds you well," "circle back," "touch base," "per our conversation"), urgency or salesy lines ("act now," "don't miss out," "let's hop on a quick call to discuss how I can add value"), hype adjectives ("premier," "world-class," "stunning," "must-see"), menus of multiple asks, markdown headers or bold, or perfectly balanced robotic cadence. Vary your sentence length so it sounds human.
 
@@ -8759,7 +8776,7 @@ NEVER TALK ABOUT YOURSELF UNPROMPTED: no years in the industry, no experience or
 
 TIMING: When the context tells you when you met (e.g. "this past week", "last week", "yesterday"), use that exact time frame naturally in the meet reference. Never guess or substitute a different one; today's date is provided so the phrasing is already calendar-correct.
 
-Examples of how Austen writes (match this voice and rhythm; do not copy verbatim or reuse their specifics):
+Examples of the voice and rhythm to match (do not copy verbatim or reuse their specifics -- and the sign-off name in each is illustrative only, always sign as ${userFirstName}):
 
 EXAMPLE (good to meet you / step 1 — note how short this is; this is the ceiling, not the floor):
 Hi Ryan,
@@ -8771,7 +8788,7 @@ Wanted to say a proper hello.
 Hope to see you back around the group. And if there's ever anything I can help with, please let me know.
 
 Thanks,
-Austen
+${userFirstName}
 
 EXAMPLE (value, no ask):
 Hey Sarah,
@@ -8785,7 +8802,7 @@ Figured you'd appreciate it since we were talking about building long-term relat
 Hope you're having a great week. Let me know if there's ever anything I can help with.
 
 Chat soon,
-Austen
+${userFirstName}
 
 EXAMPLE (check-in):
 Hi Mike,
@@ -8799,7 +8816,8 @@ If anything's changed, if you've got questions about the market, or if someone c
 Hope you have a great rest of your week.
 
 Thanks,
-Austen`;
+${userFirstName}`;
+}
 
 // In-process drafter — called by the build job directly, no HTTP overhead.
 async function draftWriteStep(ctx) {
@@ -8807,10 +8825,10 @@ async function draftWriteStep(ctx) {
           notesPreview, form, userFirstName, daysSinceClockStart, meetRecency,
           userFeedback, previousBody, signature, linkUrl } = ctx;
 
-  const systemPrompt = VOICE_PROFILE + `
+  const systemPrompt = voiceProfileFor(userFirstName || 'there') + `
 
 Return ONLY valid JSON, no prose, no markdown fences:
-{"subject":"<email subject, 5-10 words, warm and specific, no em-dashes>","body":"<the full email body in Austen's voice, first-person, referencing the contact by first name. End with a short sign-off and his first name (e.g. Thanks, Austen). Do NOT add phone, email, or a contact block; that is appended automatically. No bracket placeholders, no em-dashes>","text":"<same as body>"}`;
+{"subject":"<email subject, 5-10 words, warm and specific, no em-dashes>","body":"<the full email body in the voice above, first-person, referencing the contact by first name. End with a short sign-off and ${userFirstName || 'the sender'}'s first name. Do NOT add phone, email, or a contact block; that is appended automatically. No bracket placeholders, no em-dashes>","text":"<same as body>"}`;
 
   const userMessage = [
     `Step to complete: ${stepName}`,
@@ -8824,7 +8842,7 @@ Return ONLY valid JSON, no prose, no markdown fences:
     notesPreview ? `My notes: ${notesPreview}` : '',
     form && (form.family || form.occupation || form.recreation || form.motivation)
       ? `FORM intel: ${JSON.stringify(form)}` : '',
-    `My name: ${userFirstName || 'Austen'}`,
+    `My name: ${userFirstName || 'there'}`,
     linkUrl ? `IMPORTANT: you MUST include this exact link in the message, written out in full and unchanged — do not alter, shorten, or invent a different URL: ${linkUrl}` : '',
     previousBody ? `\nMy current draft (revise this, keep what works):\n${previousBody}` : '',
     userFeedback ? `What to change — apply exactly: ${userFeedback}` : '',
@@ -8941,7 +8959,7 @@ async function runFollowThroughQueueBuild(opts) {
 
     // Settings (displayName, phone) live in config/settings; root doc has email.
     const userDoc = { ...(userSnap.exists ? userSnap.data() : {}), ...(settingsSnap.exists ? settingsSnap.data() : {}) };
-    const userFirstName = (userDoc.displayName || userDoc.name || 'Austen').split(' ')[0];
+    const userFirstName = (userDoc.displayName || userDoc.name || 'there').split(' ')[0];
 
     const playbooks = {};
     let defaultPbId = null;
@@ -9134,7 +9152,7 @@ exports.regenerateFollowThroughDraft = onCall({ secrets: [ANTHROPIC_API_KEY] }, 
   ]);
   const c = (contactSnap && contactSnap.exists) ? contactSnap.data() : {};
   const ud = { ...(userSnap.data() || {}), ...(settingsSnap.data() || {}) };
-  const userFirstName = String(ud.displayName || ud.name || 'Austen').split(' ')[0];
+  const userFirstName = String(ud.displayName || ud.name || 'there').split(' ')[0];
 
   const draft = await draftWriteStep({
     stepName: q.stepName,
@@ -9183,7 +9201,7 @@ exports.generateStepDraft = onCall({ secrets: [ANTHROPIC_API_KEY] }, async (requ
   if (!contactSnap.exists) throw new HttpsError('not-found', 'Contact not found');
   const c  = contactSnap.data();
   const ud = { ...(userSnap.data() || {}), ...(settingsSnap.data() || {}) };
-  const userFirstName = String(ud.displayName || ud.name || 'Austen').split(' ')[0];
+  const userFirstName = String(ud.displayName || ud.name || 'there').split(' ')[0];
 
   const playbooks = {};
   let defaultPbId = null;
@@ -9240,7 +9258,8 @@ exports.draftContactEmail = onCall({ secrets: [ANTHROPIC_API_KEY] }, async (requ
   if (!contactSnap.exists) throw new HttpsError('not-found', 'Contact not found');
   const c  = contactSnap.data();
   const ud = { ...(userSnap.data() || {}), ...(settingsSnap.data() || {}) };
-  const userFirstName = String(ud.displayName || ud.name || 'Austen').split(' ')[0];
+  const userFullName  = String(ud.displayName || ud.name || 'there').trim();
+  const userFirstName = userFullName.split(' ')[0];
 
   const stepsDone = c.steps || 0;
   const allDone   = stepsDone >= 8;
@@ -9302,7 +9321,7 @@ exports.draftContactEmail = onCall({ secrets: [ANTHROPIC_API_KEY] }, async (requ
       : (guidance ? 'Draft this email using those instructions. Return the same JSON shape.' : 'Draft this email for me.'),
   ].filter(Boolean).join('\n');
 
-  const systemPrompt = VOICE_PROFILE + `\n\nReturn ONLY valid JSON, no prose, no markdown fences:\n{"subject":"<email subject, 5-10 words, warm and specific, no em-dashes>","body":"<the full email body in Austen's voice, first-person, referencing the contact by first name. End with a short sign-off and his first name (e.g. Thanks, Austen). Do NOT add phone, email, or a contact block; that is appended automatically. No bracket placeholders, no em-dashes>","text":"<same as body>"}`;
+  const systemPrompt = voiceProfileFor(userFirstName, userFullName) + `\n\nReturn ONLY valid JSON, no prose, no markdown fences:\n{"subject":"<email subject, 5-10 words, warm and specific, no em-dashes>","body":"<the full email body in the voice above, first-person, referencing the contact by first name. End with a short sign-off and ${userFirstName}'s first name. Do NOT add phone, email, or a contact block; that is appended automatically. No bracket placeholders, no em-dashes>","text":"<same as body>"}`;
 
   const apiResp = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
