@@ -164,23 +164,43 @@ async function resolveEffectivePlan(uid, userData) {
 }
 
 // Single named entitlement predicate for the MyLola ecosystem ruling
-// (Austen, 2026-08-30): "The SWH scorecard is available for all MyLola user
-// but MyLola is not available for all SWH users." A confirmed-linked MyLola
-// account is entitled to SWH's logging/queue features regardless of SWH plan
-// -- the entitlement flows from MyLola down, never the other direction, so
-// this must never be used to grant an unlinked SWH user anything.
+// (Austen, 2026-08-30, TIGHTENED 2026-08-31): "The SWH scorecard is
+// available for all MyLola user" means the MyLola CRM tier specifically
+// ('mylola', the $150 plan) -- not "has a MyLola account of any kind."
+// MyLola has a free tier; the original version of this function tested
+// users/{uid}/integrations/mylola's connectionStatus === 'connected', which
+// only proves an account EXISTS at this email, not what it pays for. That
+// let any free MyLola login unlock SWH's own $25 CRM tier for free -- a real
+// over-grant, live in production until this fix (caught and reported by
+// MyLola LO, who shipped the loaniq-side half: verifyMyLolaAccount now
+// returns `tier` alongside `connected`).
 //
-// "Linked" means users/{uid}/integrations/mylola has connectionStatus
-// 'connected' -- stamped client-side (public-crm/index.html connectMyLola())
-// only after verifyMyLolaConnection confirms a real MyLola account exists at
-// this user's email. Kept as one named function, not an inline condition, so
-// tightening this later (e.g. to a paid MyLola tier specifically, per the
-// open question on which rung of Free/SWH-CRM/MyLola-CRM actually qualifies)
-// is one edit here rather than a hunt across every call site.
+// Deliberately NOT cached into integrations/mylola or anywhere else: a
+// stamped tier goes stale the moment someone upgrades or downgrades on
+// MyLola's side, and a stale ENTITLEMENT (as opposed to a stale "is it
+// linked at all" display flag, which is what connectionStatus remains fine
+// for) is a paid feature nobody is paying for, or a paying user silently
+// locked out. Checked live, every call, same as the connect-time check this
+// reuses the pattern from (verifyMyLolaConnection).
+//
+// Fails closed exactly like before: any error, non-mylola tier, or missing
+// tier all resolve to false. Kept as one named function so this tightening
+// was one edit here, not a hunt across every call site -- it was.
 async function hasLinkedMyLolaAccount(uid) {
   try {
-    const snap = await admin.firestore().doc(`users/${uid}/integrations/mylola`).get();
-    return snap.exists && snap.data().connectionStatus === 'connected';
+    const userRecord = await admin.auth().getUser(uid);
+    if (!userRecord.email) return false;
+    const res = await fetch(MYLOLA_VERIFY_ACCOUNT_URL, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${MYLOLA_INTEGRATION_SECRET.value().trim()}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ email: userRecord.email }),
+    });
+    if (!res.ok) return false;
+    const data = await res.json();
+    return data.tier === 'mylola';
   } catch (e) {
     console.warn('[hasLinkedMyLolaAccount] lookup failed, treating as not linked:', e.message);
     return false;
@@ -8625,14 +8645,16 @@ async function runFollowThroughQueueBuild(opts) {
   // Connect; the send path migrates there, drafts shouldn't die with the old
   // stack).
   //
-  // Scale (2026-08-30): 59 total SWH users, 5 currently MyLola-linked. A
-  // collectionGroup query on the mylola integration doc would be cheaper at
-  // real scale, but that doc carries no provider/status discriminator fields
-  // (unlike gmail's own already-indexed collectionGroup query) -- querying it
-  // that way hits FAILED_PRECONDITION today; no index exists for it. At this
-  // size a plain per-user scan needs no new index. Revisit if the linked
-  // population grows enough that this scan, not the drafting calls, becomes
-  // the bottleneck.
+  // Scale (updated 2026-08-31): 59 total SWH users. hasLinkedMyLolaAccount
+  // was tightened the same day to check the real MyLola CRM tier via a live
+  // call to loaniq (see its own comment) -- it is no longer a local
+  // Firestore read, so this scan now makes up to 58 outbound HTTP calls to
+  // a different Firebase project. Run concurrently (Promise.all), not
+  // sequentially: a sequential loop of even modest per-call latency across
+  // that many users would add real, avoidable seconds to a function that
+  // already has a 540s ceiling to share with the actual drafting pass.
+  // Revisit if the SWH user count grows enough that even the concurrent
+  // form becomes the bottleneck rather than drafting.
   const adminUids = new Set();
   for (const adminEmail of ADMIN_EMAILS) {
     try {
@@ -8642,11 +8664,9 @@ async function runFollowThroughQueueBuild(opts) {
     }
   }
   const allUsersSnap = await admin.firestore().collection('users').get();
-  const linkedUids = [];
-  for (const uDoc of allUsersSnap.docs) {
-    if (adminUids.has(uDoc.id)) continue;
-    if (await hasLinkedMyLolaAccount(uDoc.id)) linkedUids.push(uDoc.id);
-  }
+  const nonAdminUids = allUsersSnap.docs.map(d => d.id).filter(uid => !adminUids.has(uid));
+  const linkedFlags = await Promise.all(nonAdminUids.map(uid => hasLinkedMyLolaAccount(uid)));
+  const linkedUids = nonAdminUids.filter((_, i) => linkedFlags[i]);
   const eligibleUids = [...adminUids, ...linkedUids];
   console.log('[buildFollowThroughQueue] eligible uids:', eligibleUids.length,
     '(admin:', adminUids.size, ', mylola-linked:', linkedUids.length, ')');
@@ -8789,7 +8809,14 @@ async function runFollowThroughQueueBuild(opts) {
 exports.buildFollowThroughQueue = onSchedule({
   schedule: 'every day 08:00',
   timeZone: 'America/Chicago',
-  secrets: [ANTHROPIC_API_KEY],
+  // MYLOLA_INTEGRATION_SECRET added 2026-08-31: the eligibility scan's
+  // hasLinkedMyLolaAccount now makes a live authenticated call to loaniq
+  // per non-admin user, not a local Firestore read -- without this secret
+  // declared on THIS function specifically (Firebase Functions v2 binds
+  // secrets per function, not process-wide), that call's Authorization
+  // header would be blank/inaccessible here even though the exact same
+  // code works from functions that already declare it.
+  secrets: [ANTHROPIC_API_KEY, MYLOLA_INTEGRATION_SECRET],
   // Matches buildFollowThroughQueueNow's own override below, for the same
   // underlying operation. Unset here (platform default, 60s) was never
   // exercised: this ran for exactly one account until the 2026-08-30 gate
@@ -8808,7 +8835,9 @@ exports.buildFollowThroughQueue = onSchedule({
 // ADMIN_EMAILS grants, so any-authenticated-caller is safe.
 exports.buildFollowThroughQueueNow = onRequest({
   cors: true,
-  secrets: [ANTHROPIC_API_KEY],
+  // See buildFollowThroughQueue's own comment on MYLOLA_INTEGRATION_SECRET
+  // -- same runFollowThroughQueueBuild, same requirement.
+  secrets: [ANTHROPIC_API_KEY, MYLOLA_INTEGRATION_SECRET],
   timeoutSeconds: 540,
   invoker: 'public',
 }, async (req, res) => {

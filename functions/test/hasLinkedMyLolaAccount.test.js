@@ -1,14 +1,13 @@
 // hasLinkedMyLolaAccount -- the single named entitlement predicate behind
-// Austen's 2026-08-30 ruling ("The SWH scorecard is available for all MyLola
-// user but MyLola is not available for all SWH users"). Extraction test
-// against the real shipped function: "linked" means
-// users/{uid}/integrations/mylola has connectionStatus 'connected', stamped
-// client-side (public-crm/index.html connectMyLola()) only after
-// verifyMyLolaConnection confirms a real MyLola account exists. Any lookup
-// failure must resolve false, never throw -- callers on both the read side
-// (getScorecardForUser's canLog) and the write side (saveDayForUser's
-// paywall) fold this into a fail-closed entitlement check, so a thrown
-// error here would take down more than just this predicate.
+// Austen's ruling on which MyLola tier actually counts (tightened
+// 2026-08-31): the MyLola CRM tier specifically ('mylola', the $150 plan),
+// checked LIVE against loaniq's verifyMyLolaAccount on every call, never
+// cached. The original version only checked "does a MyLola account exist
+// at this email at all" (connectionStatus === 'connected'), which handed
+// SWH's own paid features to any free MyLola login -- caught and reported
+// by MyLola LO, who shipped the loaniq-side tier field this depends on.
+// Extraction test against the real shipped function; fetch and
+// admin.auth().getUser are both injected so no real network call is made.
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -24,37 +23,83 @@ const endIdx = src.indexOf('\n}', bodyStart);
 assert.ok(endIdx !== -1, 'function end not found');
 const bodySrc = src.slice(bodyStart, endIdx);
 
-function makeFn({ integrationDoc, docThrows }) {
+function makeFn({ email, fetchResult, fetchThrows, fetchOk = true, getUserThrows }) {
   const admin = {
-    firestore: () => ({
-      doc: (p) => {
-        assert.match(p, /^users\/[^/]+\/integrations\/mylola$/, 'must read the mylola integration doc, not some other path');
-        if (docThrows) throw new Error('firestore unavailable');
-        return { get: async () => ({ exists: !!integrationDoc, data: () => integrationDoc }) };
+    auth: () => ({
+      getUser: async (uid) => {
+        if (getUserThrows) throw new Error('no such user');
+        return { uid, email };
       },
     }),
   };
-  return new Function('admin', 'console', `return async (uid) => {${bodySrc}}`)(admin, console);
+  let lastFetchCall = null;
+  const fetch = async (url, opts) => {
+    lastFetchCall = { url, opts };
+    if (fetchThrows) throw new Error('network unreachable');
+    return {
+      ok: fetchOk,
+      json: async () => fetchResult,
+    };
+  };
+  const MYLOLA_VERIFY_ACCOUNT_URL = 'https://us-central1-loaniq-75a20.cloudfunctions.net/verifyMyLolaAccount';
+  const MYLOLA_INTEGRATION_SECRET = { value: () => 'test-secret' };
+  const fn = new Function(
+    'admin', 'fetch', 'MYLOLA_VERIFY_ACCOUNT_URL', 'MYLOLA_INTEGRATION_SECRET', 'console',
+    `return async (uid) => {${bodySrc}}`,
+  )(admin, fetch, MYLOLA_VERIFY_ACCOUNT_URL, MYLOLA_INTEGRATION_SECRET, console);
+  return { fn, getLastFetchCall: () => lastFetchCall };
 }
 
-test('true when connectionStatus is connected', async () => {
-  const fn = makeFn({ integrationDoc: { connectionStatus: 'connected', myLolaUserId: 'ml_1' } });
+test('true when the live tier is exactly "mylola"', async () => {
+  const { fn } = makeFn({ email: 'lo@example.com', fetchResult: { ok: true, connected: true, tier: 'mylola' } });
   assert.equal(await fn('u1'), true);
 });
 
-test('false when connectionStatus is disconnected', async () => {
-  const fn = makeFn({ integrationDoc: { connectionStatus: 'disconnected' } });
+test('false for a free MyLola account -- this is the exact over-grant the tightening fixes', async () => {
+  const { fn } = makeFn({ email: 'lo@example.com', fetchResult: { ok: true, connected: true, tier: 'free' } });
   assert.equal(await fn('u1'), false);
 });
 
-test('false when there is no integration doc at all -- never connected', async () => {
-  const fn = makeFn({ integrationDoc: null });
+test('false for the "swh" tier too -- only "mylola" qualifies', async () => {
+  const { fn } = makeFn({ email: 'lo@example.com', fetchResult: { ok: true, connected: true, tier: 'swh' } });
   assert.equal(await fn('u1'), false);
 });
 
-test('false, not thrown, when the lookup itself fails', async () => {
-  const fn = makeFn({ integrationDoc: null, docThrows: true });
+test('false when there is no MyLola account at all (connected: false, no tier)', async () => {
+  const { fn } = makeFn({ email: 'nobody@example.com', fetchResult: { ok: true, connected: false } });
+  assert.equal(await fn('u1'), false);
+});
+
+test('false, not thrown, when the SWH auth user lookup fails', async () => {
+  const { fn } = makeFn({ getUserThrows: true, fetchResult: { tier: 'mylola' } });
   await assert.doesNotReject(async () => {
     assert.equal(await fn('u1'), false);
   });
+});
+
+test('false when the user has no email on file', async () => {
+  const { fn } = makeFn({ email: null, fetchResult: { tier: 'mylola' } });
+  assert.equal(await fn('u1'), false);
+});
+
+test('false, not thrown, when loaniq returns a non-OK HTTP status', async () => {
+  const { fn } = makeFn({ email: 'lo@example.com', fetchResult: { error: 'internal' }, fetchOk: false });
+  assert.equal(await fn('u1'), false);
+});
+
+test('false, not thrown, when the network call itself fails', async () => {
+  const { fn } = makeFn({ email: 'lo@example.com', fetchThrows: true });
+  await assert.doesNotReject(async () => {
+    assert.equal(await fn('u1'), false);
+  });
+});
+
+test('never cached: calls the live endpoint with the resolved email, authenticated with the shared secret', async () => {
+  const { fn, getLastFetchCall } = makeFn({ email: 'lo@example.com', fetchResult: { tier: 'mylola' } });
+  await fn('u1');
+  const call = getLastFetchCall();
+  assert.ok(call, 'expected a live fetch call, not a cache read');
+  assert.match(call.url, /verifyMyLolaAccount$/);
+  assert.equal(call.opts.headers.Authorization, 'Bearer test-secret');
+  assert.equal(JSON.parse(call.opts.body).email, 'lo@example.com');
 });

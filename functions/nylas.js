@@ -13,6 +13,15 @@ const { onRequest } = require('firebase-functions/v2/https');
 const { defineSecret } = require('firebase-functions/params');
 const admin = require('firebase-admin');
 const lolaConnectModule = require('./lola-connect');
+// Same secret NAME index.js's own MYLOLA_INTEGRATION_SECRET defines --
+// Firebase Functions v2 resolves secret values by name at deploy/runtime,
+// so a second defineSecret() handle here for the same name is the normal
+// pattern, not a conflict. Declared directly rather than injected from
+// index.js: injection (like setSharedEntitlementHelpers below) only runs
+// AFTER this whole module has finished loading, but sendFollowThroughEmail's
+// own onRequest({secrets: [...]}) options object is evaluated immediately,
+// at module-load time -- an injected value wouldn't exist yet.
+const MYLOLA_INTEGRATION_SECRET = defineSecret('MYLOLA_INTEGRATION_SECRET');
 
 // Lazily resolve Firestore — admin.initializeApp() runs in index.js before
 // this module is required, so we never touch firestore() at import time.
@@ -299,7 +308,11 @@ async function executeFollowThroughSend(uid, { docId, contactId, stepIndex, kind
 exports.executeFollowThroughSend = executeFollowThroughSend;
 
 exports.sendFollowThroughEmail = onRequest(
-  { cors: true, secrets: [lolaConnectModule.LOLA_CONNECT_SERVICE_TOKEN], invoker: 'public' },
+  // MYLOLA_INTEGRATION_SECRET added 2026-08-31: _hasLinkedMyLolaAccount now
+  // makes a live authenticated call to loaniq rather than a local read --
+  // needs its own secret declared here, same reasoning as
+  // buildFollowThroughQueue's identical addition.
+  { cors: true, secrets: [lolaConnectModule.LOLA_CONNECT_SERVICE_TOKEN, MYLOLA_INTEGRATION_SECRET], invoker: 'public' },
   async (req, res) => {
     try {
       const decoded = await requireAuth(req);
