@@ -14751,6 +14751,33 @@ const myLolaIntegrationService = (() => {
   }
 
   /**
+   * KNOWN STALENESS, LEFT AS-IS DELIBERATELY (CTO ruling, 2026-08-31).
+   * connectionStatus (read below via the cache, refreshed on forceRefresh)
+   * can drift from MyLola's actual live state -- confirmed 3 of 5 known
+   * "connected" SWH records were stale (loaniq reported disconnected) the
+   * same night this was found. If you're reading this because a label here
+   * looked wrong, you found the known issue, not a new one.
+   *
+   * Not fixed because the only consumers of this cached flag are: (1) a
+   * pre-flight check before sendContactToMyLola that just skips a doomed
+   * network call -- that Cloud Function independently re-verifies live
+   * server-side, so a stale-CONNECTED read here costs one extra round-trip
+   * the server correctly rejects, never bad data; and (2) three Settings UI
+   * labels ("Connected"/"Reconnect"/"Connect") that connectMyLola() re-verifies
+   * and re-stamps live on every actual click regardless of what the label
+   * said going in. No entitlement or data-integrity consumer reads this field
+   * -- that was hasLinkedMyLolaAccount (functions/index.js), a SEPARATE,
+   * unrelated flag, fixed 2026-08-31 to check live tier on every call instead
+   * of any cached value at all.
+   *
+   * FIX WHEN TRIGGERED, not before: the next time someone is already working
+   * in this Settings surface for another reason, OR the first time a user
+   * reports a wrong connection label -- whichever comes first. The fix is
+   * recompute-on-read (make this always call live, the same live-check
+   * pattern hasLinkedMyLolaAccount now uses, keeping connectionStatus as a
+   * cache for the pre-flight shortcut) -- NOT removing the field, which
+   * would mean rebuilding both consumers above around a live call each,
+   * a bigger change for a UX-only surface than the bug it fixes.
    * @returns {Promise<MyLolaConnectionStatus>}
    */
   async function getMyLolaConnectionStatus({ forceRefresh = false } = {}) {
