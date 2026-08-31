@@ -256,12 +256,20 @@ function loggedDaysInWeek(weekStartDate, count) {
   return out;
 }
 
-test('weeklyStreak: 3 consecutive qualifying weeks (current week already active)', () => {
+test('weeklyStreak: 3 consecutive qualifying weeks (most recent one still counts even with 0 days so far this week)', () => {
+  // Anchored entirely on completed past weeks -- week 0 (current) is left
+  // at 0 days on purpose, so this is safe to run on any day of the week,
+  // including the first day of a week (real dates only: loggedDaysInWeek
+  // can't honestly claim 3 already-logged days in a week that has not yet
+  // had 3 days happen). The algorithm doesn't special-case "current" vs
+  // "past" week -- it's the same >=3 check either way -- so a fully-past
+  // qualifying week exercises the identical code path as an in-progress
+  // one that's already cleared 3.
   const dayDocsList = [
-    ...loggedDaysInWeek(weeksAgoMonday(0), 3), // this week, already qualifies
     ...loggedDaysInWeek(weeksAgoMonday(1), 4),
     ...loggedDaysInWeek(weeksAgoMonday(2), 3),
-    ...loggedDaysInWeek(weeksAgoMonday(3), 1), // breaks the streak here
+    ...loggedDaysInWeek(weeksAgoMonday(3), 3),
+    ...loggedDaysInWeek(weeksAgoMonday(4), 1), // breaks the streak here
   ];
   return withFakes(
     { users: { 'lo@example.com': 'uid_streak1' }, dayDocs: { 'users/uid_streak1/days': dayDocsList } },
@@ -310,9 +318,15 @@ test('weeklyStreak: a zero-point day does not count as logged', () => {
 test('weeklyStreak: unaffected by a caller-requested narrow days range -- the exact bug this field exists to fix', () => {
   // A streak long enough that it could NEVER fit inside a 90-day window --
   // 15 weeks is >= 105 days, matching the real screenshot discrepancy
-  // MyLola LO described (15 vs 1).
+  // MyLola LO described (15 vs 1). Starts at week 1, not week 0: the
+  // current week can't honestly be given 3 already-logged days on any day
+  // earlier than Wednesday (real dates only), so this is built entirely
+  // from completed past weeks -- safe on any day of the week. Week 0
+  // sits at 0 days, which the algorithm treats the same as "not yet
+  // qualifying" and falls back to week 1, so the streak still comes out
+  // to 15.
   const dayDocsList = [];
-  for (let w = 0; w < 15; w++) dayDocsList.push(...loggedDaysInWeek(weeksAgoMonday(w), 3));
+  for (let w = 1; w <= 15; w++) dayDocsList.push(...loggedDaysInWeek(weeksAgoMonday(w), 3));
   return withFakes(
     { users: { 'lo@example.com': 'uid_streak4' }, dayDocs: { 'users/uid_streak4/days': dayDocsList } },
     async () => {
