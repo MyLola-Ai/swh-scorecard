@@ -4001,6 +4001,58 @@ exports.adminUpdateTeam = onRequest({ cors: true }, async (req, res) => {
   }
 });
 
+// ----- adminUpdateUser (HTTP, admin-only) -----
+// Same shape as adminUpdateTeam, targeted at a single user doc instead of a
+// team. Admin SDK write, not a client updateDoc -- deliberately sidesteps
+// firestore.rules' entitlementFieldsUpdate() allowlist rather than needing
+// a rules change, since anything gating a feature is exactly the class of
+// field that must not be client-writable by the account it belongs to (see
+// the 2026-08-13 planOverride self-grant bug that allowlist exists to
+// prevent). Body: { email or uid, patch }. Allowlist starts with just the
+// one field Austen asked for (2026-08-31: manual per-user Morning Queue
+// rollout, ahead of a broader eligibility rule) -- add more here as more
+// admin-settable user fields come up, same as adminUpdateTeam's own list.
+exports.adminUpdateUser = onRequest({ cors: true }, async (req, res) => {
+  if (req.method === 'OPTIONS') { res.status(204).send(''); return; }
+  try {
+    const admin_ = await requireAdmin(req);
+    let { email, uid, patch } = req.body || {};
+    email = (email || '').trim().toLowerCase();
+    if ((!email && !uid) || !patch) { res.status(400).json({ error: 'email or uid, and patch, are required' }); return; }
+
+    let authRec;
+    try {
+      authRec = uid ? await admin.auth().getUser(uid) : await admin.auth().getUserByEmail(email);
+    } catch (e) {
+      res.status(404).json({ error: 'Auth user not found' });
+      return;
+    }
+    const resolvedUid = authRec.uid;
+
+    const allowed = ['morningQueueEnabled'];
+    const updates = {};
+    for (const k of allowed) {
+      if (k in patch) updates[k] = patch[k];
+    }
+    if (!Object.keys(updates).length) { res.status(400).json({ error: 'no recognized fields in patch' }); return; }
+    if ('morningQueueEnabled' in updates) updates.morningQueueEnabled = !!updates.morningQueueEnabled;
+    updates.updatedAt = new Date().toISOString();
+    updates.updatedBy = admin_.email;
+
+    // admin.firestore() fresh, not the module-level db -- same reason
+    // admin.auth() above is called fresh rather than through a captured
+    // const: db is bound once at module load, before any test's mock can
+    // reach it, which would make this function's write silently
+    // untestable (confirmed the hard way while writing this function's
+    // own tests).
+    await admin.firestore().collection('users').doc(resolvedUid).set(updates, { merge: true });
+    res.json({ ok: true, uid: resolvedUid, updates });
+  } catch (e) {
+    console.error('[adminUpdateUser]', e);
+    sendErr(res, e);
+  }
+});
+
 // ----- adminCompTeam (HTTP, admin-only) -----
 // Flips a team to free/comp status (no Stripe). Members keep access indefinitely
 // until you toggle it off. Use for pilot accounts, internal teams, partner pilots.
@@ -8837,7 +8889,10 @@ async function runFollowThroughQueueBuild(opts) {
   // own comment for what "linked" means. Drafting needs no email connection —
   // do NOT key on Nylas grants (Nylas is being replaced by Unipile/Lola
   // Connect; the send path migrates there, drafts shouldn't die with the old
-  // stack).
+  // stack). A third path joined 2026-08-31: a manually-flagged uid
+  // (morningQueueEnabled on the user doc, set only by adminUpdateUser) --
+  // Austen's controlled per-user rollout ahead of any broader rule, not a
+  // MyLola relationship at all.
   //
   // Scale (updated 2026-08-31): 59 total SWH users. hasLinkedMyLolaAccount
   // was tightened the same day to check the real MyLola CRM tier via a live
@@ -8861,9 +8916,18 @@ async function runFollowThroughQueueBuild(opts) {
   const nonAdminUids = allUsersSnap.docs.map(d => d.id).filter(uid => !adminUids.has(uid));
   const linkedFlags = await Promise.all(nonAdminUids.map(uid => hasLinkedMyLolaAccount(uid)));
   const linkedUids = nonAdminUids.filter((_, i) => linkedFlags[i]);
-  const eligibleUids = [...adminUids, ...linkedUids];
+  // Manual per-user rollout (Austen, 2026-08-31): a superadmin-set flag,
+  // ahead of any broader eligibility rule -- lets him turn this on for a
+  // specific account (adminUpdateUser) without widening the MyLola-linked
+  // gate for everyone. Read off allUsersSnap already in hand, no extra
+  // Firestore call. Independent of the MyLola check entirely, so it also
+  // covers accounts with no MyLola connection at all.
+  const manualUids = allUsersSnap.docs
+    .filter(d => !adminUids.has(d.id) && d.data().morningQueueEnabled === true)
+    .map(d => d.id);
+  const eligibleUids = [...new Set([...adminUids, ...linkedUids, ...manualUids])];
   console.log('[buildFollowThroughQueue] eligible uids:', eligibleUids.length,
-    '(admin:', adminUids.size, ', mylola-linked:', linkedUids.length, ')');
+    '(admin:', adminUids.size, ', mylola-linked:', linkedUids.length, ', manual:', manualUids.length, ')');
 
   for (const uid of eligibleUids) {
     console.log('[buildFollowThroughQueue] uid', uid);

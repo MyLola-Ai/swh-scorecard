@@ -400,6 +400,10 @@
         <select class="team-select" data-current="${currentTeamId}" data-uid="${u.id}" data-email="${escapeHtml(u.email||'')}" onchange="setUserTeam(this)" title="Assign user to a team" style="padding:7px 10px;border:1.5px solid var(--border);border-radius:9px;font-family:inherit;font-size:12px;background:#fff;color:var(--navy);max-width:180px;">
           ${teamOpts}
         </select>
+        <label style="display:flex;align-items:center;gap:5px;font-size:11px;font-weight:700;color:var(--navy);white-space:nowrap;cursor:pointer;" title="Manual rollout, ahead of any broader eligibility rule">
+          <input type="checkbox" ${u.morningQueueEnabled ? 'checked' : ''} onchange="setUserMorningQueue('${u.id}','${escapeHtml(u.email||'')}',this.checked,this)">
+          Morning Queue
+        </label>
         <button class="small-btn" onclick="inspectUser('${escapeHtml(u.email||'')}','${u.id}')" style="padding:6px 12px;font-size:11px;">🔍 Inspect</button>
         <button class="btn-danger" onclick="deleteUserAccount('${u.id}','${escapeHtml(u.email||'')}','${escapeHtml(u.displayName||'')}')" ${isMe?'disabled title="Cannot delete your own admin account"':''}>Delete</button>
       </div>`;
@@ -959,6 +963,31 @@
     } catch(e) {
       showToast(`⚠️ Could not update plan — ${e.message || 'permission denied'}`);
       if (selectEl) { selectEl.value = previous; selectEl.disabled = false; }
+    }
+  };
+
+  // Admin SDK write via adminUpdateUser, not a direct updateDoc like
+  // setUserPlan above -- morningQueueEnabled gates a feature, so it must
+  // not be client-writable by the account it belongs to. Cloud Function
+  // sidesteps that rather than needing an entitlementFieldsUpdate() change.
+  window.setUserMorningQueue = async (uid, email, enabled, checkboxEl) => {
+    if (!isAdminEmail(currentUser?.email)) { showToast('⚠️ Admin only'); return; }
+    const u = USERS.find(x => x.id === uid); if (!u) return;
+    try {
+      if (checkboxEl) checkboxEl.disabled = true;
+      const headers = await _adminAuthHeader();
+      const r = await fetch(FN_BASE_ADMIN + '/adminUpdateUser', {
+        method: 'POST', headers, body: JSON.stringify({ uid, patch: { morningQueueEnabled: enabled } }),
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || 'Update failed');
+      u.morningQueueEnabled = enabled;
+      showToast(`✅ ${u.displayName || email}: Morning Queue ${enabled ? 'on' : 'off'}`);
+    } catch(e) {
+      showToast(`⚠️ Could not update Morning Queue — ${e.message || 'permission denied'}`);
+      if (checkboxEl) checkboxEl.checked = !enabled;
+    } finally {
+      if (checkboxEl) checkboxEl.disabled = false;
     }
   };
 
