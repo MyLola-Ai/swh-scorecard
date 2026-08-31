@@ -104,6 +104,14 @@ function makeHandler({ users, days, activitiesDocs, secretValue, mylolaLinked })
 
   const MYLOLA_INTEGRATION_SECRET = { value: () => secretValue };
   const resolveEffectivePlan = async (uid, userData) => userData.plan || 'free';
+  // Mirrors the real getWeekStart(dateKey) with no second arg -- defaults to
+  // Monday, same as the real implementation's own DAY_INDEX fallback.
+  const getWeekStart = (dateKey) => {
+    const d = new Date(dateKey + 'T12:00:00');
+    const diff = d.getDay() === 0 ? 6 : d.getDay() - 1;
+    d.setDate(d.getDate() - diff);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
   // hasLinkedMyLolaAccount never throws in the real implementation (it has
   // its own internal try/catch) -- the fake mirrors that contract rather
   // than a scenario that can't happen.
@@ -131,9 +139,9 @@ function makeHandler({ users, days, activitiesDocs, secretValue, mylolaLinked })
 
   const onRequest = (_opts, fn) => fn;
   const runner = new Function(
-    'admin', 'MYLOLA_INTEGRATION_SECRET', 'resolveEffectivePlan', 'hasLinkedMyLolaAccount', 'getOrProvisionSwhUser', 'SCORECARD_DEFAULT_ACTIVITIES', 'onRequest', 'console',
+    'admin', 'MYLOLA_INTEGRATION_SECRET', 'resolveEffectivePlan', 'hasLinkedMyLolaAccount', 'getOrProvisionSwhUser', 'getWeekStart', 'SCORECARD_DEFAULT_ACTIVITIES', 'onRequest', 'console',
     `const handler = onRequest({}, async (req, res) => {${handlerOnlySrc}});\nreturn handler;`
-  )(admin, MYLOLA_INTEGRATION_SECRET, resolveEffectivePlan, hasLinkedMyLolaAccount, getOrProvisionSwhUser, SCORECARD_DEFAULT_ACTIVITIES, onRequest, console);
+  )(admin, MYLOLA_INTEGRATION_SECRET, resolveEffectivePlan, hasLinkedMyLolaAccount, getOrProvisionSwhUser, getWeekStart, SCORECARD_DEFAULT_ACTIVITIES, onRequest, console);
 
   return async (body, headers) => {
     fakeReq.body = body;

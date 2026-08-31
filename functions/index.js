@@ -6334,6 +6334,19 @@ exports.mintApptCustomToken = onCall({
 // SWH_INTEGRATION_SECRET set on loaniq-75a20\'s mylola codebase).
 
 const MYLOLA_INTEGRATION_SECRET = defineSecret('MYLOLA_INTEGRATION_SECRET');
+// Same singleton lola-connect.js module nylas.js itself requires (Node
+// caches by resolved path) -- needed this early because
+// actOnFollowThroughForUser's onRequest options object references
+// lolaConnectModule.LOLA_CONNECT_SERVICE_TOKEN directly, and that options
+// object is evaluated immediately at module load (top-to-bottom), not
+// deferred like a handler body -- defining this after that point throws
+// "Cannot access before initialization" the moment the module loads, not
+// just when the function runs. actOnFollowThroughForUser calls
+// executeFollowThroughSend directly rather than going through the
+// sendFollowThroughEmail HTTP endpoint, so ITS OWN secrets config is what
+// makes the token resolvable at runtime -- Firebase Functions v2 binds
+// secrets per function, not process-wide.
+const lolaConnectModule = require('./lola-connect');
 const MYLOLA_ACCEPT_SWH_CONTACT_URL =
   'https://us-central1-loaniq-75a20.cloudfunctions.net/acceptSwhContact';
 const MYLOLA_FIND_MATCHES_URL =
@@ -6680,7 +6693,15 @@ exports.saveDayForUser = onRequest(
         ...existingData,
         dateKey,
         dateLabel: existingData.dateLabel || dateKey,
-        weekKey: existingData.weekKey || dateKey,
+        // Bug fixed 2026-08-30: this fell back to dateKey itself, which is
+        // not a week-start at all, whenever this write was the FIRST to
+        // create a given day's doc. getWeekStart(dateKey) (no second arg
+        // defaults to Monday, matching this function's own convention) is
+        // not personalized to the user's own weekStartDay setting -- fetching
+        // it would mean an extra read on every write -- but a Monday-based
+        // week-start is correct far more often than "not a week boundary at
+        // all," which is what shipped until now.
+        weekKey: existingData.weekKey || getWeekStart(dateKey),
         monthKey: existingData.monthKey || dateKey.slice(0, 7),
         counts, breakdown, totalPts, leadPts, lagPts, categoryPts,
         submitted: true,
@@ -6696,6 +6717,330 @@ exports.saveDayForUser = onRequest(
       });
     } catch (e) {
       console.error('[saveDayForUser]', e);
+      res.status(500).json({ error: 'internal' });
+    }
+  }
+);
+
+// ===== getFollowThroughQueueForUser / actOnFollowThroughForUser =====
+// The Morning Queue's read/write bridge for MyLola's MyTasks -- siblings of
+// getScorecardForUser/saveDayForUser: same shared-bearer auth, same
+// provision-on-read identity resolution (docs/swh-morning-queue-in-mytasks.md,
+// MyLola LO). MyLola never writes this Firestore directly -- everything that
+// changes queue state goes through actOnFollowThroughForUser, because
+// "send" is not "send an email": it completes a follow-through step,
+// advances the playbook, and awards points, all as one transition. If
+// MyLola sent the email itself, the contact would be mailed while SWH still
+// believed the step outstanding -- queue item pending, playbook not
+// advanced, points never landed, and the email is the half nobody can take
+// back. So send reuses the EXACT core (executeFollowThroughSend, in
+// nylas.js) the CRM's own one-tap send uses, not a reimplementation.
+
+// Buckets a raw point value into one of the CRM's 3 generic follow-through
+// activity names -- mirrors public-crm/index.html's ftqActivityName exactly,
+// so a send via MyLola scores identically to a send via the CRM (both look
+// up the CURRENT price of that name in the user's own activities catalog,
+// not q.stepPoints verbatim -- catalogs are user-editable).
+function ftqActivityName(pts) {
+  if (pts >= 10) return 'Attend 1:1, Coffee, Lunch';
+  if (pts >= 5) return 'Good to Meet You Follow Through';
+  return 'Perform Other 8 Step Activities';
+}
+
+// Awards points for a completed follow-through send into the user's daily
+// score doc. This has NO existing server-side equivalent: sendFollowThroughEmail's
+// own transaction never touches days/{dateKey} at all -- that write only
+// happens today because the CRM CLIENT calls autoLogActivity after the HTTP
+// response comes back. MyLola has no client JS to do that, so this bridge
+// must do the scoring itself, not just the send.
+async function awardFollowThroughPoints(uid, stepPointsRaw) {
+  const activityName = ftqActivityName(typeof stepPointsRaw === 'number' ? stepPointsRaw : 1);
+  const todayKey = chicagoTodayKey();
+  const dayRef = admin.firestore().doc(`users/${uid}/days/${todayKey}`);
+
+  return admin.firestore().runTransaction(async (txn) => {
+    const [actSnap, daySnap] = await Promise.all([
+      txn.get(admin.firestore().doc(`users/${uid}/config/activities`)),
+      txn.get(dayRef),
+    ]);
+    const activities = (actSnap.exists && Array.isArray(actSnap.data().list) && actSnap.data().list.length)
+      ? actSnap.data().list
+      : SCORECARD_DEFAULT_ACTIVITIES;
+    const actIdx = activities.findIndex(a => a.name === activityName);
+    const act = actIdx !== -1 ? activities[actIdx] : { name: activityName, pts: 1, icon: '📋', cat: 'Other' };
+    const pts = act.pts;
+
+    const existing = daySnap.exists ? daySnap.data() : {};
+    const counts = { ...(existing.counts || {}) };
+    // If the activity name genuinely isn't in this user's catalog, counts
+    // (index-keyed) has no valid index to use -- degrade to breakdown/totals
+    // only rather than writing a bogus index, same philosophy as
+    // saveDayForUser's own unknown-activity handling.
+    if (actIdx !== -1) counts[actIdx] = (counts[actIdx] || 0) + 1;
+    const breakdown = existing.breakdown ? JSON.parse(JSON.stringify(existing.breakdown)) : {};
+    if (!breakdown[activityName]) breakdown[activityName] = { count: 0, pts: 0, icon: act.icon, category: act.cat || 'Other', lead: true };
+    breakdown[activityName].count += 1;
+    breakdown[activityName].pts += pts;
+    let totalPts = 0;
+    Object.values(breakdown).forEach(b => totalPts += (b.pts || 0));
+    const leadPts = (existing.leadPts || 0) + pts;
+
+    txn.set(dayRef, {
+      ...existing,
+      dateKey: todayKey,
+      dateLabel: existing.dateLabel || todayKey,
+      weekKey: existing.weekKey || getWeekStart(todayKey),
+      monthKey: existing.monthKey || todayKey.slice(0, 7),
+      counts, breakdown, totalPts, leadPts,
+      lagPts: existing.lagPts || 0,
+      updatedAt: new Date().toISOString(),
+    });
+
+    return { activityName, pts };
+  });
+}
+
+const FOLLOW_THROUGH_QUEUE_READ_MAX = 100;
+
+exports.getFollowThroughQueueForUser = onRequest(
+  { cors: true, secrets: [MYLOLA_INTEGRATION_SECRET] },
+  async (req, res) => {
+    try {
+      const header = req.headers.authorization || '';
+      const token = header.startsWith('Bearer ') ? header.slice(7).trim() : '';
+      if (!token || token !== MYLOLA_INTEGRATION_SECRET.value().trim()) {
+        return res.status(401).json({ error: 'unauthorized' });
+      }
+
+      const { subjectEmail } = req.body || {};
+      if (!subjectEmail || typeof subjectEmail !== 'string') {
+        return res.status(400).json({ error: 'subjectEmail is required' });
+      }
+
+      let uid;
+      try {
+        ({ uid } = await getOrProvisionSwhUser(subjectEmail.trim().toLowerCase(), 'mylola-queue-read'));
+      } catch (e) {
+        console.error('[getFollowThroughQueueForUser] provisioning failed:', e);
+        return res.status(500).json({ error: 'internal' });
+      }
+
+      const todayKey = chicagoTodayKey();
+      const [userSnap, queueSnap] = await Promise.all([
+        admin.firestore().doc(`users/${uid}`).get(),
+        admin.firestore().collection(`users/${uid}/followThroughQueue`)
+          .where('status', '==', 'pending')
+          .get(),
+      ]);
+      const userData = userSnap.exists ? userSnap.data() : {};
+
+      let canAct = false;
+      try {
+        const [linked, plan] = await Promise.all([
+          hasLinkedMyLolaAccount(uid),
+          resolveEffectivePlan(uid, userData),
+        ]);
+        canAct = linked || plan !== 'free';
+      } catch (e) {
+        console.warn('[getFollowThroughQueueForUser] entitlement lookup failed, canAct=false:', e && e.message);
+      }
+
+      // Snoozed items are still status:'pending' (ftqApplySnooze only pushes
+      // dueDate forward) -- excluding dueDate > today is what actually keeps
+      // them off today's list, same filter the builder and the CRM client
+      // both already rely on. Kept, not excluded: kind:'thankyou' items --
+      // they're real, actionable cards the CRM's own queue shows identically
+      // to a playbook step, just carry no stepIndex (null here) since a
+      // thank-you isn't tied to one.
+      const items = queueSnap.docs
+        .map(d => ({ docId: d.id, ...d.data() }))
+        .filter(x => !x.dueDate || x.dueDate <= todayKey)
+        .sort((a, b) => (a.dueDate || '').localeCompare(b.dueDate || ''))
+        .slice(0, FOLLOW_THROUGH_QUEUE_READ_MAX)
+        .map(x => ({
+          docId: x.docId,
+          contactId: x.contactId,
+          contactName: x.contactName,
+          contactEmail: x.contactEmail,
+          stepIndex: (typeof x.stepIndex === 'number') ? x.stepIndex : null,
+          stepName: x.stepName,
+          stepPoints: x.stepPoints,
+          dueDate: x.dueDate,
+          draftSubject: x.draftSubject,
+          draftBody: x.draftBody,
+          status: x.status,
+        }));
+
+      res.json({ found: true, items, canAct });
+    } catch (e) {
+      console.error('[getFollowThroughQueueForUser]', e);
+      res.status(500).json({ error: 'internal' });
+    }
+  }
+);
+
+exports.actOnFollowThroughForUser = onRequest(
+  { cors: true, secrets: [MYLOLA_INTEGRATION_SECRET, lolaConnectModule.LOLA_CONNECT_SERVICE_TOKEN] },
+  async (req, res) => {
+    try {
+      const header = req.headers.authorization || '';
+      const token = header.startsWith('Bearer ') ? header.slice(7).trim() : '';
+      if (!token || token !== MYLOLA_INTEGRATION_SECRET.value().trim()) {
+        return res.status(401).json({ error: 'unauthorized' });
+      }
+
+      const { subjectEmail, docId, action, clientEventId, subject, body, snoozeUntil, feedback } = req.body || {};
+      if (!subjectEmail || typeof subjectEmail !== 'string') {
+        return res.status(400).json({ error: 'subjectEmail is required' });
+      }
+      if (!docId || typeof docId !== 'string') {
+        return res.status(400).json({ error: 'docId is required' });
+      }
+      if (!['send', 'snooze', 'dismiss', 'regenerate'].includes(action)) {
+        return res.status(400).json({ error: 'action must be one of send, snooze, dismiss, regenerate' });
+      }
+
+      let uid;
+      try {
+        ({ uid } = await getOrProvisionSwhUser(subjectEmail.trim().toLowerCase(), 'mylola-queue-write'));
+      } catch (e) {
+        console.error('[actOnFollowThroughForUser] provisioning failed:', e);
+        return res.status(500).json({ error: 'internal' });
+      }
+
+      const userSnap = await admin.firestore().doc(`users/${uid}`).get();
+      const userData = userSnap.exists ? userSnap.data() : {};
+      let canAct;
+      try {
+        const [linked, plan] = await Promise.all([
+          hasLinkedMyLolaAccount(uid),
+          resolveEffectivePlan(uid, userData),
+        ]);
+        canAct = linked || plan !== 'free';
+      } catch (e) {
+        console.error('[actOnFollowThroughForUser] entitlement lookup failed, failing closed:', e);
+        return res.status(402).json({ error: 'subscription_required', code: 'PAYWALL' });
+      }
+      if (!canAct) {
+        return res.status(402).json({ error: 'subscription_required', code: 'PAYWALL' });
+      }
+
+      const qRef = admin.firestore().doc(`users/${uid}/followThroughQueue/${docId}`);
+      const qSnap = await qRef.get();
+      if (!qSnap.exists) {
+        return res.status(404).json({ error: 'not_found' });
+      }
+      const q = qSnap.data();
+
+      // Idempotency, same clientEventId pattern as saveDayForUser -- a
+      // retried log inflates a number, a retried send emails a real person
+      // twice, so this matters more here than on the scorecard.
+      if (clientEventId && Array.isArray(q.mylolaActionEventIds) && q.mylolaActionEventIds.includes(clientEventId)) {
+        return res.json({ ok: true, duplicate: true, status: q.status });
+      }
+      const recordEventId = async () => {
+        if (!clientEventId) return;
+        await qRef.set({
+          mylolaActionEventIds: [...(q.mylolaActionEventIds || []), clientEventId].slice(-20),
+        }, { merge: true });
+      };
+
+      if (action === 'send') {
+        // Editing must be honoured: MyLola shows the draft and lets the
+        // user edit before sending, so the stored draft is not the source
+        // of truth at send time -- subject/body from the request win.
+        let sendResult;
+        try {
+          sendResult = await executeFollowThroughSend(uid, {
+            docId,
+            contactId: q.contactId,
+            stepIndex: q.stepIndex,
+            kind: q.kind,
+            subject: (typeof subject === 'string' && subject.trim()) ? subject : q.draftSubject,
+            body: (typeof body === 'string' && body.trim()) ? body : q.draftBody,
+          });
+        } catch (e) {
+          await recordEventId();
+          if (e.lolaConnectRequired) {
+            return res.status(409).json({ error: e.message, code: 'lola_connect_required' });
+          }
+          const status = e.code === 404 ? 404 : (e.code === 400 ? 400 : 500);
+          return res.status(status).json({ error: e.message || 'internal' });
+        }
+        await awardFollowThroughPoints(uid, sendResult.stepPoints);
+        await recordEventId();
+        return res.json({ ok: true, status: 'sent', newSteps: sendResult.newSteps });
+      }
+
+      if (action === 'snooze') {
+        if (!snoozeUntil || typeof snoozeUntil !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(snoozeUntil)) {
+          return res.status(400).json({ error: 'snoozeUntil must be YYYY-MM-DD' });
+        }
+        await qRef.set({ dueDate: snoozeUntil, snoozedAt: new Date().toISOString() }, { merge: true });
+        await recordEventId();
+        return res.json({ ok: true, status: q.status, dueDate: snoozeUntil });
+      }
+
+      if (action === 'dismiss') {
+        const isThankYou = q.kind === 'thankyou';
+        await admin.firestore().runTransaction(async (txn) => {
+          txn.set(qRef, { status: 'skipped' }, { merge: true });
+          // Dismissing means this touch is handled or not needed -- advance
+          // the step (no points) so it doesn't come back as overdue
+          // tomorrow. Mirrors the CRM's own ftqDismiss exactly, including
+          // its guard against rewinding progress if this item is stale.
+          if (!isThankYou && typeof q.contactId === 'string') {
+            const contactRef = admin.firestore().doc(`users/${uid}/contacts/${q.contactId}`);
+            const contactSnap = await txn.get(contactRef);
+            if (contactSnap.exists) {
+              const c = contactSnap.data();
+              const stepIdx = typeof q.stepIndex === 'number' ? q.stepIndex : 0;
+              if ((c.steps || 0) <= stepIdx) {
+                txn.set(contactRef, {
+                  steps: Math.min(8, stepIdx + 1),
+                  lastActivityAt: new Date().toISOString(),
+                }, { merge: true });
+              }
+            }
+          }
+        });
+        await recordEventId();
+        return res.json({ ok: true, status: 'skipped' });
+      }
+
+      // action === 'regenerate'
+      const [contactSnap, settingsSnap] = await Promise.all([
+        q.contactId ? admin.firestore().doc(`users/${uid}/contacts/${q.contactId}`).get() : Promise.resolve(null),
+        admin.firestore().doc(`users/${uid}/config/settings`).get(),
+      ]);
+      const c = (contactSnap && contactSnap.exists) ? contactSnap.data() : {};
+      const ud = { ...userData, ...(settingsSnap.exists ? settingsSnap.data() : {}) };
+      const userFirstName = String(ud.displayName || ud.name || 'Austen').split(' ')[0];
+      const draft = await draftWriteStep({
+        stepName: q.stepName,
+        stepDescription: '',
+        contactName: q.contactName || c.name || 'there',
+        contactCompany: c.company || '',
+        contactEvent: c.event || '',
+        notesPreview: c.notes ? String(c.notes).slice(0, 300) : '',
+        form: c.form || {},
+        userFirstName,
+        daysSinceClockStart: 0,
+        meetRecency: meetRecencyPhrase(toDateKey(c.clockStarted) || toDateKey(c.addedAt)),
+        userFeedback: typeof feedback === 'string' ? feedback.slice(0, 500) : '',
+        previousBody: q.draftBody || '',
+        signature: buildSignature(ud),
+        linkUrl: stepLink(q.stepName),
+      });
+      await qRef.set({
+        draftSubject: draft.subject,
+        draftBody: draft.body,
+        regeneratedAt: new Date().toISOString(),
+      }, { merge: true });
+      await recordEventId();
+      return res.json({ ok: true, draftSubject: draft.subject, draftBody: draft.body });
+    } catch (e) {
+      console.error('[actOnFollowThroughForUser]', e);
       res.status(500).json({ error: 'internal' });
     }
   }
@@ -7852,7 +8197,15 @@ exports.apptCancelMeeting = onRequest({ cors: true, secrets: [LOANIQ_SA_KEY] }, 
 // Nylas fully removed 2026-08-08 (EOL'd 8/2; everything here now goes
 // through Lola Connect, no fallback). See lola-connect.js for the actual
 // send/create/delete implementations this file's endpoints call into.
-Object.assign(exports, require('./nylas'));
+const nylasModule = require('./nylas');
+// nylas.js needs the SAME entitlement check getScorecardForUser/
+// saveDayForUser/the queue builder already use (hasLinkedMyLolaAccount,
+// resolveEffectivePlan, both defined above in this file) -- injected rather
+// than required directly, since nylas.js is required BY this file and a
+// require the other way would be circular.
+nylasModule.setSharedEntitlementHelpers({ hasLinkedMyLolaAccount, resolveEffectivePlan });
+Object.assign(exports, nylasModule);
+const { executeFollowThroughSend } = nylasModule;
 
 // ============================================================
 // Lola Connect proxy. Function: lolaConnect — service-to-service proxy

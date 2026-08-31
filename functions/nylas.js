@@ -183,7 +183,120 @@ exports.sendContactEmail = onRequest(
 // ============================================================
 // Follow-Through Queue: one-tap send from the morning queue
 // ============================================================
-const ADMIN_EMAILS_FTQ = ['austen@austensmith.com'];
+// Entitlement helpers live in index.js (hasLinkedMyLolaAccount,
+// resolveEffectivePlan) -- injected here rather than required directly to
+// avoid a circular require (index.js already requires this module to
+// Object.assign its exports). Set once at cold start, before any request is
+// served; the no-op defaults exist only so a missing injection fails
+// closed (nothing entitled) instead of throwing.
+let _hasLinkedMyLolaAccount = async () => false;
+let _resolveEffectivePlan = async () => 'free';
+function setSharedEntitlementHelpers({ hasLinkedMyLolaAccount, resolveEffectivePlan }) {
+  _hasLinkedMyLolaAccount = hasLinkedMyLolaAccount;
+  _resolveEffectivePlan = resolveEffectivePlan;
+}
+exports.setSharedEntitlementHelpers = setSharedEntitlementHelpers;
+
+// Shared core of a follow-through "send": send the email via Lola Connect,
+// then atomically transition state (email record, activity log, advance the
+// contact's step, mark the queue doc sent). Used by BOTH
+// sendFollowThroughEmail below (the CRM's own one-tap send, a signed-in
+// user's own session) and actOnFollowThroughForUser's 'send' action in
+// index.js (MyLola's server-to-server bridge, which has no signed-in
+// session to present). Callers do their OWN auth/entitlement gating --
+// this trusts the uid it's given, same shape as getOrProvisionSwhUser.
+//
+// A transaction, not the original's plain batch: the steps advance is
+// capped at 8 and a thank-you never advances at all, neither of which a
+// bare FieldValue.increment can express atomically. Re-reading the contact
+// at commit time (and retrying on contention, which runTransaction does
+// automatically) closes a real if narrow race the original left open: two
+// concurrent sends for the same contact could both read steps=N and both
+// write N+1, losing one advance.
+async function executeFollowThroughSend(uid, { docId, contactId, stepIndex, kind, subject, body }) {
+  const isThankYou = kind === 'thankyou';
+  if (!docId || !contactId || (!isThankYou && stepIndex === undefined) || !body) {
+    const e = new Error('Missing required fields.');
+    e.code = 400;
+    throw e;
+  }
+
+  const [queueDoc, contactDoc] = await Promise.all([
+    db().doc(`users/${uid}/followThroughQueue/${docId}`).get(),
+    db().doc(`users/${uid}/contacts/${contactId}`).get(),
+  ]);
+  if (!queueDoc.exists) { const e = new Error('Queue item not found.'); e.code = 404; throw e; }
+  if (!contactDoc.exists) { const e = new Error('Contact not found.'); e.code = 404; throw e; }
+
+  const contact = contactDoc.data();
+  if (!contact.email) { const e = new Error('Contact has no email address.'); e.code = 400; throw e; }
+
+  // Lola Connect only (asymmetric miss fixed 2026-08-05: sendContactEmail
+  // migrated 2026-07-28 alongside createCalendarEvent, this one -- the
+  // follow-through queue's one-tap send -- did not. Nylas has been dead
+  // since Aug 2; every send through this path was failing until now).
+  const lc = await lolaConnectModule.lcTrySendEmail(uid, {
+    to: contact.email,
+    name: contact.name || contact.email,
+    subject: subject || queueDoc.data().draftSubject || 'Checking in',
+    html: textBodyToHtml(body),
+  });
+  if (!lc) {
+    const e = new Error('Connect your email in Settings before sending.');
+    e.code = 409;
+    e.lolaConnectRequired = true;
+    throw e;
+  }
+
+  const sentMsgId = lc.providerEmailId || `lc_${Date.now()}`;
+  const nowIso = new Date().toISOString();
+  const todayKey = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Chicago' });
+  const q = queueDoc.data();
+
+  const newSteps = await db().runTransaction(async (txn) => {
+    const freshContactSnap = await txn.get(db().doc(`users/${uid}/contacts/${contactId}`));
+    const freshSteps = freshContactSnap.exists ? (freshContactSnap.data().steps || 0) : 0;
+    // A thank-you is NOT a playbook step -- advancing here would silently
+    // push the contact forward a step they never actually completed.
+    const computedNewSteps = isThankYou ? freshSteps : Math.min(8, freshSteps + 1);
+
+    txn.set(db().doc(`users/${uid}/contacts/${contactId}/emails/${sentMsgId}`), {
+      direction: 'sent',
+      subject: subject || q.draftSubject || '',
+      snippet: body.slice(0, 200),
+      sentAt: nowIso,
+      source: 'follow-through-queue',
+      syncedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    const actId = `ftq_${contactId}_${isThankYou ? 'thanks' : stepIndex}_${todayKey}`;
+    txn.set(db().doc(`users/${uid}/contacts/${contactId}/activities/${actId}`), {
+      type: q.stepName || `Step ${stepIndex + 1}`,
+      source: 'follow-through-queue',
+      points: q.stepPoints || 1,
+      timestamp: nowIso,
+      dateKey: todayKey,
+      contactId,
+      contactName: contact.name,
+    });
+
+    txn.set(db().doc(`users/${uid}/contacts/${contactId}`), {
+      steps: computedNewSteps,
+      lastActivityAt: nowIso,
+      lastOutboundAt: nowIso,
+    }, { merge: true });
+
+    txn.set(db().doc(`users/${uid}/followThroughQueue/${docId}`), {
+      status: 'sent',
+      sentAt: nowIso,
+    }, { merge: true });
+
+    return computedNewSteps;
+  });
+
+  return { newSteps, sentMsgId, stepPoints: q.stepPoints, stepName: q.stepName };
+}
+exports.executeFollowThroughSend = executeFollowThroughSend;
 
 exports.sendFollowThroughEmail = onRequest(
   { cors: true, secrets: [lolaConnectModule.LOLA_CONNECT_SERVICE_TOKEN], invoker: 'public' },
@@ -192,97 +305,31 @@ exports.sendFollowThroughEmail = onRequest(
       const decoded = await requireAuth(req);
       const uid = decoded.uid;
 
-      // V1 gate
+      // Entitled if paid SWH or a linked MyLola account (Austen's ruling,
+      // 2026-08-30) -- same check getScorecardForUser/saveDayForUser/the
+      // queue builder already use. This used to be a SEPARATE hardcoded
+      // ADMIN_EMAILS_FTQ = ['austen@austensmith.com'] that was never
+      // updated when the builder itself was widened: a MyLola-linked
+      // non-Austen user could have queue items built for them but got a
+      // 403 the moment they tried to actually send one from the CRM.
       const userSnap = await db().doc(`users/${uid}`).get();
-      const userEmail = userSnap.exists ? (userSnap.data().email || '') : '';
-      if (!ADMIN_EMAILS_FTQ.includes(userEmail)) {
+      const userData = userSnap.exists ? userSnap.data() : {};
+      const [linked, plan] = await Promise.all([
+        _hasLinkedMyLolaAccount(uid),
+        _resolveEffectivePlan(uid, userData),
+      ]);
+      if (!linked && plan === 'free') {
         return res.status(403).json({ error: 'Not available yet.' });
       }
 
       const { docId, contactId, stepIndex, subject, body, kind } = req.body || {};
-      // A 1:1 thank-you is queued by onOneOnOneLogged, not by the playbook
-      // builder, so it legitimately carries no stepIndex.
-      const isThankYou = kind === 'thankyou';
-      if (!docId || !contactId || (!isThankYou && stepIndex === undefined) || !body) {
-        return res.status(400).json({ error: 'Missing required fields.' });
-      }
-
-      const [queueDoc, contactDoc] = await Promise.all([
-        db().doc(`users/${uid}/followThroughQueue/${docId}`).get(),
-        db().doc(`users/${uid}/contacts/${contactId}`).get(),
-      ]);
-      if (!queueDoc.exists) return res.status(404).json({ error: 'Queue item not found.' });
-      if (!contactDoc.exists) return res.status(404).json({ error: 'Contact not found.' });
-
-      const contact = contactDoc.data();
-      if (!contact.email) return res.status(400).json({ error: 'Contact has no email address.' });
-
-      // Lola Connect only (asymmetric miss fixed 2026-08-05: sendContactEmail
-      // migrated 2026-07-28 alongside createCalendarEvent, this one -- the
-      // follow-through queue's one-tap send -- did not. Nylas has been dead
-      // since Aug 2; every send through this path was failing until now).
-      const lc = await lolaConnectModule.lcTrySendEmail(uid, {
-        to: contact.email,
-        name: contact.name || contact.email,
-        subject: subject || queueDoc.data().draftSubject || 'Checking in',
-        html: textBodyToHtml(body),
-      });
-      if (!lc) {
-        return res.status(409).json({
-          error: 'Connect your email in Settings before sending.',
-          code: 'lola_connect_required',
-        });
-      }
-      const sentMsgId = lc.providerEmailId || `lc_${Date.now()}`;
-      const nowIso = new Date().toISOString();
-      const todayKey = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Chicago' });
-
-      const q = queueDoc.data();
-      const batch = db().batch();
-
-      // (a) Email record with direction:'sent' so the Emails tab renders correctly
-      batch.set(db().doc(`users/${uid}/contacts/${contactId}/emails/${sentMsgId}`), {
-        direction: 'sent',
-        subject: subject || q.draftSubject || '',
-        snippet: body.slice(0, 200),
-        sentAt: nowIso,
-        source: 'follow-through-queue',
-        syncedAt: admin.firestore.FieldValue.serverTimestamp(),
-      });
-
-      // (b) Activity log
-      const actId = `ftq_${contactId}_${isThankYou ? 'thanks' : stepIndex}_${todayKey}`;
-      batch.set(db().doc(`users/${uid}/contacts/${contactId}/activities/${actId}`), {
-        type: q.stepName || `Step ${stepIndex + 1}`,
-        source: 'follow-through-queue',
-        points: q.stepPoints || 1,
-        timestamp: nowIso,
-        dateKey: todayKey,
-        contactId,
-        contactName: contact.name,
-      });
-
-      // (c) Advance steps counter (integer, capped at 8). A thank-you is NOT a
-      // playbook step — advancing here would silently push the contact forward
-      // a step they never actually completed, so it holds its current value.
-      const newSteps = isThankYou ? (contact.steps || 0) : Math.min(8, (contact.steps || 0) + 1);
-      batch.set(db().doc(`users/${uid}/contacts/${contactId}`), {
-        steps: newSteps,
-        lastActivityAt: nowIso,
-        lastOutboundAt: nowIso,
-      }, { merge: true });
-
-      // (d) Mark queue doc sent
-      batch.set(db().doc(`users/${uid}/followThroughQueue/${docId}`), {
-        status: 'sent',
-        sentAt: nowIso,
-      }, { merge: true });
-
-      await batch.commit();
-
-      res.json({ ok: true, newSteps, sentMsgId, via: 'lola-connect' });
+      const result = await executeFollowThroughSend(uid, { docId, contactId, stepIndex, kind, subject, body });
+      res.json({ ok: true, newSteps: result.newSteps, sentMsgId: result.sentMsgId, via: 'lola-connect' });
     } catch (e) {
       console.error('[sendFollowThroughEmail]', e);
+      if (e.lolaConnectRequired) {
+        return res.status(409).json({ error: e.message, code: 'lola_connect_required' });
+      }
       sendErr(res, e);
     }
   }
