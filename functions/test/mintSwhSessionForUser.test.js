@@ -164,6 +164,23 @@ test('no via field (today\'s only caller) still provisions myclosings/pro -- the
   }
 ));
 
+// CTO, 2026-08-31: null is not undefined. A future MyClosings sender that
+// explicitly passes `via: null` (rather than omitting the field) must not
+// silently downgrade a paying customer to scorecard -- the exact failure
+// the absent-default exists to prevent, just reached through a different
+// falsy value. Harmless today only because MyClosings sends no field at
+// all; guarding it now means step 3 can't reintroduce the problem step 1
+// was built to avoid.
+test('via: null is treated the same as an absent via, not as unrecognized', withFakeAuth(
+  { users: {} },
+  async ({ firestoreWrites }) => {
+    const { req, res } = fakeReqRes({ subjectEmail: 'explicitnull@example.com', via: null });
+    await mintSwhSessionForUser(req, res);
+    assert.equal(firestoreWrites[0].data.plan, 'pro', 'null must not silently downgrade the way an unrecognized string does');
+    assert.equal(firestoreWrites[0].data.provisionedVia, 'myclosings');
+  }
+));
+
 test('via: "mylola" provisions scorecard, not pro -- the actual bug fix', withFakeAuth(
   { users: {} },
   async ({ firestoreWrites }) => {

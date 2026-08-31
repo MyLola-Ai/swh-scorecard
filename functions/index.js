@@ -7357,7 +7357,7 @@ async function getOrProvisionSwhUser(email, via) {
 // the volume can be watched to zero before the default is ever flipped (a later step).
 const MINT_SESSION_RECOGNIZED_VIAS = { mylola: 'mylola-session-mint' };
 function resolveMintSessionVia(rawVia) {
-  if (rawVia === undefined) {
+  if (rawVia === undefined || rawVia === null) {
     console.log('[mintSwhSessionForUser] unmarked caller, defaulting to myclosings');
     return 'myclosings';
   }
