@@ -7345,6 +7345,29 @@ async function getOrProvisionSwhUser(email, via) {
   return { uid, provisioned: true };
 }
 
+// mintSwhSessionForUser is shared by both products (same MYLOLA_INTEGRATION_SECRET --
+// the secret is not a trust boundary between them) but its body carried no caller
+// marker, so it hardcoded 'myclosings' for every caller -- silently granting MyLola
+// sessions the full paid CRM instead of the Scorecard-only grant 1793947 intended
+// (CTO, 2026-08-31: caught before deploy). Absent marker MUST still mean 'myclosings':
+// MyClosings' Books tab won't send this field on day one, and defaulting the other way
+// would silently downgrade it the moment this ships. A recognized MyLola marker passes
+// through cleanly; anything else present falls to the same safe scorecard grant WITHOUT
+// writing the raw, unvalidated value into provisionedVia. Unmarked calls are logged so
+// the volume can be watched to zero before the default is ever flipped (a later step).
+const MINT_SESSION_RECOGNIZED_VIAS = { mylola: 'mylola-session-mint' };
+function resolveMintSessionVia(rawVia) {
+  if (rawVia === undefined) {
+    console.log('[mintSwhSessionForUser] unmarked caller, defaulting to myclosings');
+    return 'myclosings';
+  }
+  if (Object.prototype.hasOwnProperty.call(MINT_SESSION_RECOGNIZED_VIAS, rawVia)) {
+    return MINT_SESSION_RECOGNIZED_VIAS[rawVia];
+  }
+  console.warn('[mintSwhSessionForUser] unrecognized via, falling to scorecard grant:', rawVia);
+  return 'mint-unrecognized-via';
+}
+
 exports.mintSwhSessionForUser = onRequest(
   { cors: true, secrets: [MYLOLA_INTEGRATION_SECRET] },
   async (req, res) => {
@@ -7355,13 +7378,13 @@ exports.mintSwhSessionForUser = onRequest(
         return res.status(401).json({ error: 'unauthorized' });
       }
 
-      const { subjectEmail } = req.body || {};
+      const { subjectEmail, via: rawVia } = req.body || {};
       if (!subjectEmail || typeof subjectEmail !== 'string') {
         return res.status(400).json({ error: 'subjectEmail is required' });
       }
       const email = subjectEmail.trim().toLowerCase();
 
-      const { uid, provisioned } = await getOrProvisionSwhUser(email, 'myclosings');
+      const { uid, provisioned } = await getOrProvisionSwhUser(email, resolveMintSessionVia(rawVia));
       const customToken = await admin.auth().createCustomToken(uid);
       res.json({ found: true, provisioned, customToken });
     } catch (e) {

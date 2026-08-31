@@ -143,3 +143,44 @@ test('does NOT write a Firestore doc for an already-existing account -- provisio
     assert.equal(firestoreWrites.length, 0, 'an existing account\'s plan/entitlement must never be touched by this endpoint');
   }
 ));
+
+// CTO, 2026-08-31: this endpoint is shared by both products (same
+// MYLOLA_INTEGRATION_SECRET) but the request carried no caller marker, so
+// EVERY caller -- MyLola included -- got the hardcoded 'myclosings' grant.
+// A MyLola user minting a session here got the full paid CRM, silently,
+// under the exact commit (1793947) titled to prevent that. Caught before
+// deploy. These three tests are the wire contract: absent stays myclosings
+// (MyClosings' Books tab won't send this field on day one -- flipping the
+// default would silently downgrade it the moment this ships), a recognized
+// MyLola marker grants scorecard, and an unrecognized value ALSO falls to
+// scorecard but is never written raw into provisionedVia.
+test('no via field (today\'s only caller) still provisions myclosings/pro -- the untouched default', withFakeAuth(
+  { users: {} },
+  async ({ firestoreWrites }) => {
+    const { req, res } = fakeReqRes({ subjectEmail: 'stillmyclosings@example.com' });
+    await mintSwhSessionForUser(req, res);
+    assert.equal(firestoreWrites[0].data.plan, 'pro');
+    assert.equal(firestoreWrites[0].data.provisionedVia, 'myclosings');
+  }
+));
+
+test('via: "mylola" provisions scorecard, not pro -- the actual bug fix', withFakeAuth(
+  { users: {} },
+  async ({ firestoreWrites }) => {
+    const { req, res } = fakeReqRes({ subjectEmail: 'mylolauser@example.com', via: 'mylola' });
+    await mintSwhSessionForUser(req, res);
+    assert.equal(firestoreWrites[0].data.plan, 'scorecard');
+    assert.equal(firestoreWrites[0].data.provisionedVia, 'mylola-session-mint');
+  }
+));
+
+test('an unrecognized via falls to the scorecard grant but is never written raw into provisionedVia', withFakeAuth(
+  { users: {} },
+  async ({ firestoreWrites }) => {
+    const { req, res } = fakeReqRes({ subjectEmail: 'typo@example.com', via: 'mylola-typo-XYZ' });
+    await mintSwhSessionForUser(req, res);
+    assert.equal(firestoreWrites[0].data.plan, 'scorecard', 'a typo must fail toward the smaller grant, not the larger one');
+    assert.notEqual(firestoreWrites[0].data.provisionedVia, 'mylola-typo-XYZ', 'must never persist an unvalidated caller-supplied string');
+    assert.equal(firestoreWrites[0].data.provisionedVia, 'mint-unrecognized-via');
+  }
+));
