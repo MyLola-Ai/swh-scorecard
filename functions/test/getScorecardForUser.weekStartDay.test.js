@@ -76,6 +76,10 @@ function makeHandler({ userDoc, settingsDoc, activitiesList, plan, secretValue }
   const getTier = () => ({ name: 'Getting Started', emoji: '🟢', color: '#16A34A', msg: 'x' });
   const getNextTierServer = () => null;
   const SCORECARD_DEFAULT_ACTIVITIES = [{ cat: 'Networking', name: 'Coffee', pts: 5 }];
+  // Not under test here either -- same empty-docs mock, so growth/coaching
+  // always compute over zero days regardless of these fakes' exact values.
+  const SCORECARD_GROWTH_ACTIVITIES = ['Speak or Present'];
+  const getRemainingDaysInWeekServer = () => 3;
 
   let statusCode = 200, jsonBody = null;
   const fakeRes = {
@@ -85,9 +89,11 @@ function makeHandler({ userDoc, settingsDoc, activitiesList, plan, secretValue }
   const fn = new Function(
     'admin', 'MYLOLA_INTEGRATION_SECRET', 'resolveEffectivePlan', 'hasLinkedMyLolaAccount', 'getOrProvisionSwhUser', 'chicagoTodayKey',
     'SCORECARD_READ_MAX_DAYS', 'SCORECARD_STREAK_LOOKBACK_DAYS', 'calcWeeklyStreakServer', 'getWeekStart', 'getTier', 'getNextTierServer', 'SCORECARD_DEFAULT_ACTIVITIES',
+    'SCORECARD_GROWTH_ACTIVITIES', 'getRemainingDaysInWeekServer',
     `return async (req, res) => {${handlerOnlySrc}}`,
   )(admin, MYLOLA_INTEGRATION_SECRET, resolveEffectivePlan, hasLinkedMyLolaAccount, getOrProvisionSwhUser, chicagoTodayKey,
-    SCORECARD_READ_MAX_DAYS, SCORECARD_STREAK_LOOKBACK_DAYS, calcWeeklyStreakServer, getWeekStart, getTier, getNextTierServer, SCORECARD_DEFAULT_ACTIVITIES);
+    SCORECARD_READ_MAX_DAYS, SCORECARD_STREAK_LOOKBACK_DAYS, calcWeeklyStreakServer, getWeekStart, getTier, getNextTierServer, SCORECARD_DEFAULT_ACTIVITIES,
+    SCORECARD_GROWTH_ACTIVITIES, getRemainingDaysInWeekServer);
 
   return async (body) => {
     await fn({ method: 'POST', headers: { authorization: 'Bearer ' + secretValue }, body }, fakeRes);

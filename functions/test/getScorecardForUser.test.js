@@ -369,8 +369,8 @@ test('weeklyStreak: zero history returns 0, not an error', withFakes(
 // qualifier sums breakdown counts across every matched day, so it doesn't
 // matter whether a test spreads activity across multiple days or puts it
 // all on one -- these put it on one for a smaller fixture.
-function weekDay(weekStartDate, { leadPts = 0, lagPts = 0, breakdown = {} } = {}) {
-  return { dateKey: fmt(weekStartDate), counts: {}, totalPts: leadPts + lagPts, leadPts, lagPts, breakdown };
+function weekDay(weekStartDate, { leadPts = 0, lagPts = 0, breakdown = {}, categoryPts = {} } = {}) {
+  return { dateKey: fmt(weekStartDate), counts: {}, totalPts: leadPts + lagPts, leadPts, lagPts, breakdown, categoryPts };
 }
 function act(count) { return { count, pts: 0, icon: '', category: 'Networking', lead: true }; }
 
@@ -498,5 +498,169 @@ test('an activity name outside the exact qualifier catalog earns no credit towar
     const { tier } = res._json;
     assert.equal(tier.qualified, false);
     assert.deepEqual(tier.shortfall, { meetings: 2, followThroughs: 10, intros: 2 }, 'zero credit from an unrecognized name -- the full requirement is still outstanding');
+  }
+));
+
+// ===== categoryPts / growth / results / insights / coaching =====
+// Built 2026-08-31 for MyLola's Scoreboard port (Austen: "Do this").
+// insights/coaching were deliberately held until the category-name fix
+// landed (public-scorecard/index.html: three lookups referencing names
+// that don't exist in the real catalog, live for months as a silent 0
+// across four duplicated blocks) -- these tests exist specifically to
+// prove the FIXED names are what the server actually reads, not just that
+// the endpoint returns something plausible.
+
+test('categoryPts flows through to the days array unchanged', withFakes(
+  { users: { 'lo@example.com': 'uid_cat1' }, dayDocs: { 'users/uid_cat1/days': [
+    weekDay(weeksAgoMonday(0), { leadPts: 10, categoryPts: { 'Follow Through': 10 } }),
+  ] } },
+  async () => {
+    const { req, res } = fakeReqRes({ subjectEmail: 'lo@example.com' });
+    await getScorecardForUser(req, res);
+    assert.deepEqual(res._json.days[0].categoryPts, { 'Follow Through': 10 });
+  }
+));
+
+test('a day with no categoryPts at all defaults to an empty object, not undefined', withFakes(
+  { users: { 'lo@example.com': 'uid_cat2' }, dayDocs: { 'users/uid_cat2/days': [
+    { dateKey: fmt(weeksAgoMonday(0)), counts: {}, totalPts: 5, leadPts: 5, lagPts: 0, breakdown: {} },
+  ] } },
+  async () => {
+    const { req, res } = fakeReqRes({ subjectEmail: 'lo@example.com' });
+    await getScorecardForUser(req, res);
+    assert.deepEqual(res._json.days[0].categoryPts, {});
+  }
+));
+
+test('growth ratio uses the same fuzzy first-word match as renderGrowthCard, not a reimplementation', withFakes(
+  { users: { 'lo@example.com': 'uid_growth1' }, dayDocs: { 'users/uid_growth1/days': [
+    weekDay(weeksAgoMonday(0), { leadPts: 100, breakdown: { 'Speak or Present': { count: 1, pts: 20 } } }),
+  ] } },
+  async () => {
+    const { req, res } = fakeReqRes({ subjectEmail: 'lo@example.com' });
+    await getScorecardForUser(req, res);
+    const { growth } = res._json;
+    assert.equal(growth.ratio, 20, '20 growth pts / 100 total pts');
+    assert.equal(growth.status, 'Healthy Growth');
+    assert.equal(growth.color, '#5A8A6A');
+  }
+));
+
+test('growth status buckets correctly at the Low Growth band', withFakes(
+  { users: { 'lo@example.com': 'uid_growth2' }, dayDocs: { 'users/uid_growth2/days': [
+    weekDay(weeksAgoMonday(0), { leadPts: 100, breakdown: { 'Speak or Present': { count: 1, pts: 8 } } }),
+  ] } },
+  async () => {
+    const { req, res } = fakeReqRes({ subjectEmail: 'lo@example.com' });
+    await getScorecardForUser(req, res);
+    assert.equal(res._json.growth.status, 'Low Growth');
+  }
+));
+
+test('the high-activity-low-growth override message fires without changing the status bucket', withFakes(
+  { users: { 'lo@example.com': 'uid_growth3' }, dayDocs: { 'users/uid_growth3/days': [
+    weekDay(weeksAgoMonday(0), { leadPts: 150, breakdown: { 'Speak or Present': { count: 1, pts: 5 } } }),
+  ] } },
+  async () => {
+    const { req, res } = fakeReqRes({ subjectEmail: 'lo@example.com' });
+    await getScorecardForUser(req, res);
+    const { growth } = res._json;
+    assert.match(growth.msg, /producing, but not developing/);
+    assert.equal(growth.status, 'No Growth', 'the override changes the message only, not the status bucket underneath it');
+  }
+));
+
+test('results: opportunities come from the current week only, referrals from breakdown counts', withFakes(
+  {
+    users: { 'lo@example.com': 'uid_results1' },
+    dayDocs: {
+      'users/uid_results1/days': [
+        weekDay(weeksAgoMonday(0), { leadPts: 50, breakdown: {
+          'Give a Referral': { count: 2, pts: 0 },
+          'Receive a Referral': { count: 1, pts: 0 },
+        } }),
+      ],
+      'users/uid_results1/lag': [
+        { dateKey: fmt(weeksAgoMonday(0)), opportunities: 3 },
+        { dateKey: fmt(weeksAgoMonday(1)), opportunities: 100 }, // prior week -- must not count
+      ],
+    },
+  },
+  async () => {
+    const { req, res } = fakeReqRes({ subjectEmail: 'lo@example.com' });
+    await getScorecardForUser(req, res);
+    assert.deepEqual(res._json.results, { opportunities: 3, referralsGiven: 2, referralsReceived: 1 });
+  }
+));
+
+test('insights: an empty week gets the single neutral placeholder, not a crash', withFakes(
+  { users: { 'lo@example.com': 'uid_ins1' }, dayDocs: { 'users/uid_ins1/days': [] } },
+  async () => {
+    const { req, res } = fakeReqRes({ subjectEmail: 'lo@example.com' });
+    await getScorecardForUser(req, res);
+    assert.deepEqual(res._json.insights, [{ icon: '👋', text: 'Start logging activities to unlock coaching insights.', type: 'neutral' }]);
+  }
+));
+
+// The regression test that actually matters for the category-name fix:
+// proves meetPct is reading 'High-Value Meetings' (the real catalog name),
+// not the old 'High-Value Conversations' that always read 0.
+test('insights: the meeting-activity strength branch reads the FIXED category name', withFakes(
+  { users: { 'lo@example.com': 'uid_ins2' }, dayDocs: { 'users/uid_ins2/days': [
+    weekDay(weeksAgoMonday(0), { leadPts: 80, categoryPts: { 'High-Value Meetings': 30, 'Follow Through': 10 } }),
+  ] } },
+  async () => {
+    const { req, res } = fakeReqRes({ subjectEmail: 'lo@example.com' });
+    await getScorecardForUser(req, res);
+    const strength = res._json.insights.find(i => i.text.startsWith('Strength'));
+    assert.match(strength.text, /High-value conversation activity is strong/, 'meetPct (30/40=75%) must clear the >25% threshold read from the real category name');
+  }
+));
+
+// Same shape, proving the introPct (Referrals & Results) fix independently
+// of the meetPct one above.
+test('insights: the introduction recommendation reads the FIXED category name (Referrals & Results)', withFakes(
+  {
+    users: { 'lo@example.com': 'uid_ins3' },
+    // The recommendation branch needs thisWeekDocs.length > 3. Four distinct
+    // calendar dates this week can't be constructed safely on every day of
+    // the week (see the Monday-only fixture bug fixed earlier tonight) --
+    // four entries dated to the one date that's always safe (today) get the
+    // same length without risking a future dateKey.
+    dayDocs: { 'users/uid_ins3/days': Array.from({ length: 4 }, () =>
+      weekDay(weeksAgoMonday(0), { leadPts: 20, categoryPts: { 'Referrals & Results': 1, 'Follow Through': 24 } })
+    ) },
+  },
+  async () => {
+    const { req, res } = fakeReqRes({ subjectEmail: 'lo@example.com' });
+    await getScorecardForUser(req, res);
+    const rec = res._json.insights.find(i => i.text.startsWith('Recommendation'));
+    // introPct = 4/100 = 4%, under 5 -> the intro-recommendation branch
+    assert.match(rec.text, /Look for 2–3 introductions/);
+  }
+));
+
+test('coaching: strength is driven by LEAD points, not total -- the renderCoachingTab bug fixed alongside this port', withFakes(
+  { users: { 'lo@example.com': 'uid_coach1' }, dayDocs: { 'users/uid_coach1/days': [
+    weekDay(weeksAgoMonday(0), { leadPts: 60, lagPts: 150 }), // total=210 (would read Master); lead=60
+  ] } },
+  async () => {
+    const { req, res } = fakeReqRes({ subjectEmail: 'lo@example.com' });
+    await getScorecardForUser(req, res);
+    const strength = res._json.coaching.find(c => c.label === 'Strength');
+    assert.match(strength.text, /You showed up/, 'total (210) would read Master Networker level; lead (60) correctly falls to the lowest strength branch');
+  }
+));
+
+test('coaching always includes the Identity card, toned separately from good/warn/neutral', withFakes(
+  { users: { 'lo@example.com': 'uid_coach2' }, dayDocs: { 'users/uid_coach2/days': [
+    weekDay(weeksAgoMonday(0), { leadPts: 10 }),
+  ] } },
+  async () => {
+    const { req, res } = fakeReqRes({ subjectEmail: 'lo@example.com' });
+    await getScorecardForUser(req, res);
+    const identity = res._json.coaching.find(c => c.label === "This Week's Identity");
+    assert.ok(identity);
+    assert.equal(identity.tone, 'tier');
   }
 ));

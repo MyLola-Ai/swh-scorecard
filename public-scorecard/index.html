@@ -3230,9 +3230,14 @@
   function renderInsights(filtered,catTotals,total,lag,weekPts,tier,lagRatio,growthRatio,grand,giveRefs,receiveRefs) {
     const insights=[];
     const followPct=Math.round(((catTotals['Follow Through']||0)/total)*100);
-    const eventPct=Math.round(((catTotals['Events & Networking']||0)/total)*100);
-    const meetPct=Math.round(((catTotals['High-Value Conversations']||0)/total)*100);
-    const introPct=Math.round(((catTotals['Connecting People']||0)/total)*100);
+    // Events + Networking are separate catalog categories; this branch was
+    // written against a single "Events & Networking" label that never
+    // existed as a real category, so it always read 0 (Austen, 2026-08-31:
+    // sum both -- the original label's intent was activity around meeting
+    // new people broadly, not just one category).
+    const eventPct=Math.round((((catTotals['Events']||0)+(catTotals['Networking']||0))/total)*100);
+    const meetPct=Math.round(((catTotals['High-Value Meetings']||0)/total)*100);
+    const introPct=Math.round(((catTotals['Referrals & Results']||0)/total)*100);
 
     if(filtered.length===0){ insights.push({icon:'👋',text:'Start logging activities to unlock coaching insights.',type:'neutral'}); }
     else {
@@ -3363,8 +3368,8 @@
     // Coaching
     const lagRatio = totalPts>0?Math.round((lagPts/totalPts)*100):0;
     const followPct = Math.round(((catTotals['Follow Through']||0)/totalCat)*100);
-    const meetPct = Math.round(((catTotals['High-Value Conversations']||0)/totalCat)*100);
-    const introPct = Math.round(((catTotals['Connecting People']||0)/totalCat)*100);
+    const meetPct = Math.round(((catTotals['High-Value Meetings']||0)/totalCat)*100);
+    const introPct = Math.round(((catTotals['Referrals & Results']||0)/totalCat)*100);
 
     let strength, risk, recommendation;
 
@@ -3638,10 +3643,20 @@
     const weekPts = weekDays.reduce((s,d)=>s+d.totalPts,0);
     const weekLead = weekDays.reduce((s,d)=>s+(d.leadPts||0),0);
     const weekLag = weekDays.reduce((s,d)=>s+(d.lagPts||0),0);
-    const tier = getTier(weekPts);
-    const nextTier = getNextTier(weekPts);
+    // Tier is driven by LEAD points, same as renderStats' own tier card
+    // (Danny's coaching: lead = future business) -- this was reading
+    // weekPts (total) instead, a third independent instance of the same
+    // mistake computeUserWeeklyStats had server-side (2026-08-31 fix).
+    // goalPct/tierPct below are untouched: they track progress against
+    // weeklyGoal, a total-effort target, not the tier itself.
+    const tier = getTier(weekLead);
+    const nextTier = getNextTier(weekLead);
     const goalPct = Math.min(100,Math.round((weekPts/weeklyGoal)*100));
-    const tierPct = nextTier ? Math.min(100,Math.round(((weekPts-tier.min)/(nextTier.min-tier.min))*100)) : 100;
+    // Progress toward the NEXT TIER boundary must use the same metric the
+    // boundary itself is measured in (weekLead, since tier is lead-based
+    // above) -- left on weekPts (total) this bar would show a position
+    // inconsistent with the lead-based thresholds it's plotting against.
+    const tierPct = nextTier ? Math.min(100,Math.round(((weekLead-tier.min)/(nextTier.min-tier.min))*100)) : 100;
     const daysLeft = getRemainingDaysInWeek();
     const pace = daysLeft>0 ? Math.ceil(Math.max(0,weeklyGoal-weekPts)/daysLeft) : 0;
 
@@ -3651,7 +3666,7 @@
     const lagRatio = weekPts>0?Math.round((weekLag/weekPts)*100):0;
     const followPct = Math.round(((catTotals['Follow Through']||0)/totalCat)*100);
     const meetPct = Math.round(((catTotals['High-Value Meetings']||0)/totalCat)*100);
-    const introPct = Math.round(((catTotals['Connecting People']||0)/totalCat)*100);
+    const introPct = Math.round(((catTotals['Referrals & Results']||0)/totalCat)*100);
     const giveRefs = weekDays.reduce((s,d)=>s+(d.breakdown?.['Give a Referral']?.count||0),0);
     const receiveRefs = weekDays.reduce((s,d)=>s+(d.breakdown?.['Receive a Referral']?.count||0),0);
 
@@ -3783,7 +3798,7 @@
     const lagRatio = totalPts>0?Math.round((lagPts/totalPts)*100):0;
     const followPct = Math.round(((catTotals['Follow Through']||0)/totalCat)*100);
     const meetPct = Math.round(((catTotals['High-Value Meetings']||0)/totalCat)*100);
-    const introPct = Math.round(((catTotals['Connecting People']||0)/totalCat)*100);
+    const introPct = Math.round(((catTotals['Referrals & Results']||0)/totalCat)*100);
     const giveRefs = lwDays.reduce((s,d)=>s+(d.breakdown?.['Give a Referral']?.count||0),0);
     const receiveRefs = lwDays.reduce((s,d)=>s+(d.breakdown?.['Receive a Referral']?.count||0),0);
     const avgPts = Math.round(totalPts/lwDays.length);

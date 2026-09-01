@@ -459,6 +459,29 @@ function getNextTierServer(pts) {
   return (idx === -1 || idx === SCORECARD_TIER_THRESHOLDS.length - 1) ? null : SCORECARD_TIER_THRESHOLDS[idx + 1];
 }
 
+// Mirror of public-scorecard/index.html's own GROWTH_ACTIVITIES exactly --
+// used by getScorecardForUser's growth field via the SAME fuzzy first-word
+// name.includes() match the client uses, ported rather than reimplemented
+// (MyLola LO, 2026-08-31: "any reimplementation is a guess at someone
+// else's fuzzy match").
+const SCORECARD_GROWTH_ACTIVITIES = [
+  'Speak or Present', 'Create Video Content', 'Long-Form Content (podcast, blog, etc.)',
+  'Share Something Valuable (post)', 'Deeper Conversation (strategy, collaboration)',
+  'Planning or Strategy Conversation', 'Attend an Event',
+];
+
+// Mirror of public-scorecard/index.html's own getRemainingDaysInWeek,
+// against a dateKey rather than a live Date -- needed for the coaching
+// field's pace/recommendation copy.
+function getRemainingDaysInWeekServer(todayKey, weekStartDay) {
+  const DAY_INDEX = { sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6 };
+  const startIdx = DAY_INDEX[(weekStartDay || 'monday').toLowerCase()] ?? 1;
+  const today = new Date(todayKey + 'T12:00:00').getDay();
+  let elapsed = today - startIdx;
+  if (elapsed < 0) elapsed += 7;
+  return Math.max(1, 7 - elapsed);
+}
+
 // Canonical category/lead per default activity name. Saved day breakdowns
 // carry whatever category the user's (possibly stale/legacy) activity list
 // had at log time — e.g. "Perform Other 8 Step Activities" labeled
@@ -6596,7 +6619,7 @@ exports.getScorecardForUser = onRequest(
       streakOldestAllowed.setUTCDate(streakOldestAllowed.getUTCDate() - SCORECARD_STREAK_LOOKBACK_DAYS);
       const streakOldestAllowedKey = streakOldestAllowed.toISOString().slice(0, 10);
 
-      const [actSnap, daysSnap, userSnap, settingsSnap, streakDaysSnap] = await Promise.all([
+      const [actSnap, daysSnap, userSnap, settingsSnap, streakDaysSnap, lagSnap] = await Promise.all([
         admin.firestore().doc(`users/${uid}/config/activities`).get(),
         admin.firestore().collection(`users/${uid}/days`)
           .where('dateKey', '>=', effectiveFrom)
@@ -6611,6 +6634,17 @@ exports.getScorecardForUser = onRequest(
         // SCORECARD_STREAK_LOOKBACK_DAYS's own comment for why this can't
         // reuse effectiveFrom/effectiveTo above.
         admin.firestore().collection(`users/${uid}/days`)
+          .where('dateKey', '>=', streakOldestAllowedKey)
+          .where('dateKey', '<=', today)
+          .get(),
+        // "Lag Results" -- a separate, manually-logged tracking collection
+        // (opportunities/referrals/dealsStarted/dealsCompleted), distinct
+        // from a day-doc's own lagPts. weekStartDay isn't known yet at this
+        // point (it lives in settingsSnap, resolved in this same batch), so
+        // this reuses the streak window as a safe superset and gets
+        // filtered down to the actual current week below, same pattern as
+        // streakHistory -> thisWeekDocs.
+        admin.firestore().collection(`users/${uid}/lag`)
           .where('dateKey', '>=', streakOldestAllowedKey)
           .where('dateKey', '<=', today)
           .get(),
@@ -6629,6 +6663,7 @@ exports.getScorecardForUser = onRequest(
           leadPts: x.leadPts || 0,
           lagPts: x.lagPts || 0,
           breakdown: x.breakdown || {},
+          categoryPts: x.categoryPts || {},
         };
       }).sort((a, b) => a.dateKey.localeCompare(b.dateKey));
 
@@ -6732,7 +6767,149 @@ exports.getScorecardForUser = onRequest(
         shortfall,
       };
 
-      res.json({ found: true, activities, days, weeklyGoal, canLog, weekStartDay, weeklyStreak, tier });
+      // growth/results/insights/coaching: ported from public-scorecard/
+      // index.html exactly (MyLola LO, 2026-08-31 -- "one ledger, two front
+      // doors"), current week only, same scope as tier above. All reuse
+      // thisWeekDocs already fetched for tier -- no new day-doc query.
+      //
+      // Category names fixed alongside this same change (2026-08-31): three
+      // lookups referenced names that don't exist in the real catalog
+      // ('Events & Networking', 'High-Value Conversations', 'Connecting
+      // People'), live in the client for months as a silent 0 across four
+      // duplicated blocks with partial fixes in two of them. Fixed here from
+      // the start rather than ported bug-and-all -- MyLola LO's own
+      // reasoning for gating insights/coaching on this fix: "shipping the
+      // strings first would put that same wrong advice in a second product
+      // with SWH's name on it." Events + Networking summed per Austen's
+      // ruling the same day (no single real category matches the original
+      // "Events & Networking" label's intent).
+      const catTotals = {};
+      thisWeekDocs.forEach(d => {
+        Object.entries(d.categoryPts || {}).forEach(([cat, p]) => { catTotals[cat] = (catTotals[cat] || 0) + p; });
+      });
+      const totalCatPts = Object.values(catTotals).reduce((s, v) => s + v, 0) || 1;
+      const weekTotal = thisWeekDocs.reduce((s, d) => s + (d.totalPts || 0), 0);
+      const weekLag = thisWeekDocs.reduce((s, d) => s + (d.lagPts || 0), 0);
+      const lagRatio = weekTotal > 0 ? Math.round((weekLag / weekTotal) * 100) : 0;
+      const followPct = Math.round(((catTotals['Follow Through'] || 0) / totalCatPts) * 100);
+      const eventPct = Math.round((((catTotals['Events'] || 0) + (catTotals['Networking'] || 0)) / totalCatPts) * 100);
+      const meetPct = Math.round(((catTotals['High-Value Meetings'] || 0) / totalCatPts) * 100);
+      const introPct = Math.round(((catTotals['Referrals & Results'] || 0) / totalCatPts) * 100);
+      const giveRefs = sumBreakdownNames(['Give a Referral']);
+      const receiveRefs = sumBreakdownNames(['Receive a Referral']);
+
+      // growth: ported from renderGrowthCard + its own growthRatio calc
+      // exactly, including the fuzzy first-word match.
+      let growthPts = 0;
+      thisWeekDocs.forEach(d => {
+        Object.entries(d.breakdown || {}).forEach(([name, bd]) => {
+          if (SCORECARD_GROWTH_ACTIVITIES.some(g => name.includes(g.split(' ')[0]))) growthPts += (bd.pts || 0);
+        });
+      });
+      const growthRatio = weekTotal > 0 ? Math.round((growthPts / weekTotal) * 100) : 0;
+      let growthColor, growthStatus, growthMsg;
+      if (growthRatio >= 15) { growthColor = '#5A8A6A'; growthStatus = 'Healthy Growth'; growthMsg = "You're not just staying busy. You're growing while you build."; }
+      else if (growthRatio >= 5) { growthColor = '#D4A847'; growthStatus = 'Low Growth'; growthMsg = "You're active, but most time is spent maintaining, not growing."; }
+      else { growthColor = '#C0392B'; growthStatus = 'No Growth'; growthMsg = "You're working in your business, not on yourself."; }
+      if (weekTotal >= 100 && growthRatio < 10) growthMsg = "You're producing, but not developing. This is where people plateau.";
+      if (growthRatio >= 25 && weekTotal < 75) growthMsg = "You're learning and growing, but not applying enough. Turn that into connections.";
+      const growth = { ratio: growthRatio, status: growthStatus, color: growthColor, msg: growthMsg };
+
+      // results: opportunities from the separate "Lag Results" tracking
+      // collection (distinct from a day-doc's own lagPts), current week
+      // only; referrals from breakdown counts, same source giveRefs/
+      // receiveRefs above already reuses.
+      const lagThisWeek = lagSnap.docs
+        .map(d => d.data())
+        .filter(l => l.dateKey && getWeekStart(l.dateKey, weekStartDay) === thisWeekStart);
+      const opportunities = lagThisWeek.reduce((s, l) => s + (l.opportunities || 0), 0);
+      const results = { opportunities, referralsGiven: giveRefs, referralsReceived: receiveRefs };
+
+      // insights: ported from renderInsights exactly (icon/text/type).
+      // weekLead is renderStats' own "weekPts" (the tier-driving metric);
+      // weekTotal is renderStats' own "grand" -- both preserved as the
+      // distinct values the client keeps them as, not collapsed into one.
+      const insights = [];
+      if (thisWeekDocs.length === 0) {
+        insights.push({ icon: '👋', text: 'Start logging activities to unlock coaching insights.', type: 'neutral' });
+      } else {
+        insights.push({ icon: '📋', text: 'WEEKLY SUMMARY', type: 'header' });
+
+        if (weekLead >= 150 && (tierInfo.name === 'Professional Networker' || tierInfo.name === 'Master Networker')) insights.push({ icon: '💪', text: `Strength: You operated at ${tierInfo.name} level this week. High consistency and strong presence.`, type: 'good' });
+        else if (followPct > 30) insights.push({ icon: '💪', text: 'Strength: Strong follow through discipline. You\'re nurturing relationships consistently.', type: 'good' });
+        else if (meetPct > 25) insights.push({ icon: '💪', text: 'Strength: High-value conversation activity is strong. Face time is driving your network.', type: 'good' });
+        else if (weekLead >= 100) insights.push({ icon: '💪', text: 'Strength: You maintained consistent activity this week. Keep the momentum.', type: 'good' });
+        else insights.push({ icon: '💪', text: 'Strength: You showed up. Every activity logged is a step forward.', type: 'good' });
+
+        if (lagRatio > 50) insights.push({ icon: '⚠️', text: 'Risk: Most of your points came from results, not activity. Future pipeline may slow down.', type: 'warn' });
+        else if (eventPct > 20 && followPct < 10) insights.push({ icon: '⚠️', text: 'Risk: You\'re meeting people but not continuing the conversation. Follow through gap detected.', type: 'warn' });
+        else if (weekLead < 50) insights.push({ icon: '⚠️', text: 'Risk: Low activity this week. Fewer opportunities usually follow.', type: 'warn' });
+        else if (growthRatio < 5 && weekTotal >= 50) insights.push({ icon: '⚠️', text: 'Risk: No growth-focused activity logged. Without development, performance can plateau.', type: 'warn' });
+        else insights.push({ icon: '⚠️', text: 'Risk: Watch your follow through activity. It\'s the easiest thing to let slip.', type: 'neutral' });
+
+        if (introPct < 5 && thisWeekDocs.length > 3) insights.push({ icon: '🎯', text: 'Recommendation: Look for 2–3 introductions you can make this week. Connecting others builds leverage.', type: 'neutral' });
+        else if (followPct < 15) insights.push({ icon: '🎯', text: 'Recommendation: Increase follow through activity. Every conversation without follow through is a missed connection.', type: 'neutral' });
+        else if (meetPct < 5) insights.push({ icon: '🎯', text: 'Recommendation: Schedule at least 2 in-person meetings next week. Face time drives deeper relationships.', type: 'neutral' });
+        else insights.push({ icon: '🎯', text: 'Recommendation: Stay consistent. Your current activity mix is building real momentum.', type: 'neutral' });
+
+        if (lagRatio > 50) insights.push({ icon: '🔴', text: 'Most of your points came from results, not activity. Focus on conversations, follow through, and relationship building.', type: 'warn' });
+        else if (lagRatio >= 30) insights.push({ icon: '🟡', text: 'A larger portion of your points came from results. Make sure activity stays strong to keep momentum.', type: 'warn' });
+        else if (weekTotal > 0) insights.push({ icon: '🟢', text: 'Your activity is driving your results. This is a strong, sustainable pattern.', type: 'good' });
+
+        if (giveRefs === 0 && thisWeekDocs.length > 5) insights.push({ icon: '🔗', text: 'You\'re not actively connecting others. Strong networks are built by creating value first.', type: 'warn' });
+        if (receiveRefs === 0 && giveRefs > 3) insights.push({ icon: '⏳', text: 'You\'re creating value for others. Stay consistent. Reciprocity often follows.', type: 'neutral' });
+        if (receiveRefs > 0 && giveRefs === 0) insights.push({ icon: '🔄', text: 'You\'re benefiting from your network, but not contributing at the same level. Look for opportunities to connect others.', type: 'warn' });
+        if (giveRefs > 0 && receiveRefs > 0) insights.push({ icon: '🌐', text: `Referral flywheel active. You gave ${giveRefs} and received ${receiveRefs}. You are operating as a connector.`, type: 'good' });
+
+        if (tierInfo.name === 'Getting Started') insights.push({ icon: '🚀', text: 'Trust is built in small kept commitments. Even 3 to 5 activities a day adds up to 100+ pts by week\'s end.', type: 'neutral' });
+        if (weekLead >= 150 && (tierInfo.name === 'Professional Networker' || tierInfo.name === 'Master Networker')) insights.push({ icon: '🏆', text: `You hit ${tierInfo.name} level this week. Maintain this to build compounding momentum.`, type: 'good' });
+      }
+
+      // coaching: ported from buildCoachingInsights exactly (label/icon/
+      // text), reusing tierInfo/weekLead already built above rather than
+      // re-deriving tier from weekTotal -- renderCoachingTab's own client
+      // code did that (getTier(weekPts) where weekPts was total, not lead),
+      // a third independent instance of the same mistake
+      // computeUserWeeklyStats had, fixed there in the same client file
+      // alongside this port rather than carried into a second product.
+      // tone is a semantic bucket from the same color choices the client
+      // makes per branch (not label alone -- "Risk" uses two different
+      // colors depending on severity), since MyLola renders its own
+      // palette rather than SWH's literal hex values.
+      const SCORECARD_COACHING_TONE_BY_COLOR = { '#5A8A6A': 'good', '#C0392B': 'warn', '#E67E22': 'neutral', '#4A7FB5': 'neutral' };
+      const coaching = [];
+      const pushCoaching = (label, icon, text, color) => coaching.push({ label, icon, text, tone: SCORECARD_COACHING_TONE_BY_COLOR[color] || 'neutral' });
+
+      if (weekLead >= 200) pushCoaching('Strength', '💪', `You're operating at Master Networker level. Gold-tier consistency creates compounding momentum.`, '#5A8A6A');
+      else if (weekLead >= 150) pushCoaching('Strength', '💪', `You're at Professional Networker level this week. You're operating at a high standard.`, '#5A8A6A');
+      else if (followPct > 30) pushCoaching('Strength', '💪', 'Strong follow through discipline. You\'re nurturing relationships consistently.', '#5A8A6A');
+      else if (meetPct > 25) pushCoaching('Strength', '💪', 'High-value meeting activity is strong. Face time is your biggest relationship driver.', '#5A8A6A');
+      else if (weekLead >= 100) pushCoaching('Strength', '💪', 'You\'ve hit the 100pt consistency threshold. Momentum is building. Keep going.', '#5A8A6A');
+      else pushCoaching('Strength', '💪', 'You showed up. Every activity logged is a step forward in building your network.', '#5A8A6A');
+
+      const daysLeftInWeek = getRemainingDaysInWeekServer(today, weekStartDay);
+      const pace = daysLeftInWeek > 0 ? Math.ceil(Math.max(0, weeklyGoal - weekTotal) / daysLeftInWeek) : 0;
+
+      if (lagRatio > 50) pushCoaching('Risk', '⚠️', 'Most of your points came from results, not activity. Future pipeline may slow down. Focus on lead activity.', '#C0392B');
+      else if (weekLead < 50 && daysLeftInWeek < 3) pushCoaching('Risk', '⚠️', 'Low activity with few days left. A strong push now can still change this week\'s outcome.', '#C0392B');
+      else if (followPct < 10 && thisWeekDocs.length > 2) pushCoaching('Risk', '⚠️', 'Follow through activity is low. Every conversation without follow through is a missed connection.', '#C0392B');
+      else pushCoaching('Risk', '⚠️', 'Watch your follow through. It\'s the easiest activity to skip and the most important to maintain.', '#E67E22');
+
+      if (weekTotal >= weeklyGoal) pushCoaching('Recommendation', '🎯', 'Goal achieved! Now focus on quality. Look for 1–2 strategic introductions you can make before week\'s end.', '#4A7FB5');
+      else if (introPct < 5 && thisWeekDocs.length > 2) pushCoaching('Recommendation', '🎯', 'Look for 2–3 introductions you can make this week. Connecting others is the highest-leverage activity.', '#4A7FB5');
+      else if (followPct < 15) pushCoaching('Recommendation', '🎯', 'Increase follow through activity. Send 3 personalized follow throughs to recent connections today.', '#4A7FB5');
+      else pushCoaching('Recommendation', '🎯', `You need ${Math.max(0, weeklyGoal - weekTotal)} more pts this week. At ${pace} pts/day you'll hit your goal.`, '#4A7FB5');
+
+      const daysLogged = thisWeekDocs.length;
+      const streakNeeded = Math.max(0, 3 - daysLogged);
+      if (daysLogged >= 3) {
+        pushCoaching('Streak', '🔥', weeklyStreak > 0 ? `${weeklyStreak}-week streak active. You've hit 3+ days this week. Consistency is your competitive advantage.` : `Active week! Log 3+ days every week to build your streak.`, '#E67E22');
+      } else {
+        pushCoaching(weeklyStreak > 0 ? 'Streak Alert' : 'Build Your Streak', '🔥', weeklyStreak > 0 ? `You're on a ${weeklyStreak}-week streak. Log ${streakNeeded} more day${streakNeeded !== 1 ? 's' : ''} this week to keep it alive.` : `Log ${streakNeeded} more day${streakNeeded !== 1 ? 's' : ''} this week to complete an active week. Three days = momentum.`, '#E67E22');
+      }
+      coaching.push({ label: "This Week's Identity", icon: tierInfo.emoji, text: `"${tierInfo.msg}"`, tone: 'tier' });
+
+      res.json({ found: true, activities, days, weeklyGoal, canLog, weekStartDay, weeklyStreak, tier, growth, results, insights, coaching });
     } catch (e) {
       console.error('[getScorecardForUser]', e);
       res.status(500).json({ error: 'internal' });
