@@ -1416,7 +1416,7 @@ html.dark-theme .lola-review .lr-text{color:#C4B5FD;}
         <li>✓ Per-contact activity log</li>
         <li>✓ 8-step follow-through system</li>
         <li>✓ Pipeline & opportunities tracking</li>
-        <li>✓ Google Calendar sync</li>
+        <li>✓ Calendar sync (Google, Outlook)</li>
         <li>✓ Business card scanner (AI)</li>
       </ul>
       <button onclick="startUpgrade('pro')" style="margin-top:20px;padding:13px;border:none;border-radius:11px;background:var(--gold);font-family:'DM Sans',sans-serif;font-size:14px;font-weight:800;color:#fff;cursor:pointer;">Start with Scorecard CRM →</button>
@@ -2299,7 +2299,7 @@ html.dark-theme .lola-review .lr-text{color:#C4B5FD;}
           <input type="checkbox" id="ac-start-campaign" style="width:18px;height:18px;margin-top:1px;accent-color:var(--gold);flex-shrink:0;cursor:pointer;">
           <div>
             <div style="font-size:13px;font-weight:600;color:var(--text);line-height:1.3;">Start 8-step follow-through campaign today</div>
-            <div style="font-size:11px;color:var(--muted);margin-top:3px;" id="ac-campaign-hint">Starts the clock. Adds steps to Google Calendar if enabled in Settings.</div>
+            <div style="font-size:11px;color:var(--muted);margin-top:3px;" id="ac-campaign-hint">Starts the clock. Adds steps to your calendar if enabled in Settings.</div>
           </div>
         </label>
         <!-- Team Contact Awareness — teammate heads-up, hidden until a match is found -->
@@ -10854,7 +10854,7 @@ async function saveContactImpl(){
   teamIndexUpsert(ref.id,phone,data.addedAt);
   closeAddContact();renderNetwork();
   await autoLogActivity('Add New Contact', name, ref.id, 'scorecard');
-  // Campaign start — start clock and optionally add to Google Calendar
+  // Campaign start — start clock and optionally add to the user's calendar
   if (startCampaign) {
     await startClock(ref.id); // sets data.clockStarted (same object reference in CONTACTS)
     if (calendarAutoAdd) {
@@ -12424,7 +12424,7 @@ function updateCalAutoAddToggle() {
   // Update hint text in Add Contact form too
   const hint = document.getElementById('ac-campaign-hint');
   if (hint) hint.textContent = calendarAutoAdd
-    ? 'Starts the clock and adds all 8 steps to Google Calendar.'
+    ? 'Starts the clock and adds all 8 steps to your calendar.'
     : 'Starts the clock. Enable calendar auto-add in Settings to also schedule steps.';
 }
 
@@ -12478,10 +12478,10 @@ async function addStepsToCalendar(contact) {
   const clockStart = contact.clockStarted;
   if(!clockStart) { showToast('⚠️ Start the clock first'); return; }
   if(!crmNylasConnected) {
-    showToast('⚠️ Connect Google Calendar in Settings to auto-schedule steps');
+    showToast('⚠️ Connect your calendar in Settings to auto-schedule steps');
     return;
   }
-  showToast('📅 Adding 8 steps to Google Calendar…');
+  showToast('📅 Adding 8 steps to your calendar…');
   let token;
   try { token = await currentUser?.getIdToken(); } catch(e) { showToast('⚠️ Sign-in required'); return; }
   let added = 0, needsConnect = false;
@@ -12504,7 +12504,7 @@ async function addStepsToCalendar(contact) {
     } catch(e) { console.error('[addStepsToCalendar]', e); }
   }
   if (needsConnect && added === 0) promptLolaConnectRequired('Connect your calendar to add these steps.');
-  else if(added > 0) showToast(`✅ ${added} steps added to Google Calendar`);
+  else if(added > 0) showToast(`✅ ${added} steps added to your calendar`);
   else showToast('⚠️ Could not sync to calendar. Try again');
 }
 
@@ -12793,7 +12793,7 @@ window.saveWeeklyEmailSettings = async function() {
 window.toggleCalendarSync = async function(contactId) {
   const c = CONTACTS.find(x=>x.id===contactId);
   if(!c) return;
-  if(!crmNylasConnected) { showToast('⚠️ Connect Google Calendar in Settings first'); return; }
+  if(!crmNylasConnected) { showToast('⚠️ Connect your calendar in Settings first'); return; }
   const btn = document.getElementById(`gcal-btn-${contactId}`);
   let token;
   try { token = await currentUser?.getIdToken(); } catch(e) { showToast('⚠️ Sign-in required'); return; }
@@ -12820,7 +12820,7 @@ window.toggleCalendarSync = async function(contactId) {
     c.calendarStepEventIds = {};
     await updateDoc(doc(db,'users',currentUser.uid,'contacts',contactId), { calendarSynced: false, calendarEventIds: [], calendarStepEventIds: {} });
     if(btn) { btn.textContent = '📅 Run'; btn.style.background = '#4285F4'; btn.style.color = '#fff'; btn.disabled = false; }
-    showToast(`✅ Removed ${deleted} steps from Google Calendar`);
+    showToast(`✅ Removed ${deleted} steps from your calendar`);
 
   } else {
     // RUN SYNC — add via Nylas, skip completed steps AND steps that already
@@ -12867,7 +12867,7 @@ window.toggleCalendarSync = async function(contactId) {
       c.calendarStepEventIds = stepEventIds;
       await updateDoc(doc(db,'users',currentUser.uid,'contacts',contactId), { calendarSynced: true, calendarEventIds: eventIds, calendarStepEventIds: stepEventIds });
       if(btn) { btn.textContent = '🔄 Stop Sync'; btn.style.background = '#e8f5ec'; btn.style.color = '#2e7d32'; btn.disabled = false; }
-      showToast(added > 0 ? `✅ ${added} steps added to Google Calendar` : 'Already synced — nothing new to add');
+      showToast(added > 0 ? `✅ ${added} steps added to your calendar` : 'Already synced — nothing new to add');
     } else if (needsConnect) {
       if(btn) { btn.textContent = '📅 Run'; btn.disabled = false; }
       promptLolaConnectRequired('Connect your calendar to sync these steps.');
