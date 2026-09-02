@@ -8926,11 +8926,9 @@ function buildExpandDetail(c) {
       <button class="ne-action-btn" onclick="goGradeContact('${c.id}')"><span class="ne-action-icon">⭐</span><span class="ne-action-lbl">Grade</span></button>
       ${c.cadencePaused ? `<button class="ne-action-btn" onclick="resumeCadence('${c.id}')"><span class="ne-action-icon">&#9654;</span><span class="ne-action-lbl">Resume</span></button>` : ''}
     </div>
-    <div style="padding:0 2px 8px;">
-      ${c.myLolaSyncStatus === 'synced'
-        ? `<span style="display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;background:rgba(123,97,255,0.10);border:1px solid rgba(123,97,255,0.30);font-size:11px;font-weight:600;color:#7B61FF;"><span class="lola-orb" aria-hidden="true" style="width:12px;height:12px;"></span>Linked to MyLola</span>`
-        : `<span style="display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;background:var(--bg);border:1px solid var(--border);font-size:11px;font-weight:600;color:var(--muted);">Not Yet Synced</span>`}
-    </div>
+    ${c.myLolaSyncStatus === 'synced' ? `<div style="padding:0 2px 8px;">
+      <span style="display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;background:rgba(123,97,255,0.10);border:1px solid rgba(123,97,255,0.30);font-size:11px;font-weight:600;color:#7B61FF;"><span class="lola-orb" aria-hidden="true" style="width:12px;height:12px;"></span>Synced with MyLola</span>
+    </div>` : ''}
     <div class="ne-tabs">
       <button class="ne-tab active" onclick="setNeTab('${c.id}','profile',this)">Profile</button>
       <button class="ne-tab" onclick="setNeTab('${c.id}','activity',this);loadActivityPanel('${c.id}')">📋 Activity</button>
