@@ -4646,6 +4646,28 @@ async function _lolaConnectCall(op, body) {
   });
   return { status: res.status, json: await res.json().catch(() => ({})) };
 }
+// Whether the user has an active Lola Connect email connection -- the ONE
+// live check both send-availability and the auto-log prompt should use.
+// 2026-09-02: found via Tony Cubbage (Outlook, connected in Settings, Send
+// never appeared and Activity kept offering to "connect email to auto-log").
+// Both features were still gated on the legacy per-user integrations/nylas
+// doc / the nylasStatus endpoint -- refreshLolaConnectStatus's own comment
+// called this deliberate and temporary ("Re-couple only at R2 (Nylas
+// retire)"), but nylasStatus no longer exists server-side (removed by
+// 0be043d, "nylas: full removal") while this frontend coupling was never
+// updated -- so a Lola-Connect-only user (anyone who never went through the
+// old flow) could never satisfy either check, and the fallback "self-heal"
+// probe in the auto-log path silently 404s instead of healing anything.
+// R2 effectively already arrived on the backend; this closes the gap on
+// the frontend for these two features specifically -- calendar sync (also
+// named in that comment) is untouched, not reported broken, out of scope.
+async function _lolaConnectIsActive() {
+  try {
+    const { json } = await _lolaConnectCall('connections.list');
+    const conns = (json.result && json.result.connections) || [];
+    return conns.some(c => c.status === 'connected');
+  } catch (_) { return false; }
+}
 const _LC_PILL = "padding:6px 10px;background:var(--bg);border:1px solid var(--border);border-radius:8px;font-family:'DM Sans',sans-serif;font-size:12px;font-weight:600;color:var(--navy);cursor:pointer;";
 // Show/hide the legacy connect card (nylas-connect-mount). Coupled to the flag:
 // beta users (who get the Lola Connect card) don't see it; everyone else does,
@@ -4932,11 +4954,6 @@ async function _onCrmSignedIn(user) {
   }
   if (typeof refreshSettingsSubLabelsCRM === 'function') refreshSettingsSubLabelsCRM();
   loadThemePref();
-  if (window.SWHNylasEmail) {
-    SWHNylasEmail.config.getToken = () => currentUser?.getIdToken();
-    const nylasEl = document.getElementById('nylas-connect-mount');
-    if (nylasEl) SWHNylasEmail.mountConnect(nylasEl);
-  }
   setDoc(doc(db, 'users', user.uid), { lastSeenAt: new Date().toISOString() }, { merge: true }).catch(() => {});
   if (userPlan === 'pro') {
     NativeAPI.call('enrollOnboardingDrip', {}).catch(() => {});
@@ -5516,23 +5533,18 @@ async function initUser() {
   try {
     const ns = await getDoc(doc(db,'users',currentUser.uid,'integrations','nylas'));
     crmNylasConnected = ns.exists() && ns.data().status === 'active';
-    // Doc says expired but a grant exists → probe nylasStatus, which live-checks
-    // the grant against Nylas and self-heals a wrongly-flagged doc.
-    if (ns.exists() && !crmNylasConnected) {
+    // Not connected under the legacy doc doesn't mean not connected --
+    // anyone who connected via Lola Connect instead (the only path that
+    // still works; nylasStatus, the old self-heal probe, was removed
+    // server-side by 0be043d) has no integrations/nylas doc at all and
+    // would otherwise never satisfy this check. Non-blocking, same as the
+    // legacy read above.
+    if (!crmNylasConnected) {
       (async () => {
-        try {
-          const tok = await lolaIdToken();
-          const r = await fetch(`${NYLAS_FN}/nylasStatus`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${tok}` },
-            body: '{}',
-          });
-          const s = await r.json();
-          if (s && s.connected && s.status === 'active') {
-            crmNylasConnected = true;
-            console.log('[nylas] status self-healed to active');
-          }
-        } catch (_) { /* non-fatal */ }
+        if (await _lolaConnectIsActive()) {
+          crmNylasConnected = true;
+          console.log('[lolaConnect] auto-log status resolved via Lola Connect');
+        }
       })();
     }
   } catch(_) {}
@@ -9000,6 +9012,7 @@ function buildExpandDetail(c) {
           ${c.clockStarted?`
             <button id="gcal-btn-${c.id}" onclick="toggleCalendarSync('${c.id}')" style="background:${c.calendarSynced?'#e8f5ec':'#4285F4'};border:none;border-radius:8px;padding:6px 11px;font-family:'DM Sans',sans-serif;font-size:11px;font-weight:700;color:${c.calendarSynced?'#2e7d32':'#fff'};cursor:pointer;">${c.calendarSynced?'🔄 Stop Sync':'📅 Run'}</button>
             <button onclick="downloadICS('${c.id}')" style="background:var(--navy);border:none;border-radius:8px;padding:6px 11px;font-family:'DM Sans',sans-serif;font-size:11px;font-weight:700;color:#fff;cursor:pointer;">📥 Apple/Outlook</button>
+            <button onclick="restartClock('${c.id}')" title="Reset to Step 1 and close any pending Morning Queue cards" style="background:var(--card);border:1.5px solid var(--border);border-radius:8px;padding:6px 11px;font-family:'DM Sans',sans-serif;font-size:11px;font-weight:700;color:var(--muted);cursor:pointer;">↺ Restart</button>
           `:''}
         </div>
       </div>
@@ -9700,6 +9713,25 @@ window.startClock=async function(contactId){
   renderNetwork();showToast('⏱️ 8-Step clock started!');
 };
 
+// Restart an already-started clock back to day 1 -- for a contact whose
+// steps stalled (Austen, 2026-09-02: Tony's own clock started May 20,
+// still on Step 1, overdue since May 21). startClock only covers a NEVER-
+// started contact (its button is hidden once clockStarted is set); this is
+// the companion for "start over," not "start." Resets both clockStarted
+// (so the 8-step schedule recomputes from today, addDays reads it directly)
+// and steps (so profile checkboxes and stepFor() start back at 0), and
+// closes any pending Morning Queue cards for this contact -- otherwise a
+// card built against the old schedule would keep showing a step number
+// that no longer matches the restarted timeline.
+window.restartClock=async function(contactId){
+  const c=CONTACTS.find(x=>x.id===contactId);if(!c)return;
+  if(!confirm(`Restart the 8-step clock for ${c.name}? Progress resets to Step 1 and any pending Morning Queue cards for them close.`))return;
+  c.clockStarted=getTodayKey();c.steps=0;c.wasted=false;
+  await updateDoc(doc(db,'users',currentUser.uid,'contacts',contactId),{clockStarted:c.clockStarted,steps:0});
+  await closeOrphanedQueueDocs(contactId,'clock_restarted');
+  renderNetwork();showToast('⏱️ Clock and steps restarted');
+};
+
 window.setNetSort=function(v){
   netSort = (v==='recent'||v==='name') ? v : 'status';
   localStorage.setItem('swh_net_sort', netSort);
@@ -10030,20 +10062,11 @@ function neDraftShowError(err) {
   document.getElementById('ne-draft-spinner').style.display = 'block';
 }
 
-// ── Direct send via the user's connected email (Nylas grant) ───────────
+// ── Direct send via the user's connected email (Lola Connect) ───────────
 let _lolaSendReady = null; // session cache: null unknown, true/false known
 async function primeSendAvailability() {
   if (_lolaSendReady === null) {
-    try {
-      const tok = await lolaIdToken();
-      const r = await fetch(`${CRM_FUNCTIONS_BASE}/nylasStatus`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${tok}` },
-        body: '{}',
-      });
-      const s = await r.json();
-      _lolaSendReady = !!(s && s.connected && s.status === 'active');
-    } catch (_) { _lolaSendReady = false; }
+    _lolaSendReady = await _lolaConnectIsActive();
   }
   updateSendBtn();
 }
@@ -12204,12 +12227,14 @@ async function closeQueueDocsUpTo(contactId, stepsDone) {
 // orphaned (no contact left to send to, open, or advance steps on) and
 // must not keep surfacing. Same lazy-close pattern as closeQueueDocsUpTo,
 // called both from deleteContact directly and defensively at render time
-// in case a contact was ever removed some other way.
-async function closeOrphanedQueueDocs(contactId) {
+// in case a contact was ever removed some other way. reason defaults to
+// the original (only) caller's meaning; restartClock passes its own so the
+// audit trail on closed docs stays accurate for that path too.
+async function closeOrphanedQueueDocs(contactId, reason) {
   const stale = FOLLOW_THROUGH_QUEUE.filter(q => q.contactId === contactId && q.status === 'pending');
   for (const q of stale) {
     q.status = 'done';
-    try { await updateDoc(doc(db, 'users', currentUser.uid, 'followThroughQueue', q.id), { status: 'done', closedBy: 'contact_deleted', closedAt: new Date().toISOString() }); }
+    try { await updateDoc(doc(db, 'users', currentUser.uid, 'followThroughQueue', q.id), { status: 'done', closedBy: reason || 'contact_deleted', closedAt: new Date().toISOString() }); }
     catch (e) { console.warn('[closeOrphanedQueueDocs]', q.id, e); }
   }
   return stale.length;
@@ -15579,10 +15604,6 @@ window.onSendToMyLolaSubmit = async function() {
     </div>
   </div>
 </div>
-
-<!-- Nylas unified email + calendar UI (classic script; sets window.SWHNylasEmail
-     before the deferred module's auth handler runs). -->
-<script src="nylas-email.js"></script>
 
 <!-- ===== RELATIONSHIP GRADE MODAL ===== -->
 <div class="ctx-overlay" id="ne-draft-modal-overlay" onclick="if(event.target===this)neStepDraftClose()">
