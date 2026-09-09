@@ -320,6 +320,30 @@ async function lcConnectedUidSet() {
 }
 exports.lcConnectedUidSet = lcConnectedUidSet;
 
+// Returns the currently credentials_expired connections for product swh:
+// [{ id, provider, email, uids }]. Same connections.listByPool call as
+// lcConnectedUidSet, filtered to the opposite status, for index.js's
+// lolaConnectExpiryNotify sweep (send a reconnect email once per expiry).
+async function lcExpiredConnections() {
+  const call = async (body) => {
+    const r = await fetch(GATEWAY_URL, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${LOLA_CONNECT_SERVICE_TOKEN.value()}`,
+      },
+      body: JSON.stringify({ subject: { pool: SWH_POOL, uid: 'service' }, product: SWH_PRODUCT, ...body }),
+    });
+    return { status: r.status, json: await r.json().catch(() => ({})) };
+  };
+  const listing = await call({ op: 'connections.listByPool' });
+  const conns = (listing.json.result && listing.json.result.connections) || [];
+  return conns
+    .filter((c) => c.status === 'credentials_expired' && c.products && c.products.swh)
+    .map((c) => ({ id: c.id, provider: c.provider, email: c.email, uids: c.uids || [] }));
+}
+exports.lcExpiredConnections = lcExpiredConnections;
+
 // ── Leg 2: email auto-log via LC pull-sync ──────────────────────────────────
 // Every 15 minutes, for each SWH user with a connected LC account, pull new
 // mail and log it onto matched contacts' timelines — the LC replacement for

@@ -10180,3 +10180,134 @@ exports.sendFollowThroughDigest = onSchedule({
   }
   console.log(`[sendFollowThroughDigest] sent=${sent} hour=${localHour} date=${todayCentral}`);
 });
+
+// ===================================================================
+// LOLA CONNECT EXPIRY NOTIFY
+// Danny Smith gap (2026-09-02): credentials_expired only ever surfaced as a
+// passive Settings-page pill (see refreshLolaConnectStatus's "Reconnect
+// needed" branch in public-crm/index.html) -- nothing proactive told the
+// user their sync had stopped. Re-notifies on a cooldown (not once-ever)
+// so someone who misses the first email still hears about it, and a
+// reconnect-then-re-expire of the SAME connection id (Unipile reuses the id
+// across a reconnectConnectionId reconnect -- see lolaConnectConnect in
+// public-crm/index.html) naturally gets a fresh email once the cooldown from
+// the ORIGINAL notification has elapsed, with no separate cleanup pass
+// needed for the common case. A rapid reconnect/re-expire inside the same
+// cooldown window is treated as one event, not two -- deliberate, not a gap.
+// ===================================================================
+
+const _LC_RECONNECT_URL = 'https://crm.stopwastinghandshakes.com/?screen=settings';
+const _LC_EXPIRY_FROM   = 'Lola <hello@mylola.ai>';
+const _LC_EXPIRY_RENOTIFY_MS = 7 * 24 * 60 * 60 * 1000;
+
+function _lcProviderLabel(provider) {
+  if (provider === 'microsoft') return 'Outlook';
+  if (provider === 'google') return 'Google';
+  return 'email';
+}
+
+// Pure decision: should THIS (uid, connection) pair get a reconnect email
+// right now. No Firestore/network here so it's directly unit-testable.
+//   email            -- the SWH account's own contact email (not the
+//                        connected mailbox's, which may differ or be gone)
+//   alreadyNotified   -- users/{uid}.lolaConnectExpiryNotified map, as read
+//   connectionId      -- conn.id from lcExpiredConnections
+//   nowMs             -- injected for deterministic tests
+function _lcExpiryNotifyDecision(email, alreadyNotified, connectionId, nowMs) {
+  if (!email) return 'skip_no_email';
+  const last = (alreadyNotified || {})[connectionId];
+  if (last && last !== 'skipped_test' && (nowMs - Date.parse(last)) < _LC_EXPIRY_RENOTIFY_MS) {
+    return 'skip_recently_notified';
+  }
+  if (isNonMailableAccount(email)) return 'skip_test_account';
+  return 'send';
+}
+
+function _buildLolaConnectExpiredHtml(firstName, providerLabel) {
+  const fn = escHtml(firstName || 'there');
+  const pl = escHtml(providerLabel);
+  return `<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#e9e9ec;-webkit-font-smoothing:antialiased;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#0a0a0a" style="background:#0a0a0a;">
+<tr><td align="center" style="padding:26px 16px 40px;">
+<table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:600px;max-width:600px;background:#ffffff;border-radius:16px;overflow:hidden;">
+  <tr><td style="background:#0a0a0a;padding:16px 30px;">
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
+      <td valign="middle" style="padding-right:11px;"><img src="${_ARROWS_URL}" width="26" height="28" alt="SWH" style="display:block;border:0;"></td>
+      <td valign="middle" style="font:bold 20px/1 Georgia,serif;color:#ffffff;letter-spacing:.04em;">SWH</td>
+      <td valign="middle" style="padding-left:13px;"><span style="font:600 11px/1 Arial,sans-serif;color:#9a9a9a;letter-spacing:.1em;text-transform:uppercase;">Stop&nbsp;Wasting&nbsp;Handshakes</span></td>
+    </tr></table>
+  </td></tr>
+  <tr><td style="padding:32px 30px 6px;">
+    <h1 style="margin:0 0 8px;font:bold 22px/1.25 Arial,sans-serif;color:#1a1a1a;">Hi ${fn}, your ${pl} connection needs reconnecting.</h1>
+    <p style="margin:0;font:400 15px/1.6 Arial,sans-serif;color:#333;">Your email and calendar stopped syncing to SWH when this connection expired. Reconnecting takes about 30 seconds and picks up right where you left off.</p>
+  </td></tr>
+  <tr><td align="center" style="padding:22px 30px 30px;">
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
+      <td bgcolor="#E63946" style="background:#E63946;border-radius:8px;">
+        <a href="${_LC_RECONNECT_URL}" style="display:inline-block;padding:13px 30px;font:700 14px/1 Arial,sans-serif;color:#ffffff;text-decoration:none;">Reconnect my account &rarr;</a>
+      </td></tr></table>
+  </td></tr>
+  <tr><td style="padding:18px 30px 26px;border-top:1px solid #eeeeee;">
+    <p style="margin:0;font:400 12px/1.5 Arial,sans-serif;color:#9a9a9a;">Sent because your Lola Connect account expired &middot; SWH</p>
+  </td></tr>
+</table>
+</td></tr>
+</table>
+</body></html>`;
+}
+
+function _buildLolaConnectExpiredText(firstName, providerLabel) {
+  return `Hi ${firstName || 'there'}, your ${providerLabel} connection needs reconnecting.\n\nYour email and calendar stopped syncing to SWH when this connection expired. Reconnecting takes about 30 seconds and picks up right where you left off.\n\nReconnect my account: ${_LC_RECONNECT_URL}\n\n— Sent because your Lola Connect account expired, SWH\n`;
+}
+
+async function runLolaConnectExpiryNotify() {
+  const expired = await lolaConnectModule.lcExpiredConnections();
+  const now = Date.now();
+
+  let sent = 0, skipped = 0;
+  for (const conn of expired) {
+    const providerLabel = _lcProviderLabel(conn.provider);
+    for (const uid of conn.uids) {
+      try {
+        const userSnap = await db.doc(`users/${uid}`).get();
+        const ud = userSnap.exists ? userSnap.data() : {};
+        const email = ud.email || conn.email || '';
+        const already = ud.lolaConnectExpiryNotified || {};
+
+        const decision = _lcExpiryNotifyDecision(email, already, conn.id, now);
+        if (decision !== 'send') {
+          if (decision === 'skip_test_account') {
+            await userSnap.ref.set({ lolaConnectExpiryNotified: { ...already, [conn.id]: 'skipped_test' } }, { merge: true });
+          }
+          skipped++;
+          continue;
+        }
+
+        const firstName = String(ud.displayName || ud.name || email).split(/[\s@]/)[0];
+        await db.collection('mail').add({
+          from: _LC_EXPIRY_FROM,
+          to: [email],
+          message: {
+            subject: `Reconnect your ${providerLabel} account`,
+            html: _buildLolaConnectExpiredHtml(firstName, providerLabel),
+            text: _buildLolaConnectExpiredText(firstName, providerLabel),
+          },
+        });
+        await userSnap.ref.set({ lolaConnectExpiryNotified: { ...already, [conn.id]: new Date(now).toISOString() } }, { merge: true });
+        sent++;
+        console.log('[lolaConnectExpiryNotify]', uid, providerLabel, conn.id);
+      } catch (e) {
+        console.error('[lolaConnectExpiryNotify] uid=', uid, 'failed:', e.message);
+      }
+    }
+  }
+  console.log(`[lolaConnectExpiryNotify] expiredConnections=${expired.length} sent=${sent} skipped=${skipped}`);
+  return { expiredConnections: expired.length, sent, skipped };
+}
+
+exports.lolaConnectExpiryNotify = onSchedule(
+  { schedule: 'every day 13:00', timeZone: 'America/Chicago', secrets: [lolaConnectModule.LOLA_CONNECT_SERVICE_TOKEN] },
+  runLolaConnectExpiryNotify,
+);
