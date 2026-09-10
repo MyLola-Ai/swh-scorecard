@@ -13604,6 +13604,53 @@ function _parseLolaCopySegments(text) {
   return { displayText: segments.join('\n\n'), copyText: inner, hasDraft: true };
 }
 
+// Shared by both contact-creation paths: the client-only paste parser
+// (add_contact mode) and freeform chat's <<<CONTACT>>> marker. Opens the
+// REAL Add Contact form pre-filled — same validation, phone-dedupe, and
+// Team Contact Awareness check as a manually-typed entry, since this just
+// sets field values and stops. The user still has to review and tap
+// "Add Contact ✓"; nothing here writes to Firestore on its own.
+function lolaPrefillAddContact(p) {
+  openAddContact();
+  if (p.firstName) document.getElementById('ac-first').value   = p.firstName;
+  if (p.lastName)  document.getElementById('ac-last').value    = p.lastName;
+  if (p.phone)     document.getElementById('ac-phone').value   = p.phone;
+  if (p.email)     document.getElementById('ac-email').value   = p.email;
+  if (p.company)   document.getElementById('ac-company').value = p.company;
+  if (p.event)     document.getElementById('ac-event').value   = p.event;
+  if (p.notes)     document.getElementById('ac-notes').value   = p.notes;
+  const name = [p.firstName, p.lastName].filter(Boolean).join(' ');
+  lolaPushBot(`Got it, I've pre-filled the Add Contact form for ${name || 'this contact'}. Review the details and tap "Add Contact ✓" to save.`);
+}
+
+// Parse out a contact Lola proposed in freeform chat, wrapped in
+// <<<CONTACT>>>…<<<ENDCONTACT>>> (mirrors _parseLolaCopySegments below —
+// same marker convention, different payload: JSON fields instead of a
+// sendable message). Returns null when no marker is present or the JSON
+// is malformed, so a bad parse just falls back to showing the raw reply
+// instead of silently swallowing Lola's response.
+function _parseLolaContactSegment(text) {
+  if (!text) return { displayText: text, fields: null };
+  const startTag = '<<<CONTACT>>>';
+  const endTag = '<<<ENDCONTACT>>>';
+  const startIdx = text.indexOf(startTag);
+  const endIdx = text.indexOf(endTag);
+  if (startIdx === -1 || endIdx === -1 || endIdx <= startIdx) {
+    return { displayText: text, fields: null };
+  }
+  const inner = text.substring(startIdx + startTag.length, endIdx).trim();
+  const before = text.substring(0, startIdx).replace(/\n+$/g, '');
+  const after = text.substring(endIdx + endTag.length).replace(/^\n+/g, '');
+  let fields = null;
+  try {
+    const parsed = JSON.parse(inner);
+    if (parsed && typeof parsed.firstName === 'string' && parsed.firstName.trim()) fields = parsed;
+  } catch (e) {
+    console.warn('[lola] contact block parse failed:', e, inner);
+  }
+  return { displayText: [before, after].filter(Boolean).join('\n\n'), fields };
+}
+
 function lolaLinkifyContacts(html) {
   if (!CONTACTS || !CONTACTS.length) return html;
   const sorted = [...CONTACTS].filter(c => c.name && c.name.length >= 3)
@@ -13760,7 +13807,7 @@ window.lolaSend = function() {
     const lower = text.toLowerCase();
     const hasEmail = /[\w.+-]+@[\w-]+\.[\w.]+/.test(text);
     const hasPhone = /\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}/.test(text);
-    const hasAddIntent = /^(add|new contact)\b/i.test(text.trim());
+    const hasAddIntent = /^new contact\b/i.test(text.trim()) || /\b(add|create|save)\b[\s\S]*\bcontact\b/i.test(text);
     if ((hasEmail && hasPhone) || (hasAddIntent && (hasEmail || hasPhone))) {
       _lolaCurrentMode = 'add_contact';
     } else if (lower.includes('playbook') || lower.startsWith('build ') || lower.startsWith('make ') || lower.startsWith('create ')) {
@@ -13782,17 +13829,9 @@ async function runLolaCall(payload) {
   try {
     // Handle contact paste client-side — no Cloud Function needed
     if (payload.mode === 'add_contact') {
-      const p = parseContactFromText(payload.prompt);
-      openAddContact();
-      if (p.first)   document.getElementById('ac-first').value   = p.first;
-      if (p.last)    document.getElementById('ac-last').value    = p.last;
-      if (p.phone)   document.getElementById('ac-phone').value   = p.phone;
-      if (p.email)   document.getElementById('ac-email').value   = p.email;
-      if (p.company) document.getElementById('ac-company').value = p.company;
-      if (p.event)   document.getElementById('ac-event').value   = p.event;
-      const name = [p.first, p.last].filter(Boolean).join(' ');
       lolaClearThinking();
-      lolaPushBot(`Got it, I've pre-filled the Add Contact form for ${name || 'this contact'}. Review the details and tap "Add Contact ✓" to save.`);
+      const p = parseContactFromText(payload.prompt);
+      lolaPrefillAddContact({ firstName: p.first, lastName: p.last, phone: p.phone, email: p.email, company: p.company, event: p.event });
       _lolaCurrentMode = null;
       return;
     }
@@ -13841,7 +13880,14 @@ async function runLolaCall(payload) {
       return;
     }
     const data = await res.json();
-    if (data.text) lolaPushBot(data.text, data.proposal);
+    // freeform is the only mode taught the <<<CONTACT>>> marker (see
+    // LOLA_SWH_ASSISTANT's freeform instructions) — only look for it there,
+    // so a coincidental match in another mode's JSON output can't misfire.
+    const contactSeg = (payload.mode === 'freeform' && data.text) ? _parseLolaContactSegment(data.text) : null;
+    if (contactSeg && contactSeg.fields) {
+      if (contactSeg.displayText) lolaPushBot(contactSeg.displayText);
+      lolaPrefillAddContact(contactSeg.fields);
+    } else if (data.text) lolaPushBot(data.text, data.proposal);
     else if (data.proposal) lolaPushBot(`Here's a playbook draft. Edit anything before saving.`, data.proposal);
     else lolaPushBot('I drew a blank. Try rephrasing?');
   } catch (e) {
