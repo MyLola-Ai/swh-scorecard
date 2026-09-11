@@ -1050,13 +1050,24 @@ exports.approveWaitlistUser = onCall({ cors: true }, async (request) => {
   const { email } = waitlistSnap.data();
   if (!email) throw new Error('Waitlist entry missing email');
 
-  // Find or create the Firebase Auth user
+  // Find or create the Firebase Auth user.
+  // Security fix 2026-09-11 (adjacent to Security Eng findings F1/F1b/F2/F3,
+  // Austen's call, not one of the four): approving this waitlist entry is
+  // Austen personally vouching for this exact address -- the strongest
+  // verification signal this app has short of a real verification email.
+  // Marked true on both paths, not just first-touch create, so the outcome
+  // doesn't depend on whether this person happened to sign up (unverified)
+  // before being approved.
   let userRecord;
   try {
     userRecord = await admin.auth().getUserByEmail(email);
+    if (!userRecord.emailVerified) {
+      await admin.auth().updateUser(userRecord.uid, { emailVerified: true });
+      userRecord = { ...userRecord, emailVerified: true };
+    }
   } catch (e) {
     if (e.code === 'auth/user-not-found') {
-      userRecord = await admin.auth().createUser({ email, emailVerified: false });
+      userRecord = await admin.auth().createUser({ email, emailVerified: true });
     } else {
       throw e;
     }
