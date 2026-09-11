@@ -72,7 +72,11 @@ test('a first-touch MyLola email is provisioned at scorecard tier, attributed to
     existingUidByEmail: {},
     createUserImpl: async ({ email, emailVerified }) => {
       assert.equal(email, 'fresh@example.com');
-      assert.equal(emailVerified, true);
+      // Security fix 2026-09-11 (Security Eng finding F2): this used to
+      // assert true, encoding the bug -- SWH never verified this address,
+      // so hardcoding it isn't honest. See emailVerifiedTrust.test.js for
+      // the dedicated coverage of why.
+      assert.equal(emailVerified, false);
       return { uid: 'uid_fresh' };
     },
     firestoreDocs,

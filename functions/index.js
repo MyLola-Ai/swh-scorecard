@@ -6347,7 +6347,10 @@ exports.mintApptCustomToken = onCall({
   if (!targetUid) {
    targetUid = swhUid;
 
-   if (email) {
+   // F3: an unverified email is treated the same as no email at all here --
+   // it must not auto-link this fallback to whatever existing myappointment-ai
+   // account happens to share that address.
+   if (email && emailVerified) {
     try {
       const existing = await apptAuth.getUserByEmail(email);
       // Found an existing myappointment-ai account for this email — use its uid.
@@ -6375,7 +6378,7 @@ exports.mintApptCustomToken = onCall({
       }
     }
   } else {
-    // No email on the SWH token — fall back to uid-based provision.
+    // No email, or an unverified one — fall back to uid-based provision.
     try {
       await apptAuth.getUser(swhUid);
     } catch (e) {
@@ -7558,7 +7561,14 @@ async function getOrProvisionSwhUser(email, via) {
 
   let uid;
   try {
-    const created = await admin.auth().createUser({ email, emailVerified: true });
+    // Security fix 2026-09-11 (Security Eng finding F2): was hardcoded true.
+    // This email is `via`'s own callers' body-supplied value -- SWH has no
+    // way to confirm it, and a leaked MYLOLA_INTEGRATION_SECRET could mint a
+    // "verified" comped account for any address otherwise. false is the
+    // honest default; it also composes with the F1 fix, since an account
+    // provisioned this way won't get the automatic loaniq/appt data link
+    // either until it's genuinely verified some other way.
+    const created = await admin.auth().createUser({ email, emailVerified: false });
     uid = created.uid;
   } catch (e) {
     if (e.code === 'auth/email-already-exists') {
@@ -7918,6 +7928,13 @@ exports.getApptData = onCall({
   if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in required.');
 
   const email  = request.auth.token?.email || null;
+  // Security fix 2026-09-11 (Security Eng finding F1/F1b): both email-based
+  // resolution phases below used to trust this regardless of verification
+  // status. Password sign-up sets no such check, so anyone could register
+  // under a victim's address and this function would cache/read the
+  // victim's loaniq or myappointment account. Honest verification state —
+  // NEVER hardcode true — same discipline mintApptCustomToken already uses.
+  const emailVerified = request.auth.token?.email_verified === true;
   const swhUid = request.auth.uid;
   const lqDb   = admin.firestore(getLoaniqAdminApp());
   const swhDb  = admin.firestore();
@@ -7937,8 +7954,10 @@ exports.getApptData = onCall({
     const apptDb   = admin.firestore(getApptAdminApp());
     const apptAuth = admin.auth(getApptAdminApp());
     // Mirror the mint's legacy resolution: email-matched account, else SWH uid.
+    // F1b: unverified email never drives this lookup -- falls through to the
+    // bare swhUid, same as having no email at all.
     let apptUid = swhUid;
-    if (email) {
+    if (email && emailVerified) {
       try { apptUid = (await apptAuth.getUserByEmail(email)).uid; }
       catch (e) { if (e.code !== 'auth/user-not-found') console.warn('[getApptData] appt email lookup:', e.message); }
     }
@@ -8027,7 +8046,10 @@ exports.getApptData = onCall({
   }
 
   // ── Phase 1: Email lookup in loaniq-75a20 Auth ────────────────────────────
-  if (!resolvedUid && email) {
+  // F1: unverified email never drives this lookup -- falls through to Phase
+  // 2 (slug-derived, a much weaker/coincidental match, not flagged) rather
+  // than caching a stranger's loaniq uid onto this SWH account.
+  if (!resolvedUid && email && emailVerified) {
     try {
       const lqAuth = admin.auth(getLoaniqAdminApp());
       const user   = await lqAuth.getUserByEmail(email);
