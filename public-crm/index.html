@@ -5401,10 +5401,12 @@ function _startCrmActListener(uid) {
         else ACTIVITIES[idx] = { ...ACTIVITIES[idx], ...def };
       }
     });
-    if (GLOBAL_CATALOG) GLOBAL_CATALOG.forEach(g => {
-      const idx = ACTIVITIES.findIndex(a => a.name === g.name);
-      if (idx >= 0) ACTIVITIES[idx] = { ...ACTIVITIES[idx], pts: g.pts, icon: g.icon, cat: g.cat, lead: g.lead };
-    });
+    // Bug fixed 2026-09-11 (Austen): this used to also overwrite any activity
+    // the user ALREADY has that shares a name with a global catalog entry,
+    // stamping the admin's pts/icon/cat/lead back over a customization the
+    // user just saved via Edit Activities & Points -- every save looked like
+    // it silently reverted. GLOBAL_CATALOG itself is untouched here; it's
+    // still what "Available from Catalog" reads when adding something new.
     renderActs();
     showToast('✅ Activities synced');
   });
@@ -5802,13 +5804,10 @@ async function applyGlobalCatalogOverrides() {
     if (!snap.exists()) { GLOBAL_CATALOG = []; return; }
     const globalList = snap.data().list || [];
     GLOBAL_CATALOG = globalList.map(g => ({ ...g }));
-    globalList.forEach(g => {
-      const idx = ACTIVITIES.findIndex(a => a.name === g.name);
-      if (idx >= 0) {
-        ACTIVITIES[idx] = { ...ACTIVITIES[idx], pts: g.pts, icon: g.icon, cat: g.cat, lead: g.lead };
-      }
-      // Note: do NOT auto-append catalog items — users opt in via Edit Activities → Catalog
-    });
+    // Do NOT sync these onto matching-named activities the user already has,
+    // and do NOT auto-append catalog items either -- users opt in via
+    // Edit Activities → Catalog. See _startCrmActListener's comment for why
+    // the sync step used to be here and why it was removed 2026-09-11.
   } catch(e) { console.log('[catalog] could not load global overrides:', e.message); GLOBAL_CATALOG = []; }
 }
 

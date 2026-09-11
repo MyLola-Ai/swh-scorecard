@@ -2023,10 +2023,12 @@
       if (!snap.exists() || snap.metadata.hasPendingWrites) return; // skip local writes
       const list = snap.data().list || DEFAULT_ACTIVITIES.map(a => ({...a}));
       activities = normalizeActivities(list);
-      if (GLOBAL_CATALOG) GLOBAL_CATALOG.forEach(g => {
-        const idx = activities.findIndex(a => a.name === g.name);
-        if (idx >= 0) activities[idx] = { ...activities[idx], ...g };
-      });
+      // Bug fixed 2026-09-11 (Austen): this used to also overwrite any
+      // activity the user ALREADY has that shares a name with a global
+      // catalog entry, stamping the admin's pts/icon/category/lead back over
+      // a customization the user just saved -- every edit looked like it
+      // silently reverted. GLOBAL_CATALOG itself is untouched here; it's
+      // still what "Available from Catalog" reads when adding something new.
       renderActivities();
       if (typeof refreshScorecardCategoryDatalist === 'function') refreshScorecardCategoryDatalist();
       showToast('✅ Activities synced');
@@ -2188,11 +2190,10 @@
         const globalList = platSnap.data().list || [];
         // Scorecard uses `category` (not `cat`) — translate as we cache
         GLOBAL_CATALOG = globalList.map(g => ({ name:g.name, pts:g.pts, icon:g.icon, category:g.cat||g.category, lead:g.lead }));
-        GLOBAL_CATALOG.forEach(g => {
-          const idx = activities.findIndex(a => a.name === g.name);
-          if (idx >= 0) activities[idx] = { ...activities[idx], ...g };
-          // Note: do NOT auto-append catalog items — users opt in via Edit Activities → Catalog
-        });
+        // Do NOT sync these onto matching-named activities the user already
+        // has, and do NOT auto-append catalog items either -- users opt in
+        // via Edit Activities → Catalog. See _startActListener's comment for
+        // why the sync step used to be here and why it was removed 2026-09-11.
       } else { GLOBAL_CATALOG = []; }
     } catch(e) { console.log('[catalog] global load failed:', e.message); GLOBAL_CATALOG = []; }
     // Live-sync: re-apply whenever another session (CRM or scorecard tab) saves activities
