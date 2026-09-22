@@ -4398,6 +4398,28 @@ const DEFAULT_ACTS = [
   {cat:'Networking',name:'Add New Contact',pts:2,icon:'👤',ctx:null,system:true},
 ];
 
+// Backfills cat/category so activities saved by EITHER app display correctly
+// in both (Austen, 2026-09-22: "categories are not there in the CRM, but on
+// the app"). saveEditActivities below writes {cat, category} together, but
+// the Scorecard app's own save wrote {category} only -- every activity a
+// user customized there had no `cat` at all, so this file's renderer
+// (a.cat||'Other') bucketed all of them under "Other". Mirrors the
+// Scorecard's own normalizeActivities (same bug, opposite direction) --
+// keep both in sync if either changes.
+function normalizeActivities(list) {
+  return (list || []).map(a => {
+    let cat = a.cat, category = a.category;
+    if (!cat && category) cat = category;
+    if (!cat) {
+      const def = DEFAULT_ACTS.find(d => d.name === a.name);
+      cat = def ? def.cat : 'Other';
+    }
+    if (!category) category = cat;
+    if (cat === a.cat && category === a.category) return a;
+    return { ...a, cat, category };
+  });
+}
+
 // ── UNIFIED STATUS (merged grade + status, May 2026) ──
 // One field replaces the old (status: new/progress/nurture/partner/stalled) + (grade: A+/A/B/D/null) pair.
 // Stalled is now derived (c.wasted) — not a status value.
@@ -4770,7 +4792,7 @@ window.addEventListener('load', () => {
   }, 1800);
 });
 let userPlan = 'free';
-let ACTIVITIES = [...DEFAULT_ACTS];
+let ACTIVITIES = normalizeActivities([...DEFAULT_ACTS]);
 let ANNOUNCEMENTS = [];
 let dismissedAnnouncements = {};
 let GLOBAL_CATALOG = [];
@@ -5392,7 +5414,7 @@ function _startCrmActListener(uid) {
   _crmActUnsub = onSnapshot(doc(db, 'users', uid, 'config', 'activities'), snap => {
     if (!initDone) { initDone = true; return; } // skip echo of initial getDoc value
     if (!snap.exists() || snap.metadata.hasPendingWrites) return; // skip local writes
-    ACTIVITIES = snap.data().list || DEFAULT_ACTS;
+    ACTIVITIES = normalizeActivities(snap.data().list || DEFAULT_ACTS);
     // Keep system activities in sync
     DEFAULT_ACTS.forEach(def => {
       if (def.system) {
@@ -5634,7 +5656,7 @@ async function loadAllData() {
     let first = true;
     onSnapshot(doc(db,'users',uid,'config','activities'), (actSnap) => {
       if (actSnap.exists()) {
-        ACTIVITIES = actSnap.data().list || DEFAULT_ACTS;
+        ACTIVITIES = normalizeActivities(actSnap.data().list || DEFAULT_ACTS);
         // In-memory only: fill in any system activities missing from older lists.
         // Do NOT save back — scorecard is the authoritative writer for this doc.
         DEFAULT_ACTS.forEach(def => {
@@ -13241,7 +13263,7 @@ window.saveEditActivities = async function() {
   // Always keep system activities
   const sysActs = DEFAULT_ACTS.filter(a => a.system);
   sysActs.forEach(sa => { if(!newActs.find(a => a.name === sa.name)) newActs.push(sa); });
-  ACTIVITIES = newActs;
+  ACTIVITIES = normalizeActivities(newActs);
   await setDoc(doc(db, 'users', currentUser.uid, 'config', 'activities'), { list: ACTIVITIES, stepNames: [...STEP_NAMES], stepPts: [...STEP_PTS] }, { merge: true });
   closeEditActivities();
   renderActs();
@@ -13250,7 +13272,7 @@ window.saveEditActivities = async function() {
 
 window.resetActivitiesToDefault = async function() {
   if(!confirm('Reset all activities to SWH defaults? Your custom changes will be lost.')) return;
-  ACTIVITIES = [...DEFAULT_ACTS];
+  ACTIVITIES = normalizeActivities([...DEFAULT_ACTS]);
   // Reset step names and pts
   const DEFAULT_STEP_NAMES = ['Good to Meet You Message','Social Connection','Value Touch (No Ask)','Invite to 1:1','FORM Conversation (1:1)','Strategic Follow Through','Stay Top of Mind','Long-Term Positioning'];
   const DEFAULT_STEP_PTS = [5,5,5,5,10,10,5,5];

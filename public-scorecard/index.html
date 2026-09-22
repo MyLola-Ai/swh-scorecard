@@ -452,15 +452,26 @@
     { category: "Events", name: "Host Event", pts: 25, icon: "🌟", lead: true },
   ]
 
-  // Backfills missing `category` fields on activities loaded from Firestore.
-  // Activities saved before categories were introduced have no `category` key.
-  // We match by name against DEFAULT_ACTIVITIES; unknown custom activities fall back to 'Activities'.
+  // Backfills cat/category so activities saved by EITHER app display
+  // correctly in both (Austen, 2026-09-22: "categories are not there in the
+  // CRM, but on the app"). This function already covered the "the CRM saved
+  // {cat} only" direction; it did NOT also backfill `cat` when `category`
+  // was already present, so anything saved here (which writes {category}
+  // only, see saveActivities) still had no `cat` for the CRM to read -- its
+  // renderer (a.cat||'Other') bucketed every such activity under "Other".
+  // Mirrors the CRM's own normalizeActivities (same bug, opposite
+  // direction) -- keep both in sync if either changes.
   function normalizeActivities(list) {
     return (list || []).map(act => {
-      if (act.category) return act;
-      if (act.cat) return { ...act, category: act.cat };
-      const def = DEFAULT_ACTIVITIES.find(d => d.name === act.name);
-      return { ...act, category: def ? def.category : 'Activities' };
+      let category = act.category, cat = act.cat;
+      if (!category && cat) category = cat;
+      if (!category) {
+        const def = DEFAULT_ACTIVITIES.find(d => d.name === act.name);
+        category = def ? def.category : 'Activities';
+      }
+      if (!cat) cat = category;
+      if (category === act.category && cat === act.cat) return act;
+      return { ...act, category, cat };
     });
   }
 
@@ -3579,14 +3590,14 @@
       newActs.push({ name: g.name, pts: g.pts, icon: g.icon, category: g.category, lead: g.lead !== false });
       optedInCount++;
     });
-    activities=newActs;
+    activities=normalizeActivities(newActs);
     await setDoc(doc(db,'users',currentUser.uid,'config','activities'),{list:activities});
     document.getElementById('edit-modal').classList.remove('open');
     renderActivities();showToast(optedInCount > 0 ? `✅ Activities saved · added ${optedInCount} from catalog` : '✅ Activities saved!');
   };
   window.resetActivities=async()=>{
     if(confirm('Reset to default SWH activities?')){
-      activities=DEFAULT_ACTIVITIES.map(a=>({...a}));
+      activities=normalizeActivities(DEFAULT_ACTIVITIES.map(a=>({...a})));
       await setDoc(doc(db,'users',currentUser.uid,'config','activities'),{list:activities});
       renderActivities();showToast('✅ Reset to defaults');
     }
