@@ -1037,7 +1037,10 @@ const MAIL_FROM = 'SWH Reports <noreply@stopwastinghandshakes.com>';
 
 exports.approveWaitlistUser = onCall({ cors: true }, async (request) => {
   const callerEmail = (request.auth?.token?.email || '').toLowerCase();
-  if (!callerEmail || !ADMIN_EMAILS.includes(callerEmail)) {
+  // Security Eng F4 (2026-09-22): the ADMIN_EMAILS gate must not trust an
+  // unverified token email, especially here -- a breach now mints a
+  // cross-project verified identity via the emailVerified fix below.
+  if (!callerEmail || !ADMIN_EMAILS.includes(callerEmail) || request.auth?.token?.email_verified !== true) {
     throw new Error('Permission denied: admin only');
   }
   const { waitlistDocId, plan } = request.data || {};

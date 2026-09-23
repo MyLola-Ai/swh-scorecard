@@ -75,14 +75,22 @@ function makeFn({ authStore, waitlistDocs, mailDocs = [] }) {
   return { fn, authOps, authStore, collections };
 }
 
-function fakeRequest(callerEmail, data) {
-  return { auth: callerEmail ? { token: { email: callerEmail } } : null, data };
+function fakeRequest(callerEmail, data, emailVerified = true) {
+  return { auth: callerEmail ? { token: { email: callerEmail, email_verified: emailVerified } } : null, data };
 }
 
 test('non-admin caller is rejected (admin gate unaffected by this change)', async () => {
   const { fn } = makeFn({ authStore: [], waitlistDocs: { w1: { email: 'new@example.com' } } });
   await assert.rejects(
     () => fn(fakeRequest('notadmin@example.com', { waitlistDocId: 'w1' })),
+    /admin only/,
+  );
+});
+
+test('F4: admin email with an unverified token is rejected (gate must not trust an unverified token email)', async () => {
+  const { fn } = makeFn({ authStore: [], waitlistDocs: { w1: { email: 'new@example.com' } } });
+  await assert.rejects(
+    () => fn(fakeRequest('austen@austensmith.com', { waitlistDocId: 'w1' }, false)),
     /admin only/,
   );
 });
