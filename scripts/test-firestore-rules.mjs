@@ -23,6 +23,7 @@ const anon = null;
 const user = { uid: 'u1', token: { email: 'someone@example.com', email_verified: false } };
 const verifiedUser = { uid: 'u3', token: { email: 'other@example.com', email_verified: true } };
 const admin = { uid: 'a1', token: { email: 'austen@austensmith.com', email_verified: true } };
+const unverifiedAdmin = { uid: 'a2', token: { email: 'austen@austensmith.com', email_verified: false } };
 const mailDoc = { to: 'victim@example.com', message: { subject: 's', html: '<b>h</b>' } };
 const tc = (id, desc, auth, method, path, fixed, live, data) =>
   ({ id, desc, auth, method, path: DOCS + path, fixed, live, data });
@@ -44,6 +45,11 @@ const CASES = [
   tc('R2-6', 'signed-in user GETS one invite by token', user, 'get', '/teamInvites/tok', 'DENY', 'ALLOW'),
   tc('R2-4', 'non-admin creates an invite', user, 'create', '/teamInvites/tok', 'DENY', 'DENY', { email: 'a@b.co' }),
   tc('R2-5', 'admin creates an invite', admin, 'create', '/teamInvites/tok', 'ALLOW', 'ALLOW', { email: 'a@b.co' }),
+  // isAdmin() must require a verified email (live trusts the claimed address).
+  tc('H-1', 'admin address with an UNVERIFIED token creates a mail doc', unverifiedAdmin, 'create', '/mail/x', 'DENY', 'ALLOW', mailDoc),
+  tc('H-2', 'admin address with an UNVERIFIED token reads another user\'s doc', unverifiedAdmin, 'get', '/users/u9', 'DENY', 'ALLOW'),
+  tc('H-3', 'admin address with a VERIFIED token reads another user\'s doc (not locked out)', admin, 'get', '/users/u9', 'ALLOW', 'ALLOW'),
+  tc('H-4', 'verified admin can still create an invite', admin, 'create', '/teamInvites/tok2', 'ALLOW', 'ALLOW', { email: 'a@b.co' }),
   // Request data really reaches the engine: same path, outcome depends on the body.
   tc('R0-1', 'owner creates own users doc, plan free', user, 'create', '/users/u1', 'ALLOW', 'ALLOW', { plan: 'free' }),
   tc('R0-2', 'owner creates own users doc with planOverride', user, 'create', '/users/u1', 'DENY', 'DENY', { planOverride: 'pro' }),

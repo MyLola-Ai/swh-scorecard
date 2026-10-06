@@ -6,9 +6,13 @@ service cloud.firestore {
     // ── Helpers ──
     function isSignedIn() { return request.auth != null; }
     function isOwner(uid) { return isSignedIn() && request.auth.uid == uid; }
+    // email_verified is required: SWH password signup does not verify email,
+    // so without it the allowlist trusted whatever address an account claimed
+    // (the rules-layer twin of the functions-side F4 gate).
     function isAdmin() {
       return isSignedIn()
         && request.auth.token.email != null
+        && request.auth.token.email_verified == true
         && request.auth.token.email.lower() in [
              'austen@austensmith.com'
            ];
