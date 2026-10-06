@@ -163,12 +163,15 @@ service cloud.firestore {
       }
     }
 
-    // ── /teamInvites — short, queryable invite tokens for accept-flow ──
-    // Indexed by token so an unauthenticated visitor can read minimal preview data
-    // (team name, inviter name) before signing up. Writes only via Cloud Functions.
+    // ── /teamInvites — token-indexed mirror of team invites, for the accept flow ──
+    // No client reads this: inviteTeamMember writes it and acceptTeamInvite
+    // reads it, both through the Admin SDK, which bypasses rules. It used to
+    // be `allow read: if true`, which also granted list, so any visitor could
+    // enumerate every invite token plus invitee and inviter emails. Deny all
+    // client reads. If a pre-signup invite preview is ever built, reopen
+    // `get` deliberately (tokens are 24 random bytes) and keep list denied.
     match /teamInvites/{token} {
-      allow get: if true;   // token IS the secret — anyone holding one can preview it
-      allow list: if false; // `read` also grants list, which handed out every token and both emails
+      allow read: if false;
       allow create, update, delete: if isAdmin();
     }
 

@@ -40,7 +40,8 @@ const CASES = [
   // R2: teamInvites was `allow read: if true` (get AND list)
   tc('R2-1', 'anonymous LISTS teamInvites', anon, 'list', '/teamInvites/anytoken', 'DENY', 'ALLOW'),
   tc('R2-2', 'signed-in user LISTS teamInvites', user, 'list', '/teamInvites/anytoken', 'DENY', 'ALLOW'),
-  tc('R2-3', 'anonymous GETS one invite by token', anon, 'get', '/teamInvites/tok', 'ALLOW', 'ALLOW'),
+  tc('R2-3', 'anonymous GETS one invite by token (no client reads this; functions use the Admin SDK)', anon, 'get', '/teamInvites/tok', 'DENY', 'ALLOW'),
+  tc('R2-6', 'signed-in user GETS one invite by token', user, 'get', '/teamInvites/tok', 'DENY', 'ALLOW'),
   tc('R2-4', 'non-admin creates an invite', user, 'create', '/teamInvites/tok', 'DENY', 'DENY', { email: 'a@b.co' }),
   tc('R2-5', 'admin creates an invite', admin, 'create', '/teamInvites/tok', 'ALLOW', 'ALLOW', { email: 'a@b.co' }),
   // Request data really reaches the engine: same path, outcome depends on the body.
