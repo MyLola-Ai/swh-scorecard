@@ -90,10 +90,15 @@ service cloud.firestore {
     }
 
     // ── /mail — Trigger Email Extension queue ──
-    // Authed users can enqueue (signup notifications). Admin can blast.
-    // Reads restricted to admin so users can't see each other's email payloads.
+    // Admin-only. The Trigger Email extension sends whatever lands here (to,
+    // cc, bcc, from, html) from the SWH sending domain, so a create by any
+    // signed-in user was an open relay (SWH signup does not verify email, so
+    // "signed in" meant "anyone"). Cloud Functions write here as admin and
+    // bypass rules; the admin console's announcement blast is the one
+    // client writer left. Reads restricted to admin so users can't see each
+    // other's email payloads.
     match /mail/{id} {
-      allow create: if isSignedIn();
+      allow create: if isAdmin();
       allow read:   if isAdmin();
       allow update, delete: if false;
     }
@@ -162,7 +167,8 @@ service cloud.firestore {
     // Indexed by token so an unauthenticated visitor can read minimal preview data
     // (team name, inviter name) before signing up. Writes only via Cloud Functions.
     match /teamInvites/{token} {
-      allow read: if true; // token IS the secret — anyone with it can preview
+      allow get: if true;   // token IS the secret — anyone holding one can preview it
+      allow list: if false; // `read` also grants list, which handed out every token and both emails
       allow create, update, delete: if isAdmin();
     }
 
