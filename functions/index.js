@@ -1,6 +1,6 @@
 const {onCall, onRequest, HttpsError} = require('firebase-functions/v2/https');
 const {onSchedule} = require('firebase-functions/v2/scheduler');
-const {onDocumentWritten} = require('firebase-functions/v2/firestore');
+const {onDocumentWritten, onDocumentCreated} = require('firebase-functions/v2/firestore');
 const { RELATIONSHIP_GRADES, DEMOTION_RULES } = require('./relationship-config');
 const {defineSecret} = require('firebase-functions/params');
 const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
@@ -788,6 +788,56 @@ exports.onProfileCompleted = onDocumentWritten(
     console.error('[welcomeEmail] failed:', e.message);
   }
 });
+
+// ── New CRM user notice ──
+// Restores the "New SWH CRM User" email to Austen. The CRM client used to write
+// this to /mail itself on first login (public-crm initUser); firestore.rules now
+// denies that client write (it was an open mail relay), so it is sent from here
+// with every user-supplied field escaped. Fires only for the doc shape the CRM's
+// first login creates, which is what the old client write covered; Scorecard
+// signups and server-created user docs never produced this email.
+const NEW_CRM_USER_NOTICE_TO = 'austen@austensmith.com';
+const _escNoticeHtml = (v) => String(v == null ? '' : v)
+  .replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const _noticeField = (v, max) => String(v == null ? '' : v).replace(/[\u0000-\u001f\u007f]+/g, ' ').trim().slice(0, max);
+const _isCrmFirstLoginDoc = (u) => !!u && u.planStatus === 'beta' && typeof u.weeklyGoal === 'number'
+  && 'phone' in u && 'company' in u && 'industry' in u;
+function _buildNewCrmUserNotice(u, when) {
+  const name = _noticeField(u.displayName, 80) || 'User';
+  const f = (v, max) => _escNoticeHtml(_noticeField(v, max)) || '—';
+  const signedUp = _escNoticeHtml(when.toLocaleString('en-US', { dateStyle: 'full', timeStyle: 'long', timeZone: 'America/Chicago' }));
+  const html = `
+            <div style="font-family:Arial,sans-serif;max-width:500px;margin:0 auto;">
+              <h2 style="color:#1a1a1a;">New SWH CRM Sign Up</h2>
+              <table style="width:100%;border-collapse:collapse;">
+                <tr><td style="padding:8px;font-weight:bold;color:#666;">Name</td><td style="padding:8px;">${f(u.displayName, 80)}</td></tr>
+                <tr style="background:#f8f9fa;"><td style="padding:8px;font-weight:bold;color:#666;">Email</td><td style="padding:8px;">${f(u.email, 200)}</td></tr>
+                <tr><td style="padding:8px;font-weight:bold;color:#666;">Phone</td><td style="padding:8px;">${f(u.phone, 40)}</td></tr>
+                <tr style="background:#f8f9fa;"><td style="padding:8px;font-weight:bold;color:#666;">Company</td><td style="padding:8px;">${f(u.company, 120)}</td></tr>
+                <tr><td style="padding:8px;font-weight:bold;color:#666;">Industry</td><td style="padding:8px;">${f(u.industry, 120)}</td></tr>
+                <tr style="background:#f8f9fa;"><td style="padding:8px;font-weight:bold;color:#666;">Signed Up</td><td style="padding:8px;">${signedUp}</td></tr>
+              </table>
+              <p style="margin-top:20px;color:#666;font-size:12px;">View all users in <a href="https://console.firebase.google.com/project/swh-scoreboard/firestore">Firebase Console</a></p>
+            </div>
+          `;
+  return { subject: `🎉 New SWH CRM User: ${name}`, html };
+}
+exports.notifyNewCrmUser = onDocumentCreated('users/{uid}', async (event) => {
+  const u = event.data && event.data.data();
+  if (!_isCrmFirstLoginDoc(u)) return;
+  const { subject, html } = _buildNewCrmUserNotice(u, new Date());
+  try {
+    // Fixed doc id + create(): a retried event cannot send twice.
+    await db.collection('mail').doc('newCrmUser_' + event.params.uid).create({
+      to: NEW_CRM_USER_NOTICE_TO,
+      message: { subject, html },
+    });
+  } catch (e) {
+    if (e && (e.code === 6 || /ALREADY_EXISTS/.test(e.message || ''))) return;
+    console.error('[newCrmUserNotice] failed for', event.params.uid, e && e.message);
+  }
+});
+// ── end New CRM user notice ──
 
 exports.funnelBeacon = onRequest({ cors: true, invoker: 'public' }, async (req, res) => {
   res.set('Access-Control-Allow-Origin', '*');
