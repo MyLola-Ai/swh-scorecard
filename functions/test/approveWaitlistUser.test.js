@@ -22,8 +22,11 @@ const endIdx = src.indexOf('\n});', bodyStart);
 assert.ok(endIdx !== -1, 'function end not found');
 const bodySrc = src.slice(bodyStart, endIdx);
 
+// The real shipped helper, not a copy: the admin gate is keyed on the uid.
+const helperSrc = src.match(/const ADMIN_UIDS = [^\n]*\nconst isAdminUid = [^\n]*\n/)[0];
+const { ADMIN_UID, isAdminUid } = new Function(helperSrc + 'return { ADMIN_UID: ADMIN_UIDS[0], isAdminUid };')();
+
 function makeFn({ authStore, waitlistDocs, mailDocs = [] }) {
-  const ADMIN_EMAILS = ['austen@austensmith.com'];
   const authOps = { updateUserCalls: [], createUserCalls: [] };
   const admin = {
     auth: () => ({
@@ -69,14 +72,15 @@ function makeFn({ authStore, waitlistDocs, mailDocs = [] }) {
     },
   };
   const fn = new Function(
-    'admin', 'db', 'ADMIN_EMAILS',
+    'admin', 'db', 'isAdminUid',
     `return async (request) => {${bodySrc}};`,
-  )(admin, db, ADMIN_EMAILS);
+  )(admin, db, isAdminUid);
   return { fn, authOps, authStore, collections };
 }
 
-function fakeRequest(callerEmail, data, emailVerified = true) {
-  return { auth: callerEmail ? { token: { email: callerEmail, email_verified: emailVerified } } : null, data };
+function fakeRequest(callerEmail, data, emailVerified = true, uid) {
+  const u = uid || (callerEmail === 'austen@austensmith.com' ? ADMIN_UID : 'u-' + callerEmail);
+  return { auth: callerEmail ? { uid: u, token: { email: callerEmail, email_verified: emailVerified } } : null, data };
 }
 
 test('non-admin caller is rejected (admin gate unaffected by this change)', async () => {
@@ -87,12 +91,18 @@ test('non-admin caller is rejected (admin gate unaffected by this change)', asyn
   );
 });
 
-test('F4: admin email with an unverified token is rejected (gate must not trust an unverified token email)', async () => {
+test('F4: the admin ADDRESS is not enough, verified or not -- only the admin uid passes', async () => {
+  for (const verified of [false, true]) {
+    const { fn } = makeFn({ authStore: [], waitlistDocs: { w1: { email: 'new@example.com' } } });
+    await assert.rejects(
+      () => fn(fakeRequest('austen@austensmith.com', { waitlistDocId: 'w1' }, verified, 'imposter-uid')),
+      /admin only/,
+    );
+  }
   const { fn } = makeFn({ authStore: [], waitlistDocs: { w1: { email: 'new@example.com' } } });
-  await assert.rejects(
-    () => fn(fakeRequest('austen@austensmith.com', { waitlistDocId: 'w1' }, false)),
-    /admin only/,
-  );
+  const noEmailClaims = { auth: { uid: ADMIN_UID, token: {} }, data: { waitlistDocId: 'w1' } };
+  const r = await fn(noEmailClaims);
+  assert.equal(r.ok, true, 'the admin uid must pass without any email claim');
 });
 
 test('first-touch approval creates the account already emailVerified:true', async () => {

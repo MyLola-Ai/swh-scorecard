@@ -21,6 +21,10 @@ const assert = require('node:assert/strict');
 const { EventEmitter } = require('node:events');
 const mod = require('../index.js');
 const { adminUpdateUser, admin } = mod;
+// A real ID token carries the uid as well as the email. The admin gate is keyed on the uid
+// (read from the shipped source), so the fixture has to hand back what a real token would.
+const ADMIN_UID = require('node:fs').readFileSync(require('node:path').join(__dirname, '../index.js'), 'utf8')
+  .match(/const ADMIN_UIDS = \['([A-Za-z0-9]{28})'\]/)[1];
 
 function makeRes() {
   const ee = new EventEmitter();
@@ -41,11 +45,12 @@ function withFakeAuth({ users = {} }, run) {
   return async () => {
     const firestoreWrites = []; // { uid, data, opts }
     let capturedCallerEmail = null;
+    let capturedCallerUid = null;
     const fakeAuth = {
       async verifyIdToken(token) {
         // capturedCallerEmail is set per-request by the caller below, since
         // verifyIdToken itself only ever sees the opaque token string.
-        return { email: capturedCallerEmail };
+        return { uid: capturedCallerUid, email: capturedCallerEmail };
       },
       async getUser(uid) {
         const email = Object.keys(users).find((e) => users[e] === uid);
@@ -74,6 +79,7 @@ function withFakeAuth({ users = {} }, run) {
     Object.defineProperty(admin, 'firestore', { configurable: true, value: () => fakeFirestore });
     const call = async (body, opts = {}) => {
       capturedCallerEmail = opts.callerEmail || 'austen@austensmith.com';
+      capturedCallerUid = opts.callerUid || (capturedCallerEmail === 'austen@austensmith.com' ? ADMIN_UID : 'uid_caller_' + capturedCallerEmail);
       const { req, res } = fakeReqRes(body, opts);
       await adminUpdateUser(req, res);
       return { statusCode: res.statusCode, body: res._json };
@@ -93,6 +99,16 @@ test('rejects a non-admin caller, even with a valid token', withFakeAuth(
     const { statusCode } = await call({ uid: 'uid_x', patch: { morningQueueEnabled: true } }, { callerEmail: 'someone@example.com' });
     assert.equal(statusCode, 403);
     assert.equal(firestoreWrites.length, 0, 'a rejected caller must never reach the write');
+  }
+));
+
+test('rejects the admin ADDRESS on a different uid (a verified-looking impostor), never reaching the write', withFakeAuth(
+  { users: { 'tony@example.com': 'uid_tony' } },
+  async ({ call, firestoreWrites }) => {
+    const { statusCode } = await call({ uid: 'uid_tony', patch: { morningQueueEnabled: true } },
+      { callerEmail: 'austen@austensmith.com', callerUid: 'imposter-uid' });
+    assert.equal(statusCode, 403);
+    assert.equal(firestoreWrites.length, 0);
   }
 ));
 
