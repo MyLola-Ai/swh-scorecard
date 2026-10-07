@@ -1028,6 +1028,12 @@ exports.submitWaitlist = onRequest({ cors: true }, async (req, res) => {
 
 // ===== Waitlist approval — admin promotes a /waitlist entry to a real account =====
 const ADMIN_EMAILS = ['austen@austensmith.com'];
+// Admin is keyed on the Firebase Auth uid, not an email claim (same rule as firestore.rules
+// isAdmin()). SWH password signup does not verify email, so an email claim can be satisfied by
+// whoever registers the address; a uid cannot be claimed. ADMIN_EMAILS stays for non-auth uses
+// (addresses the admin is mailed at). To add an admin, add their uid here and in firestore.rules.
+const ADMIN_UIDS = ['QIz4TLQGV9PgF8VTZsnzOCsdbi33']; // austen@austensmith.com (Google sign-in)
+const isAdminUid = (uid) => typeof uid === 'string' && ADMIN_UIDS.includes(uid);
 
 // Sender address for all outbound mail written to the `mail` collection.
 // Must match a verified sender in the SMTP credentials configured for the
@@ -1037,10 +1043,10 @@ const MAIL_FROM = 'SWH Reports <noreply@stopwastinghandshakes.com>';
 
 exports.approveWaitlistUser = onCall({ cors: true }, async (request) => {
   const callerEmail = (request.auth?.token?.email || '').toLowerCase();
-  // Security Eng F4 (2026-09-22): the ADMIN_EMAILS gate must not trust an
-  // unverified token email, especially here -- a breach now mints a
-  // cross-project verified identity via the emailVerified fix below.
-  if (!callerEmail || !ADMIN_EMAILS.includes(callerEmail) || request.auth?.token?.email_verified !== true) {
+  // Security Eng F4: the admin gate must not trust an email claim, especially here --
+  // a breach mints a cross-project verified identity via the emailVerified fix below.
+  // Keyed on the uid; see ADMIN_UIDS.
+  if (!isAdminUid(request.auth?.uid)) {
     throw new Error('Permission denied: admin only');
   }
   const { waitlistDocId, plan } = request.data || {};
@@ -1122,7 +1128,7 @@ exports.approveWaitlistUser = onCall({ cors: true }, async (request) => {
 // "set password via email link" flow so the admin can capture credentials directly.
 exports.createTestUser = onCall({ cors: true }, async (request) => {
   const callerEmail = (request.auth?.token?.email || '').toLowerCase();
-  if (!callerEmail || !ADMIN_EMAILS.includes(callerEmail)) {
+  if (!isAdminUid(request.auth?.uid)) {
     throw new Error('Permission denied: admin only');
   }
   const { email, password, plan, displayName } = request.data || {};
@@ -1207,8 +1213,7 @@ exports.deleteAccountSelf = onRequest({ cors: true }, async (req, res) => {
 
 // ===== Delete user — admin removes a user's auth account, /users doc, and subcollections =====
 exports.deleteUser = onCall({ cors: true }, async (request) => {
-  const callerEmail = (request.auth?.token?.email || '').toLowerCase();
-  if (!callerEmail || !ADMIN_EMAILS.includes(callerEmail)) {
+  if (!isAdminUid(request.auth?.uid)) {
     throw new Error('Permission denied: admin only');
   }
   const { uid } = request.data || {};
@@ -1929,8 +1934,7 @@ exports.sendMyRecap = onRequest({ cors: true }, async (req, res) => {
 
 // ===== sendSampleRecap — admin sends a demo recap to any address (for marketing/preview) =====
 exports.sendSampleRecap = onCall({ cors: true }, async (request) => {
-  const callerEmail = (request.auth?.token?.email || '').toLowerCase();
-  if (!callerEmail || !ADMIN_EMAILS.includes(callerEmail)) throw new Error('Permission denied: admin only');
+  if (!isAdminUid(request.auth?.uid)) throw new Error('Permission denied: admin only');
   const { email } = request.data || {};
   if (typeof email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error('Invalid email');
 
@@ -2461,8 +2465,7 @@ exports.checkMailQueue = onRequest({ cors: true }, async (req, res) => {
   if (req.method === 'OPTIONS') { res.status(204).send(''); return; }
   try {
     const decoded = await requireAuth(req);
-    const callerEmail = (decoded.email || '').toLowerCase();
-    if (!ADMIN_EMAILS.includes(callerEmail)) { res.status(403).json({ error: 'admin only' }); return; }
+    if (!isAdminUid(decoded.uid)) { res.status(403).json({ error: 'admin only' }); return; }
 
     const snap = await db.collection('mail').orderBy('delivery.startTime', 'desc').limit(20).get()
       .catch(() => db.collection('mail').limit(20).get()); // fallback if no index yet
@@ -3852,14 +3855,13 @@ exports.getTeamActivityFeed = onRequest({ cors: true }, async (req, res) => {
 // ============================================================
 // ADMIN — TEAM MANAGEMENT (used by swh-admin.web.app Teams tab)
 // ============================================================
-// All endpoints below are gated to ADMIN_EMAILS (currently just Austen).
+// All endpoints below are gated to the admin uid (ADMIN_UIDS; currently just Austen).
 // They let an admin manage ANY team across the platform without going through
 // Stripe Checkout. Supports both team_scorecard and team_crm plans.
 
 async function requireAdmin(req) {
   const decoded = await requireAuth(req);
-  const email = (decoded.email || '').toLowerCase();
-  if (!email || !ADMIN_EMAILS.includes(email)) {
+  if (!isAdminUid(decoded.uid)) {
     const err = new Error('Permission denied: admin only');
     err.statusCode = 403;
     throw err;
@@ -9983,7 +9985,7 @@ exports.backfillOnboardingDrip = onRequest({ cors: true }, async (req, res) => {
   if (req.method === 'OPTIONS') { res.status(204).send(''); return; }
   try {
     const decoded = await requireAuth(req);
-    if (!ADMIN_EMAILS.includes((decoded.email || '').toLowerCase())) {
+    if (!isAdminUid(decoded.uid)) {
       res.status(403).json({ error: 'admin only' }); return;
     }
 
