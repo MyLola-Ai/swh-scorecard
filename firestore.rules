@@ -6,16 +6,15 @@ service cloud.firestore {
     // ── Helpers ──
     function isSignedIn() { return request.auth != null; }
     function isOwner(uid) { return isSignedIn() && request.auth.uid == uid; }
-    // email_verified is required: SWH password signup does not verify email,
-    // so without it the allowlist trusted whatever address an account claimed
-    // (the rules-layer twin of the functions-side F4 gate).
+    // Admin is keyed on the Firebase Auth uid, not on an email claim. An email
+    // claim can be satisfied by anyone who registers that address on a project
+    // that does not verify email, and email_verified only narrows that; a uid
+    // cannot be claimed. Works for custom-token sessions too, which need not
+    // carry email claims. To add an admin, add their uid here.
     function isAdmin() {
-      return isSignedIn()
-        && request.auth.token.email != null
-        && request.auth.token.email_verified == true
-        && request.auth.token.email.lower() in [
-             'austen@austensmith.com'
-           ];
+      return isSignedIn() && request.auth.uid in [
+        'QIz4TLQGV9PgF8VTZsnzOCsdbi33'  // austen@austensmith.com (Google sign-in)
+      ];
     }
 
     // ── /users — user docs and all subcollections ──

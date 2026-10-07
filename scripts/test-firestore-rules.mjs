@@ -22,8 +22,11 @@ const DOCS = '/databases/(default)/documents';
 const anon = null;
 const user = { uid: 'u1', token: { email: 'someone@example.com', email_verified: false } };
 const verifiedUser = { uid: 'u3', token: { email: 'other@example.com', email_verified: true } };
-const admin = { uid: 'a1', token: { email: 'austen@austensmith.com', email_verified: true } };
+const ADMIN_UID = 'QIz4TLQGV9PgF8VTZsnzOCsdbi33';
+const admin = { uid: ADMIN_UID, token: { email: 'austen@austensmith.com', email_verified: true } };
 const unverifiedAdmin = { uid: 'a2', token: { email: 'austen@austensmith.com', email_verified: false } };
+const verifiedImposter = { uid: 'a3', token: { email: 'austen@austensmith.com', email_verified: true } };
+const adminNoEmailClaims = { uid: ADMIN_UID, token: {} };
 const mailDoc = { to: 'victim@example.com', message: { subject: 's', html: '<b>h</b>' } };
 const tc = (id, desc, auth, method, path, fixed, live, data) =>
   ({ id, desc, auth, method, path: DOCS + path, fixed, live, data });
@@ -50,6 +53,10 @@ const CASES = [
   tc('H-2', 'admin address with an UNVERIFIED token reads another user\'s doc', unverifiedAdmin, 'get', '/users/u9', 'DENY', 'ALLOW'),
   tc('H-3', 'admin address with a VERIFIED token reads another user\'s doc (not locked out)', admin, 'get', '/users/u9', 'ALLOW', 'ALLOW'),
   tc('H-4', 'verified admin can still create an invite', admin, 'create', '/teamInvites/tok2', 'ALLOW', 'ALLOW', { email: 'a@b.co' }),
+  // Admin is keyed on uid: the admin ADDRESS, even verified, is not enough.
+  tc('U-1', 'verified token on the admin ADDRESS but another uid creates a mail doc', verifiedImposter, 'create', '/mail/x', 'DENY', 'ALLOW', mailDoc),
+  tc('U-2', 'verified token on the admin address but another uid reads another user\'s doc', verifiedImposter, 'get', '/users/u9', 'DENY', 'ALLOW'),
+  tc('U-3', 'admin uid with no email claims (custom-token style session) reads another user\'s doc', adminNoEmailClaims, 'get', '/users/u9', 'ALLOW', 'DENY'),
   // Request data really reaches the engine: same path, outcome depends on the body.
   tc('R0-1', 'owner creates own users doc, plan free', user, 'create', '/users/u1', 'ALLOW', 'ALLOW', { plan: 'free' }),
   tc('R0-2', 'owner creates own users doc with planOverride', user, 'create', '/users/u1', 'DENY', 'DENY', { planOverride: 'pro' }),
