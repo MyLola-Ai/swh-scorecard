@@ -7655,6 +7655,46 @@ exports.mintSwhSessionForUser = onRequest(
   }
 );
 
+// prepareSwhAccountForUser — MyLola's welcome emails (Austen 2026-10-08: "They
+// should also get an email from Stop Wasting Handshakes"). Server-to-server,
+// same bearer as mintSwhSessionForUser. Makes sure the Scorecard account exists
+// (getOrProvisionSwhUser: comped 'scorecard', never 'pro') and returns a
+// set-password link for it. The caller sends that link ONLY to subjectEmail, so
+// the link can only reach the mailbox that owns the account. Returns no custom
+// token and signs no one in. The link opens on app.stopwastinghandshakes.com
+// (Firebase's own handler, served on every Hosting domain of this project)
+// rather than the swh-scoreboard.firebaseapp.com address.
+const PREPARE_VIA = 'mylola-welcome';
+function swhBrandedResetLink(link) {
+  const u = new URL(link);
+  return `https://app.stopwastinghandshakes.com/__/auth/action${u.search}`;
+}
+exports.prepareSwhAccountForUser = onRequest(
+  { cors: false, secrets: [MYLOLA_INTEGRATION_SECRET] },
+  async (req, res) => {
+    try {
+      if (req.method !== 'POST') return res.status(405).json({ error: 'method' });
+      const header = req.headers.authorization || '';
+      const token = header.startsWith('Bearer ') ? header.slice(7).trim() : '';
+      if (!token || token !== MYLOLA_INTEGRATION_SECRET.value().trim()) {
+        return res.status(401).json({ error: 'unauthorized' });
+      }
+      const { subjectEmail } = req.body || {};
+      if (!subjectEmail || typeof subjectEmail !== 'string') {
+        return res.status(400).json({ error: 'subjectEmail is required' });
+      }
+      const email = subjectEmail.trim().toLowerCase();
+      const { provisioned } = await getOrProvisionSwhUser(email, PREPARE_VIA);
+      const link = swhBrandedResetLink(await admin.auth().generatePasswordResetLink(email));
+      console.log('[prepareSwhAccountForUser] ready, provisioned:', provisioned);
+      res.json({ ok: true, provisioned, link });
+    } catch (e) {
+      console.error('[prepareSwhAccountForUser]', e && e.code ? e.code : e);
+      res.status(500).json({ error: 'internal' });
+    }
+  }
+);
+
 /** Mirror of public-crm/index.html\'s mapSwhContactToMyLolaPayload —
  *  kept in lockstep so the payload shape matches what acceptSwhContact
  *  validates. The browser-side mapper exists so a fast "dry-run preview"
