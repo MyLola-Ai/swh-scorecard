@@ -7695,6 +7695,162 @@ exports.prepareSwhAccountForUser = onRequest(
   }
 );
 
+// swhApptWelcome — the MyAppointment set-password email for SWH users (Austen
+// 2026-10-09: "Everyone with an SWH account"). Server-to-server, same bearer
+// as prepareSwhAccountForUser. MyLola's welcome system (loaniq
+// ecosystemWelcome, product 'swh') calls this and SENDS the email itself from
+// hello@myappointment.ai; this side finds each SWH user's MyAppointment account
+// (creating it the way mintApptCustomToken does), and returns its set-password
+// link. A link is issued only for an account whose email IS the SWH user's
+// email, and the caller sends it only there, so it can only reach that mailbox.
+// Links are never logged. Skips accounts SWH provisioned for MyLola/MyClosings
+// (their own series sends it) and non-mailable test identities.
+//
+// Actions:
+//   status → { eligible, toSend }
+//   next   → up to `limit` items { swhUid, email, firstName, link }, reserved
+//            for 30 minutes so a second run can't double-send
+//   one    → the item for one SWH user by email (a test; not reserved/marked)
+//   mark   → record uids as sent
+const APPT_WELCOME = '_apptWelcome';
+const APPT_RESERVE_MS = 30 * 60 * 1000;
+
+function apptBrandedResetLink(link) {
+  const code = new URL(link).searchParams.get('oobCode');
+  if (!code) throw new Error('reset link has no oobCode');
+  return `https://myappointment.ai/auth/action?mode=resetPassword&oobCode=${encodeURIComponent(code)}`;
+}
+
+async function swhApptEligible(u, forTest) {
+  const email = (u.email || '').trim().toLowerCase();
+  if (!email || u.disabled) return { ok: false, reason: 'no-email' };
+  if (isNonMailableAccount(email)) return { ok: false, reason: 'test-account' };
+  const doc = await admin.firestore().doc(`users/${u.uid}`).get();
+  // A test to the operator still works for an account another product provisioned.
+  if (!forTest && doc.exists && doc.data().provisionedVia) return { ok: false, reason: 'provisioned-by-another-product' };
+  return { ok: true, email };
+}
+
+/** Find or create the MyAppointment account for an SWH user; returns its uid, or null. */
+async function ensureApptAccountForSwhUser(u, email) {
+  const apptAuth = admin.auth(getApptAdminApp());
+  let target = null;
+  try {
+    const r = await resolveApptIdentity({ door: 'swh', doorUid: u.uid, email, emailVerified: u.emailVerified === true });
+    target = r.canonicalUid;
+  } catch (e) {
+    console.warn('[swhApptWelcome] resolver fallback', e && (e.status || e.message));
+  }
+  if (!target) {
+    const byEmail = await apptAuth.getUserByEmail(email).catch(() => null);
+    target = byEmail ? byEmail.uid : u.uid;
+  }
+  let acct = await apptAuth.getUser(target).catch(() => null);
+  if (!acct) {
+    try {
+      acct = await apptAuth.createUser({ uid: target, email, displayName: u.displayName || undefined, emailVerified: u.emailVerified === true });
+    } catch (e) {
+      console.warn('[swhApptWelcome] create failed', e && e.code);
+      return null;
+    }
+  }
+  // Recipient == subject: only an account whose email is this SWH user's.
+  if ((acct.email || '').trim().toLowerCase() !== email) return null;
+  // Seed the profile the same way mintApptCustomToken does, so the host has a
+  // booking page and the native first-touch welcome never fires for them.
+  const apptDb = admin.firestore(getApptAdminApp());
+  const profRef = apptDb.doc(`users/${target}/config/profile`);
+  if (!(await profRef.get()).exists) {
+    const name = u.displayName || '';
+    const rawSlug = ((name.split(' ')[0]) || email.split('@')[0] || 'user').toLowerCase().replace(/[^a-z0-9]/g, '');
+    if (rawSlug) {
+      let slug = rawSlug;
+      for (let i = 1; i <= 9; i++) {
+        const taken = await apptDb.doc(`slugs/${slug}`).get();
+        if (!taken.exists || taken.data().uid === target) break;
+        slug = rawSlug + i;
+      }
+      const now = Date.now();
+      await Promise.all([
+        profRef.set({ uid: target, slug, product: 'swh', name: name || email.split('@')[0], email, updatedAt: now }, { merge: true }),
+        apptDb.doc(`slugs/${slug}`).set({ uid: target, updatedAt: now }, { merge: true }),
+      ]);
+    }
+  }
+  return target;
+}
+
+async function swhApptItem(u, forTest) {
+  const el = await swhApptEligible(u, forTest);
+  if (!el.ok) return { skip: el.reason };
+  const target = await ensureApptAccountForSwhUser(u, el.email);
+  if (!target) return { skip: 'no-appt-account' };
+  const link = apptBrandedResetLink(await admin.auth(getApptAdminApp()).generatePasswordResetLink(el.email));
+  return { swhUid: u.uid, email: el.email, firstName: (u.displayName || '').trim().split(/\s+/)[0] || null, link };
+}
+
+async function swhAllUsers() {
+  const out = []; let page;
+  do { const r = await admin.auth().listUsers(1000, page); out.push(...r.users); page = r.pageToken; } while (page);
+  return out;
+}
+
+exports.swhApptWelcome = onRequest(
+  { cors: false, secrets: [MYLOLA_INTEGRATION_SECRET, MYAPPOINTMENT_SA_KEY, APPT_IDENTITY_SERVICE_TOKEN], timeoutSeconds: 300, memory: '512MiB' },
+  async (req, res) => {
+    try {
+      if (req.method !== 'POST') return res.status(405).json({ error: 'method' });
+      const header = req.headers.authorization || '';
+      const token = header.startsWith('Bearer ') ? header.slice(7).trim() : '';
+      if (!token || token !== MYLOLA_INTEGRATION_SECRET.value().trim()) return res.status(401).json({ error: 'unauthorized' });
+      const { action, limit, email, uids } = req.body || {};
+      const db = admin.firestore();
+      if (action === 'one') {
+        const u = await admin.auth().getUserByEmail(String(email || '').trim().toLowerCase()).catch(() => null);
+        if (!u) return res.json({ ok: true, item: null, skip: 'no-swh-account' });
+        const it = await swhApptItem(u, true);
+        return res.json({ ok: true, item: it.skip ? null : it, skip: it.skip || null });
+      }
+      if (action === 'mark') {
+        const list = Array.isArray(uids) ? uids.filter((x) => typeof x === 'string').slice(0, 500) : [];
+        await Promise.all(list.map((uid) => db.doc(`${APPT_WELCOME}/${uid}`).set({ sentAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true })));
+        return res.json({ ok: true, marked: list.length });
+      }
+      const users = await swhAllUsers();
+      const state = new Map((await db.collection(APPT_WELCOME).get()).docs.map((d) => [d.id, d.data()]));
+      if (action === 'status') {
+        let eligible = 0, toSend = 0;
+        for (const u of users) {
+          if (!(await swhApptEligible(u)).ok) continue;
+          eligible++;
+          if (!state.get(u.uid)?.sentAt) toSend++;
+        }
+        return res.json({ ok: true, eligible, toSend });
+      }
+      if (action === 'next') {
+        const max = Math.max(1, Math.min(Number(limit) || 25, 50));
+        const now = Date.now();
+        const items = []; const skips = {};
+        for (const u of users) {
+          if (items.length >= max) break;
+          const st = state.get(u.uid) || {};
+          if (st.sentAt) continue;
+          if (st.reservedAt && now - st.reservedAt < APPT_RESERVE_MS) continue;
+          const it = await swhApptItem(u);
+          if (it.skip) { skips[it.skip] = (skips[it.skip] || 0) + 1; continue; }
+          await db.doc(`${APPT_WELCOME}/${u.uid}`).set({ reservedAt: now }, { merge: true });
+          items.push(it);
+        }
+        return res.json({ ok: true, items, skips });
+      }
+      return res.status(400).json({ error: 'unknown action' });
+    } catch (e) {
+      console.error('[swhApptWelcome]', e && e.code ? e.code : (e && e.message));
+      return res.status(500).json({ error: 'internal' });
+    }
+  }
+);
+
 /** Mirror of public-crm/index.html\'s mapSwhContactToMyLolaPayload —
  *  kept in lockstep so the payload shape matches what acceptSwhContact
  *  validates. The browser-side mapper exists so a fast "dry-run preview"
