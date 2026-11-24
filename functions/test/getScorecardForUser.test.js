@@ -153,27 +153,31 @@ test('provisioning stamps the comped plan fields and attributes the trigger path
   assert.equal(data.email, 'fresh@example.com');
 });
 
+// Dates are relative to today: the function clamps reads to the last SCORECARD_READ_MAX_DAYS (90),
+// so fixed 2026-08-0x dates silently aged out of the window on 2026-10-30 and this started returning 0 days.
+const _agoKey = (n) => { const d = new Date(); d.setDate(d.getDate() - n); return fmt(d); };
+const _D1 = _agoKey(10), _D2 = _agoKey(9);
 test('returns the matched user\'s own days and their custom activities list, not the default', withFakes(
   {
     users: { 'lo@example.com': 'uid_1' },
     docs: { 'users/uid_1/config/activities': { list: [{ name: 'Custom Activity', pts: 3 }] } },
     dayDocs: {
       'users/uid_1/days': [
-        { dateKey: '2026-08-01', counts: { 0: 2 }, totalPts: 10, leadPts: 10, lagPts: 0, breakdown: { 'X': { count: 2, pts: 10 } } },
-        { dateKey: '2026-08-02', counts: { 0: 1 }, totalPts: 5, leadPts: 5, lagPts: 0, breakdown: {} },
+        { dateKey: _D1, counts: { 0: 2 }, totalPts: 10, leadPts: 10, lagPts: 0, breakdown: { 'X': { count: 2, pts: 10 } } },
+        { dateKey: _D2, counts: { 0: 1 }, totalPts: 5, leadPts: 5, lagPts: 0, breakdown: {} },
       ],
     },
   },
   async () => {
-    const { req, res } = fakeReqRes({ subjectEmail: 'LO@Example.com', fromDateKey: '2026-08-01', toDateKey: '2026-08-02' });
+    const { req, res } = fakeReqRes({ subjectEmail: 'LO@Example.com', fromDateKey: _D1, toDateKey: _D2 });
     await getScorecardForUser(req, res);
     assert.equal(res.statusCode, 200);
     assert.equal(res._json.found, true);
     assert.deepEqual(res._json.activities, [{ name: 'Custom Activity', pts: 3 }]);
     assert.equal(res._json.days.length, 2);
-    assert.equal(res._json.days[0].dateKey, '2026-08-01');
+    assert.equal(res._json.days[0].dateKey, _D1);
     assert.equal(res._json.days[0].totalPts, 10);
-    assert.equal(res._json.days[1].dateKey, '2026-08-02');
+    assert.equal(res._json.days[1].dateKey, _D2);
   }
 ));
 
